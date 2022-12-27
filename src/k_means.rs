@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 use rand::prelude::*;
 
 // I could probably make it generalized so it can be n-dimensional but I just want the concept
+// Improvements can be made by using k-means++ that chooses starting points better
 #[pyfunction]
 pub fn k_means_cluster_2d(
     number_of_clusters: i64,
@@ -31,21 +32,22 @@ pub fn k_means_cluster_2d(
         // Clustering algorithm assigns each point to closest cluster.
         // Then the new centers becomes the avg of each of the clusters
         let mut new_centers = Vec::new();
+        let mut point_count_centers = vec![1; number_of_clusters.try_into().unwrap()];
         for _i in 0..number_of_clusters {
-            new_centers.push(vec![0.0, 0.0, 0.0]); // x, y, numberOfPoints
+            new_centers.push(vec![0.0, 0.0]); // x, y
         }
 
         for (x_val, y_val) in x.iter().zip(y.iter()) {
             let closest_center = get_closest_center_2d_internal(&centers, &x_val, &y_val);
             new_centers[closest_center][0] += x_val;
             new_centers[closest_center][1] += y_val;
-            new_centers[closest_center][2] += 1.0;
+            point_count_centers[closest_center] += 1;
         }
 
         // Divide the new_centers by the number of points assigned to each cluster
-        for center in new_centers.iter_mut() {
-            center[0] /= center[2];
-            center[1] /= center[2];
+        for (i, center) in new_centers.iter_mut().enumerate() {
+            center[0] /= point_count_centers[i] as f64;
+            center[1] /= point_count_centers[i] as f64;
         }
 
         centers_did_change = !centers_are_equal_internal(&centers, &new_centers);
