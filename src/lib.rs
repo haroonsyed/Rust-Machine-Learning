@@ -1,14 +1,11 @@
 use pyo3::prelude::*;
-
-/// Formats the sum of two numbers as string.
-#[pyfunction]
-fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
-    Ok((a + b).to_string())
-}
+mod k_means;
 
 /// A Python module implemented in Rust.
 #[pymodule]
 fn Rust_Machine_Learning(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
+    m.add_function(wrap_pyfunction!(k_means::k_means_cluster_2d, m)?)?;
+    m.add_function(wrap_pyfunction!(k_means::get_closest_center_2d, m)?)?;
+    m.add_function(wrap_pyfunction!(k_means::centers_are_equal, m)?)?;
     Ok(())
 }

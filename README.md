@@ -1,15 +1,20 @@
 # A list of topics I want to learn over winter 2022/2023
 
+## General Goal
+
+Learn rust and machine learning. The notebooks, while in python, have rust bindings to the core ML/DL algorithms.
+
 ### Goals
 
 1. K-Means
 2. K-Nearest Neighbors
-3. Decision Trees
-4. Basic Neural Network
-5. With backpropogation
-6. Convolutional Neural Networks
-7. Recurrent Neural Networks
-8. Generative Adversarial Networks
+3. Naive Bayes
+4. Decision Trees
+5. Basic Neural Network
+6. With backpropogation
+7. Convolutional Neural Networks
+8. Recurrent Neural Networks
+9. Generative Adversarial Networks
 
 ## Setup Instructions
 
@@ -22,8 +27,8 @@
 
 \*\* Note
 
-K-Means-Clustering.ipynb uses evcxr which is purely in rust. The rest of the notebook is in python.
+K-Means-Clustering.ipynb uses evcxr which is purely in rust. The rest of the notebook is in python with bindings to core rust code.
 
-This is due to how slow dependencies installed in evcxr everytime the notebook was opened (even with caching enabled).
+The switch is due to how slow dependencies installed in evcxr everytime the notebook was opened (even with caching enabled). And the general tooling is better with python.
 
 EVCXR is a very cool project though!
