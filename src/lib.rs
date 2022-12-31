@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+mod basic_stats;
 mod k_means;
 mod k_nearest_neighbor;
 

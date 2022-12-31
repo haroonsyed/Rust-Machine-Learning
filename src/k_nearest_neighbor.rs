@@ -4,7 +4,7 @@ use std::cmp::Eq;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-pub fn get_mode<T: Eq + Hash + Copy>(data: &Vec<T>) -> T {
+fn get_mode<T: Eq + Hash + Copy>(data: &Vec<T>) -> T {
   let mut counts = HashMap::new();
 
   for val in data.iter() {
