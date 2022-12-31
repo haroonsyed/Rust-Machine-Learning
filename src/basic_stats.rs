@@ -1,8 +1,9 @@
 use num::{FromPrimitive, Zero};
+use statrs::distribution::{Continuous, Normal};
 use std::{
   collections::HashMap,
   hash::Hash,
-  ops::{Add, AddAssign, Div, DivAssign},
+  ops::{Add, AddAssign, Div, DivAssign, Sub, SubAssign},
 };
 
 pub fn mean<
@@ -49,4 +50,58 @@ pub fn mode<T: Copy + Hash + Eq>(numbers: &Vec<T>) -> T {
     .max_by(|a, b| a.1.cmp(&b.1))
     .map(|(k, _v)| k)
     .unwrap();
+}
+
+pub fn variance<
+  T: Copy
+    + FromPrimitive
+    + Zero
+    + Sub<T, Output = T>
+    + SubAssign<T>
+    + Add<T, Output = T>
+    + AddAssign<T>
+    + Div<T, Output = T>
+    + Into<f64>
+    + DivAssign<T>,
+>(
+  numbers: &Vec<T>,
+  is_population: bool,
+) -> f64 {
+  let mut variance: f64 = 0.0;
+
+  let mean = mean(&numbers);
+
+  for val in numbers {
+    variance += (*val - mean).into().powf(2.0);
+  }
+
+  variance /= match is_population {
+    true => numbers.len() as f64,
+    false => (numbers.len() - 1) as f64,
+  };
+
+  return variance;
+}
+
+pub fn std_deviation<
+  T: Copy
+    + FromPrimitive
+    + Zero
+    + Sub<T, Output = T>
+    + SubAssign<T>
+    + Add<T, Output = T>
+    + AddAssign<T>
+    + Div<T, Output = T>
+    + Into<f64>
+    + DivAssign<T>,
+>(
+  numbers: &Vec<T>,
+  is_population: bool,
+) -> f64 {
+  return variance(numbers, is_population).sqrt();
+}
+
+pub fn gaussian_probability(sample: f64, mean: f64, std_deviation: f64) -> f64 {
+  let dist = Normal::new(mean, std_deviation).unwrap();
+  return dist.pdf(sample);
 }
