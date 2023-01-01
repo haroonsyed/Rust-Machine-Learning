@@ -1,7 +1,9 @@
-use pyo3::prelude::*;
 mod basic_stats;
 mod k_means;
 mod k_nearest_neighbor;
+mod naive_bayes;
+
+use pyo3::prelude::*;
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -13,5 +15,6 @@ fn Rust_Machine_Learning(_py: Python, m: &PyModule) -> PyResult<()> {
     k_nearest_neighbor::k_nearest_neighbor_2d,
     m
   )?)?;
+  m.add_class::<naive_bayes::naive_bayes_model>()?;
   Ok(())
 }
