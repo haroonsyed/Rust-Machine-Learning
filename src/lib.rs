@@ -2,6 +2,7 @@ mod basic_stats;
 mod k_means;
 mod k_nearest_neighbor;
 mod naive_bayes;
+mod py_util;
 
 use pyo3::prelude::*;
 

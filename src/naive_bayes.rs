@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use itertools::izip;
 use pyo3::prelude::*;
 
-use crate::basic_stats::{self};
+use crate::basic_stats::{self, gaussian_probability};
 
 #[pyclass]
 pub struct naive_bayes_model {
@@ -43,7 +43,40 @@ impl naive_bayes_model {
 
   fn naive_bayes_gaussian(&self, features_test: Vec<Vec<f64>>) -> PyResult<Vec<i64>> {
     let mut labels = Vec::new();
-    labels = vec![0; features_test.len()];
+
+    for datapoint in features_test {
+      let mut highest_score = f64::MIN;
+      let mut highest_score_label = 0;
+      for (label, feature_stats) in self.class_stats.iter() {
+        // grab the necessary trained stats
+        let prior = feature_stats[2][0];
+        let means = &feature_stats[0];
+        let variances = &feature_stats[1];
+
+        // Calculate the scores for being each label
+        // ln is to prevent numbers from becoming out of range of float
+        let mut score = prior.ln();
+        let mut curr_feature_index = 0;
+        for (mean, variance) in izip!(means, variances) {
+          let curr_feature_val = datapoint[curr_feature_index];
+
+          let std_deviation = variance.sqrt();
+
+          score += gaussian_probability(curr_feature_val, *mean, std_deviation).ln();
+
+          curr_feature_index += 1;
+        }
+
+        // Determine if this score is the highest
+        if (score > highest_score) {
+          highest_score = score;
+          highest_score_label = *label;
+        }
+      }
+
+      // Label this point as the one with highest score
+      labels.push(highest_score_label);
+    }
 
     return Ok(labels);
   }

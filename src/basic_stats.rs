@@ -2,12 +2,14 @@ use num::{FromPrimitive, Zero};
 use statrs::distribution::{Continuous, Normal};
 use std::{
   collections::HashMap,
+  fmt::Debug,
   hash::Hash,
   ops::{Add, AddAssign, Div, DivAssign, Sub, SubAssign},
 };
 
 pub fn mean<
   T: Copy
+    + Debug
     + FromPrimitive
     + Zero
     + Add<T, Output = T>
@@ -30,6 +32,7 @@ pub fn mean<
 
 pub fn mean_2d<
   T: Copy
+    + Debug
     + FromPrimitive
     + Zero
     + Add<T, Output = T>
@@ -48,20 +51,20 @@ pub fn mean_2d<
     }
   }
 
-  means
-    .iter_mut()
-    .for_each(|x| *x /= FromPrimitive::from_usize(num_features).unwrap());
+  means.iter_mut().for_each(|x| {
+    *x /= FromPrimitive::from_usize(numbers.len()).unwrap();
+  });
 
   return means;
 }
 
-pub fn median<T: Copy + Ord + Clone>(numbers: &Vec<T>) -> T {
+pub fn median<T: Copy + Debug + Ord + Clone>(numbers: &Vec<T>) -> T {
   let mut copy = numbers.clone();
   copy.sort();
   return copy[numbers.len() / 2];
 }
 
-pub fn mode<T: Copy + Hash + Eq>(numbers: &Vec<T>) -> T {
+pub fn mode<T: Copy + Debug + Hash + Eq>(numbers: &Vec<T>) -> T {
   let mut counts = HashMap::new();
 
   for val in numbers.iter() {
@@ -81,6 +84,7 @@ pub fn mode<T: Copy + Hash + Eq>(numbers: &Vec<T>) -> T {
 
 pub fn variance<
   T: Copy
+    + Debug
     + FromPrimitive
     + Zero
     + Sub<T, Output = T>
@@ -112,6 +116,7 @@ pub fn variance<
 
 pub fn variance_2d<
   T: Copy
+    + Debug
     + FromPrimitive
     + Zero
     + Sub<T, Output = T>
@@ -148,6 +153,7 @@ pub fn variance_2d<
 
 pub fn std_deviation<
   T: Copy
+    + Debug
     + FromPrimitive
     + Zero
     + Sub<T, Output = T>
