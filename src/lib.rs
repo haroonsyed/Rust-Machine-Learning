@@ -1,4 +1,5 @@
 mod basic_stats;
+mod decision_tree;
 mod k_means;
 mod k_nearest_neighbor;
 mod naive_bayes;
@@ -17,5 +18,6 @@ fn Rust_Machine_Learning(_py: Python, m: &PyModule) -> PyResult<()> {
     m
   )?)?;
   m.add_class::<naive_bayes::naive_bayes_model>()?;
+  m.add_class::<decision_tree::DecisionTree>()?;
   Ok(())
 }
