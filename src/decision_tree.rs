@@ -27,17 +27,6 @@ impl DecisionTreeNode {
     };
   }
 
-  fn new_leaf(classification: f64) -> Self {
-    return DecisionTreeNode {
-      is_categorical: false,
-      feature_col: 0,
-      feature_val: 0.0,
-      right_child: None,
-      left_child: None,
-      classification: classification,
-    };
-  }
-
   fn traverse_print(&self, level: usize) {
     let str_non_leaf = format!(
       "{} {} {}",
@@ -307,6 +296,29 @@ impl DecisionTreeNode {
 
     return (purity, average);
   }
+
+  fn classify(&self, datapoint: &Vec<f64>) -> f64 {
+    let is_leaf = self.right_child.is_none();
+    if is_leaf {
+      return self.classification;
+    }
+
+    let comparison_value = datapoint[self.feature_col];
+
+    if self.is_categorical {
+      return if comparison_value == 1.0 {
+        self.left_child.as_ref().unwrap().classify(datapoint)
+      } else {
+        self.right_child.as_ref().unwrap().classify(datapoint)
+      };
+    } else {
+      return if comparison_value < self.feature_val {
+        self.left_child.as_ref().unwrap().classify(datapoint)
+      } else {
+        self.right_child.as_ref().unwrap().classify(datapoint)
+      };
+    }
+  }
 }
 
 #[pyclass]
@@ -336,12 +348,12 @@ impl DecisionTree {
     return DecisionTree { root };
   }
 
-  fn classify(&self, features_test: Vec<Vec<f64>>) -> PyResult<Vec<bool>> {
+  fn classify(&self, features_test: Vec<Vec<f64>>) -> PyResult<Vec<f64>> {
     let mut labels = Vec::new();
 
     for datapoint in features_test {
       // Travel down tree for each node and get the correct classificiation
-      labels.push(false);
+      labels.push(self.root.classify(&datapoint));
     }
 
     return Ok(labels);
