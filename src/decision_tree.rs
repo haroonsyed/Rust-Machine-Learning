@@ -18,31 +18,13 @@ struct DecisionTreeNode {
 impl DecisionTreeNode {
   // Some sort of insertion function that takes data, and goes till only pure leaves
   // Each node handles splitting of data to left/right child
-}
-
-#[pyclass]
-pub struct DecisionTree {
-  root: DecisionTreeNode,
-}
-
-#[pymethods]
-impl DecisionTree {
-  #[new]
-  fn new(features_train: Vec<Vec<f64>>, is_categorical: Vec<bool>, labels: Vec<f64>) -> Self {
-    let root = DecisionTreeNode {
-      is_categorical: false,
-      feature_col: 0,
-      feature_val: 0.0,
-      right_child: None,
-      left_child: None,
-      classification: 0,
-    };
-
-    let num_features = features_train[0].len();
-    let mut features_to_process = HashSet::new();
-    for i in 0..num_features {
-      features_to_process.insert(i);
-    }
+  pub fn insert(
+    &mut self,
+    features_train: &Vec<Vec<f64>>,
+    is_categorical: &Vec<bool>,
+    labels: &Vec<f64>,
+    features_to_process: &HashSet<usize>,
+  ) {
     let purities = Self::get_purities(
       &features_to_process,
       &is_categorical,
@@ -50,24 +32,51 @@ impl DecisionTree {
       &labels,
     );
 
-    py_print(&purities);
+    // Now based on the lowest purity determine how to label this node.
+    // Then create the right and left if is not impure (later we can use a threshold)
+    let lowest_purity_data = purities
+      .iter()
+      .min_by(|a, b| OrderedFloat(a.1 .0).cmp(&OrderedFloat(b.1 .0)))
+      .unwrap();
 
-    return DecisionTree { root };
-  }
+    let lowest_purity_col = *lowest_purity_data.0;
+    let lowest_purity_categorical = is_categorical[lowest_purity_col];
+    let lowest_purity_value = lowest_purity_data.1 .1;
 
-  fn classify(&self, features_test: Vec<Vec<f64>>) -> PyResult<Vec<bool>> {
-    let mut labels = Vec::new();
-
-    for datapoint in features_test {
-      // Travel down tree for each node and get the correct classificiation
-      labels.push(false);
+    if (lowest_purity_categorical) {
+      // Split data based on this category.
+      // Determine if pure. Conditionally recurse.
+    } else {
+      // Split data based on the value for this feature
+      // Determine if pure. Conditionally recurse.
     }
 
-    return Ok(labels);
+    py_print(&purities);
   }
-}
 
-impl DecisionTree {
+  // ret.0 is true. ret.1 is false.
+  fn split_data_categorical(
+    features_train: &Vec<Vec<f64>>,
+    feature: usize,
+  ) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
+    let mut cat_true = Vec::new();
+    let mut cat_false = Vec::new();
+
+    return (cat_true, cat_false);
+  }
+
+  // ret.0 is true. ret.1 is false.
+  fn split_data_numeric(
+    features_train: &Vec<Vec<f64>>,
+    feature: usize,
+    feature_val: f64,
+  ) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
+    let mut cat_true = Vec::new();
+    let mut cat_false = Vec::new();
+
+    return (cat_true, cat_false);
+  }
+
   fn get_purities(
     features_to_process: &HashSet<usize>,
     is_categorical: &Vec<bool>,
@@ -198,5 +207,51 @@ impl DecisionTree {
     }
 
     return (purity, average);
+  }
+}
+
+#[pyclass]
+pub struct DecisionTree {
+  root: DecisionTreeNode,
+}
+
+#[pymethods]
+impl DecisionTree {
+  #[new]
+  fn new(features_train: Vec<Vec<f64>>, is_categorical: Vec<bool>, labels: Vec<f64>) -> Self {
+    let mut root = DecisionTreeNode {
+      is_categorical: false,
+      feature_col: 0,
+      feature_val: 0.0,
+      right_child: None,
+      left_child: None,
+      classification: 0,
+    };
+
+    let num_features = features_train[0].len();
+    let mut features_to_process = HashSet::new();
+    for i in 0..num_features {
+      features_to_process.insert(i);
+    }
+
+    root.insert(
+      &features_train,
+      &is_categorical,
+      &labels,
+      &features_to_process,
+    );
+
+    return DecisionTree { root };
+  }
+
+  fn classify(&self, features_test: Vec<Vec<f64>>) -> PyResult<Vec<bool>> {
+    let mut labels = Vec::new();
+
+    for datapoint in features_test {
+      // Travel down tree for each node and get the correct classificiation
+      labels.push(false);
+    }
+
+    return Ok(labels);
   }
 }
