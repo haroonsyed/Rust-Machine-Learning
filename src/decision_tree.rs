@@ -28,7 +28,7 @@ pub struct DecisionTree {
 #[pymethods]
 impl DecisionTree {
   #[new]
-  fn new(features_train: Vec<Vec<f64>>, is_categorical: Vec<bool>, labels: Vec<bool>) -> Self {
+  fn new(features_train: Vec<Vec<f64>>, is_categorical: Vec<bool>, labels: Vec<f64>) -> Self {
     let root = DecisionTreeNode {
       is_categorical: false,
       feature_col: 0,
@@ -72,13 +72,17 @@ impl DecisionTree {
     features_to_process: &HashSet<usize>,
     is_categorical: &Vec<bool>,
     data: &Vec<Vec<f64>>,
-    labels: &Vec<bool>,
+    labels: &Vec<f64>,
   ) -> HashMap<usize, (f64, f64)> {
     // returns usize -> (purity, average)
     let mut purities = HashMap::new();
 
-    for (col, is_categorical) in izip!(features_to_process, is_categorical) {
-      purities.insert(*col, Self::get_purity(*col, *is_categorical, data, labels));
+    for col in izip!(features_to_process) {
+      let is_col_categorical = is_categorical[*col];
+      purities.insert(
+        *col,
+        Self::get_purity(*col, is_col_categorical, data, labels),
+      );
     }
 
     return purities;
@@ -88,7 +92,7 @@ impl DecisionTree {
     feature: usize,
     is_categorical: bool,
     data: &Vec<Vec<f64>>,
-    labels: &Vec<bool>,
+    labels: &Vec<f64>,
   ) -> (f64, f64) {
     let mut purity = 0.0;
     let mut average = 0.0;
@@ -99,7 +103,7 @@ impl DecisionTree {
       let mut label_true_feature_false = 0;
       let mut label_false_feature_false = 0;
       for (datapoint, label) in izip!(data, labels) {
-        let label_true = *label;
+        let label_true = *label == 1.0;
         let feature_true = datapoint[feature] == 1.0;
         match (label_true, feature_true) {
           (true, true) => label_true_feature_true += 1,
@@ -108,8 +112,17 @@ impl DecisionTree {
           (false, false) => label_false_feature_false += 1,
         }
       }
-      let num_feature_true = label_true_feature_true + label_false_feature_true;
-      let num_feature_false = label_true_feature_false + label_false_feature_false;
+
+      let mut num_feature_true = label_true_feature_true + label_false_feature_true;
+      let mut num_feature_false = label_true_feature_false + label_false_feature_false;
+      // Avoid divison by zero by adding 1
+      if (num_feature_true == 0) {
+        num_feature_true += 1;
+      }
+      if (num_feature_false == 0) {
+        num_feature_false += 1;
+      }
+
       let purity_feature_true = 1.0
         - (label_true_feature_true as f64 / num_feature_true as f64).powf(2.0)
         - (label_false_feature_true as f64 / num_feature_true as f64).powf(2.0);
@@ -123,7 +136,7 @@ impl DecisionTree {
       purity += purity_feature_false * (num_feature_false as f64 / num_datapoints as f64);
     } else {
       // Assumes the data is continuous and ordered
-      let mut combined: Vec<(&Vec<f64>, &bool)> = izip!(data.iter(), labels.iter()).collect();
+      let mut combined: Vec<(&Vec<f64>, &f64)> = izip!(data.iter(), labels.iter()).collect();
       combined.sort_by(|a, b| OrderedFloat(a.0[feature]).cmp(&OrderedFloat(b.0[feature])));
 
       // From the perspective of data item at 0, everything is greater to start
@@ -132,7 +145,7 @@ impl DecisionTree {
       let mut label_true_feature_greater = 0;
       let mut label_false_feature_greater = 0;
       for (row, label) in combined.iter() {
-        if **label {
+        if **label == 1.0 {
           label_true_feature_greater += 1;
         } else {
           label_false_feature_greater += 1;
@@ -140,13 +153,12 @@ impl DecisionTree {
       }
 
       let mut row_impurities = Vec::new();
-      let end_avg = combined.len() - 1;
-      for i in 1..end_avg {
+      for i in 1..combined.len() {
         // First calculate the average
-        let curr_average = (combined[i].0[feature - 1] + combined[i].0[feature - 1]) / 2.0;
+        let curr_average = (combined[i - 1].0[feature] + combined[i].0[feature]) / 2.0;
 
         // Now update the label counts
-        let prev_label = *combined[i - 1].1;
+        let prev_label = *combined[i - 1].1 == 1.0;
         if prev_label {
           label_true_feature_less += 1;
           label_true_feature_greater -= 1;
@@ -155,8 +167,16 @@ impl DecisionTree {
           label_false_feature_greater -= 1;
         }
 
-        let num_feature_true = label_true_feature_less + label_false_feature_less;
-        let num_feature_false = label_true_feature_greater + label_false_feature_greater;
+        let mut num_feature_true = label_true_feature_less + label_false_feature_less;
+        let mut num_feature_false = label_true_feature_greater + label_false_feature_greater;
+        // Avoid divison by zero by adding 1
+        if (num_feature_true == 0) {
+          num_feature_true += 1;
+        }
+        if (num_feature_false == 0) {
+          num_feature_false += 1;
+        }
+
         let purity_feature_true = 1.0
           - (label_true_feature_less as f64 / num_feature_true as f64).powf(2.0)
           - (label_false_feature_less as f64 / num_feature_true as f64).powf(2.0);
@@ -166,7 +186,7 @@ impl DecisionTree {
 
         // Return weighted average of the two purities
         let num_datapoints = num_feature_true + num_feature_false;
-        let mut curr_purity = 1.0;
+        let mut curr_purity = 0.0;
         curr_purity += purity_feature_true * (num_feature_true as f64 / num_datapoints as f64);
         curr_purity += purity_feature_false * (num_feature_false as f64 / num_datapoints as f64);
         row_impurities.push((curr_purity, curr_average));
