@@ -1,4 +1,5 @@
 use num::{FromPrimitive, Zero};
+use ordered_float::OrderedFloat;
 use statrs::distribution::{Continuous, Normal};
 use std::{
   collections::HashMap,
@@ -80,6 +81,26 @@ pub fn mode<T: Copy + Debug + Hash + Eq>(numbers: &Vec<T>) -> T {
     .max_by(|a, b| a.1.cmp(&b.1))
     .map(|(k, _v)| k)
     .unwrap();
+}
+
+pub fn mode_f64(numbers: &Vec<f64>) -> f64 {
+  let mut counts = HashMap::new();
+
+  for val in numbers.iter() {
+    let val_safe = OrderedFloat(*val);
+    if !counts.contains_key(&val_safe) {
+      counts.insert(val_safe, 0);
+    }
+    *counts.get_mut(&val_safe).unwrap() += 1;
+  }
+
+  // Find the most common in the map
+  return counts
+    .iter()
+    .max_by(|a, b| a.1.cmp(&b.1))
+    .map(|(k, _v)| k)
+    .unwrap()
+    .0;
 }
 
 pub fn variance<
