@@ -9,7 +9,7 @@ Learn rust and machine learning. The notebooks, while in python, have rust bindi
 1. K-Means
 2. K-Nearest Neighbors
 3. Naive Bayes
-4. Decision Trees
+4. Decision Trees, Regression Tree, Random Forest
 5. Basic Neural Network
 6. With backpropogation
 7. Convolutional Neural Networks
