@@ -69,23 +69,24 @@ impl DecisionTreeNode {
     labels: &Vec<f64>,
     mut features_to_process: HashSet<usize>,
   ) {
-    let purities = Self::get_purities(&features_to_process, is_categorical, features_train, labels);
-
-    // Now based on the lowest purity determine how to label this node.
-    // Then create the right and left if is not impure (later we can use a threshold)
-    let lowest_purity_data = purities
-      .iter()
-      .min_by(|a, b| OrderedFloat(a.1 .0).cmp(&OrderedFloat(b.1 .0)))
-      .unwrap();
-
-    let lowest_purity_col = *lowest_purity_data.0;
-    let lowest_purity_categorical = is_categorical[lowest_purity_col];
-    let lowest_purity_feature_value = lowest_purity_data.1 .1;
-
     let is_pure = Self::is_pure(labels);
-    if (is_pure) {
+    if is_pure {
       self.classification = mode_f64(labels);
     } else {
+      let purities =
+        Self::get_purities(&features_to_process, is_categorical, features_train, labels);
+
+      // Now based on the lowest purity determine show to label this node.
+      // Then create the right and left if is not impure (later we can use a threshold)
+      let lowest_purity_data = purities
+        .iter()
+        .min_by(|a, b| OrderedFloat(a.1 .0).cmp(&OrderedFloat(b.1 .0)))
+        .unwrap();
+
+      let lowest_purity_col = *lowest_purity_data.0;
+      let lowest_purity_categorical = is_categorical[lowest_purity_col];
+      let lowest_purity_feature_value = lowest_purity_data.1 .1;
+
       let (split_left, split_right) = if lowest_purity_categorical {
         Self::split_data_categorical(features_train, labels, lowest_purity_col)
       } else {
@@ -174,7 +175,7 @@ impl DecisionTreeNode {
     // returns usize -> (purity, average)
     let mut purities = HashMap::new();
 
-    for col in izip!(features_to_process) {
+    for col in features_to_process {
       let is_col_categorical = is_categorical[*col];
       purities.insert(
         *col,
@@ -290,8 +291,10 @@ impl DecisionTreeNode {
       }
 
       row_impurities.sort_by(|a, b| OrderedFloat(a.0).cmp(&OrderedFloat(b.0)));
-      purity = row_impurities[0].0;
-      average = row_impurities[0].1;
+      if (row_impurities.len() > 0) {
+        purity = row_impurities[0].0;
+        average = row_impurities[0].1;
+      }
     }
 
     return (purity, average);
