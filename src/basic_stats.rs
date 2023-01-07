@@ -20,7 +20,7 @@ pub fn mean<
 >(
   numbers: &Vec<T>,
 ) -> T {
-  let mut sum = numbers[0];
+  let mut sum = T::zero();
 
   for val in numbers {
     sum += *val;
@@ -43,20 +43,46 @@ pub fn mean_2d<
 >(
   numbers: &Vec<Vec<T>>,
 ) -> Vec<T> {
+  if numbers.len() == 0 {
+    return Vec::new();
+  }
+
   let num_features = numbers[0].len();
   let mut means = vec![T::zero(); num_features];
 
-  for data_point in numbers {
-    for (i, val) in data_point.iter().enumerate() {
-      means[i] += *val;
-    }
+  for i in 0..num_features {
+    means[i] = mean_2d_col(numbers, i);
   }
 
-  means.iter_mut().for_each(|x| {
-    *x /= FromPrimitive::from_usize(numbers.len()).unwrap();
-  });
-
   return means;
+}
+
+pub fn mean_2d_col<
+  T: Copy
+    + Debug
+    + FromPrimitive
+    + Zero
+    + Add<T, Output = T>
+    + AddAssign<T>
+    + Div<T, Output = T>
+    + DivAssign<T>,
+>(
+  numbers: &Vec<Vec<T>>,
+  col: usize,
+) -> T {
+  if numbers.len() == 0 {
+    return T::zero();
+  }
+
+  let mut mean = T::zero();
+
+  for data_point in numbers {
+    mean += data_point[col];
+  }
+
+  mean /= FromPrimitive::from_usize(numbers.len()).unwrap();
+
+  return mean;
 }
 
 pub fn median<T: Copy + Debug + Ord + Clone>(numbers: &Vec<T>) -> T {
