@@ -9,7 +9,7 @@ use crate::{
   py_util::py_print,
 };
 
-struct RegressionTreeNode {
+pub struct RegressionTreeNode {
   left_child: Option<Box<RegressionTreeNode>>,
   right_child: Option<Box<RegressionTreeNode>>,
   feature_col: usize,
@@ -18,9 +18,6 @@ struct RegressionTreeNode {
 }
 
 impl RegressionTreeNode {
-  // new, insert, any calculations needed
-  const DATAPOINTS_PER_NODE: usize = 7;
-
   pub fn print(&self, level: usize) {
     let is_leaf = self.left_child.is_none();
     let indent = "  ".repeat(level);
@@ -37,12 +34,15 @@ impl RegressionTreeNode {
     }
   }
 
-  pub fn build_tree(features_train: &Vec<(Vec<f64>, f64)>) -> RegressionTreeNode {
+  pub fn build_tree(
+    mut features_train: Vec<(Vec<f64>, f64)>,
+    datapoints_per_node: usize,
+  ) -> RegressionTreeNode {
     let num_features = features_train[0].0.len();
 
     let mut lowest_ssr_data = (0, f64::MAX, 0.0);
     for feature_col in 0..num_features {
-      let ssr_data = Self::get_feature_ssr_avg(features_train, feature_col);
+      let ssr_data = Self::get_feature_ssr_avg(&mut features_train, feature_col);
       if ssr_data.1 < lowest_ssr_data.1 {
         lowest_ssr_data = ssr_data;
       }
@@ -52,13 +52,13 @@ impl RegressionTreeNode {
     let lowest_ssr_avg = lowest_ssr_data.2;
 
     // Now split the data
-    let (less, gre) = Self::split_data(features_train, lowest_ssr_col, lowest_ssr_avg);
+    let (mut less, mut gre) = Self::split_data(&features_train, lowest_ssr_col, lowest_ssr_avg);
 
     // Recurse only if data length is > DATAPOINTS_PER_NODE and no infinite recursion
     let mut left_child = None;
     let can_infinite_recurse = less.len() == 0 || gre.len() == 0;
-    if less.len() > Self::DATAPOINTS_PER_NODE && !can_infinite_recurse {
-      left_child = Some(Box::new(Self::build_tree(&less)));
+    if less.len() > datapoints_per_node && !can_infinite_recurse {
+      left_child = Some(Box::new(Self::build_tree(less, datapoints_per_node)));
     } else {
       left_child = Some(Box::new(RegressionTreeNode {
         left_child: None,
@@ -69,8 +69,8 @@ impl RegressionTreeNode {
       }));
     }
     let mut right_child = None;
-    if gre.len() > Self::DATAPOINTS_PER_NODE && !can_infinite_recurse {
-      right_child = Some(Box::new(Self::build_tree(&gre)));
+    if gre.len() > datapoints_per_node && !can_infinite_recurse {
+      right_child = Some(Box::new(Self::build_tree(gre, datapoints_per_node)));
     } else {
       right_child = Some(Box::new(RegressionTreeNode {
         left_child: None,
@@ -92,10 +92,11 @@ impl RegressionTreeNode {
 
   /// Return feature_col, ssr, avg
   fn get_feature_ssr_avg(
-    features_train: &Vec<(Vec<f64>, f64)>,
+    features_train: &mut Vec<(Vec<f64>, f64)>,
     feature_col: usize,
   ) -> (usize, f64, f64) {
-    let sorted = Self::sort_data_by_feature(features_train, feature_col);
+    Self::sort_data_by_feature(features_train, feature_col);
+    let sorted = features_train;
 
     let mut min_residual_data = (feature_col, f64::MAX, 0.0);
 
@@ -125,13 +126,9 @@ impl RegressionTreeNode {
     return min_residual_data;
   }
 
-  fn sort_data_by_feature(
-    features_train: &Vec<(Vec<f64>, f64)>,
-    feature_col: usize,
-  ) -> (Vec<(Vec<f64>, f64)>) {
-    let mut copy = features_train.clone();
-    copy.sort_by(|a, b| OrderedFloat(a.0[feature_col]).cmp(&OrderedFloat(b.0[feature_col])));
-    return copy;
+  fn sort_data_by_feature(features_train: &mut Vec<(Vec<f64>, f64)>, feature_col: usize) {
+    features_train
+      .sort_by(|a, b| OrderedFloat(a.0[feature_col]).cmp(&OrderedFloat(b.0[feature_col])));
   }
 
   fn split_data(
@@ -150,6 +147,22 @@ impl RegressionTreeNode {
     }
     return (feature_less, feature_gre);
   }
+
+  fn classify(&self, datapoint: &Vec<f64>) -> f64 {
+    let comparison_value = datapoint[self.feature_col];
+
+    if comparison_value < self.feature_val {
+      if (self.left_child.is_none()) {
+        return self.prediction;
+      }
+      return self.left_child.as_ref().unwrap().classify(datapoint);
+    } else {
+      if (self.right_child.is_none()) {
+        return self.prediction;
+      }
+      return self.right_child.as_ref().unwrap().classify(datapoint);
+    }
+  }
 }
 
 #[pyclass]
@@ -160,9 +173,9 @@ pub struct RegressionTree {
 #[pymethods]
 impl RegressionTree {
   #[new]
-  fn new(features_train: Vec<Vec<f64>>, labels: Vec<f64>) -> Self {
-    let combined_data = izip!(features_train, labels).collect();
-    let mut root = RegressionTreeNode::build_tree(&combined_data);
+  fn new(features_train: Vec<Vec<f64>>, labels: Vec<f64>, datapoints_per_node: usize) -> Self {
+    let mut combined_data = izip!(features_train, labels).collect();
+    let mut root = RegressionTreeNode::build_tree(combined_data, datapoints_per_node);
 
     return RegressionTree { root };
   }
@@ -172,7 +185,7 @@ impl RegressionTree {
 
     for datapoint in features_test {
       // Travel down tree for each node and get the correct classificiation
-      labels.push(0.0);
+      labels.push(self.root.classify(&datapoint));
     }
 
     return Ok(labels);

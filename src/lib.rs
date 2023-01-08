@@ -1,10 +1,10 @@
-mod basic_stats;
-mod decision_tree;
-mod k_means;
-mod k_nearest_neighbor;
-mod naive_bayes;
-mod py_util;
-mod regression_tree;
+pub mod basic_stats;
+pub mod decision_tree;
+pub mod k_means;
+pub mod k_nearest_neighbor;
+pub mod naive_bayes;
+pub mod py_util;
+pub mod regression_tree;
 
 use pyo3::prelude::*;
 
