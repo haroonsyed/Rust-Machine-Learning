@@ -12,11 +12,13 @@ Learn rust and machine learning. The notebooks, while in python, have rust bindi
 4. Decision Trees/Random Forest
 5. Regression Tree
 6. Gradient Descent
-7. Basic Neural Network
-8. With backpropogation
-9. Convolutional Neural Networks
-10. Recurrent Neural Networks
-11. Generative Adversarial Networks
+7. Gradient Boost
+8. XG Boost
+9. Basic Neural Network
+10. With backpropogation
+11. Convolutional Neural Networks
+12. Recurrent Neural Networks
+13. Generative Adversarial Networks
 
 ## Setup Instructions
 
