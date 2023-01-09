@@ -66,3 +66,18 @@ def get_is_categorical(categorical_original, df_original, encoded):
     for i in range(encoded.shape[1]):
         is_categorical.append(True if i in all_categories else False)
     return is_categorical
+
+
+def generate_2d_data_from_function(coefficients, xStart, xEnd, numOfPoints):
+    x = []
+    y = []
+    deltaX = (xEnd - xStart) / numOfPoints
+    for i in range(0, numOfPoints):
+        currX = xStart + i * deltaX
+
+        currY = 0.0
+        for idx, coefficient in enumerate(coefficients):
+            currY += coefficient * currX**idx
+        x.append(currX)
+        y.append(currY)
+    return (x, y)
