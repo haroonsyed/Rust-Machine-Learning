@@ -4,6 +4,12 @@
 
 Learn rust and machine learning. The notebooks, while in python, have rust bindings to the core ML/DL algorithms.
 
+## Structure
+PYO3 is used to create bindings from python to the RUST binaries.
+The python code is located under notebooks.
+The rust core ML functions are located under src.
+Any data is located in the data folder. 
+
 ### Goals
 
 1. K-Means
