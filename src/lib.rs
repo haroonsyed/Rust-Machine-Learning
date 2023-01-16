@@ -1,3 +1,4 @@
+pub mod adaboost;
 pub mod basic_stats;
 pub mod decision_tree;
 pub mod gradient_descent;
@@ -23,5 +24,6 @@ fn Rust_Machine_Learning(_py: Python, m: &PyModule) -> PyResult<()> {
   m.add_class::<naive_bayes::naive_bayes_model>()?;
   m.add_class::<decision_tree::DecisionTree>()?;
   m.add_class::<regression_tree::RegressionTree>()?;
+  m.add_class::<adaboost::AdaBoost>()?;
   Ok(())
 }
