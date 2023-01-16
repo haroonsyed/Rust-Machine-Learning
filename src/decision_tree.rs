@@ -4,7 +4,10 @@ use itertools::{izip, Itertools};
 use ordered_float::OrderedFloat;
 use pyo3::prelude::*;
 
-use crate::{basic_stats::mode_f64, py_util::py_print};
+use crate::{
+  basic_stats::{get_purities, mode_f64},
+  py_util::py_print,
+};
 
 struct DecisionTreeNode {
   is_categorical: bool, // Categorical is true/false. Else assumed ordered, continuous and numeric
@@ -73,8 +76,7 @@ impl DecisionTreeNode {
     if is_pure {
       self.classification = mode_f64(labels);
     } else {
-      let purities =
-        Self::get_purities(&features_to_process, is_categorical, features_train, labels);
+      let purities = get_purities(&features_to_process, is_categorical, features_train, labels);
 
       // Now based on the lowest purity determine show to label this node.
       // Then create the right and left if is not impure (later we can use a threshold)
@@ -164,140 +166,6 @@ impl DecisionTreeNode {
       }
     }
     return (feature_less, feature_gre);
-  }
-
-  fn get_purities(
-    features_to_process: &HashSet<usize>,
-    is_categorical: &Vec<bool>,
-    data: &Vec<Vec<f64>>,
-    labels: &Vec<f64>,
-  ) -> HashMap<usize, (f64, f64)> {
-    // returns usize -> (purity, average)
-    let mut purities = HashMap::new();
-
-    for col in features_to_process {
-      let is_col_categorical = is_categorical[*col];
-      purities.insert(
-        *col,
-        Self::get_purity(*col, is_col_categorical, data, labels),
-      );
-    }
-
-    return purities;
-  }
-
-  fn get_purity(
-    feature: usize,
-    is_categorical: bool,
-    data: &Vec<Vec<f64>>,
-    labels: &Vec<f64>,
-  ) -> (f64, f64) {
-    let mut purity = 0.0;
-    let mut average = 0.0;
-
-    if is_categorical {
-      let mut label_true_feature_true = 0;
-      let mut label_false_feature_true = 0;
-      let mut label_true_feature_false = 0;
-      let mut label_false_feature_false = 0;
-      for (datapoint, label) in izip!(data, labels) {
-        let label_true = *label == 1.0;
-        let feature_true = datapoint[feature] == 1.0;
-        match (label_true, feature_true) {
-          (true, true) => label_true_feature_true += 1,
-          (false, true) => label_false_feature_true += 1,
-          (true, false) => label_true_feature_false += 1,
-          (false, false) => label_false_feature_false += 1,
-        }
-      }
-
-      let mut num_feature_true = label_true_feature_true + label_false_feature_true;
-      let mut num_feature_false = label_true_feature_false + label_false_feature_false;
-      // Avoid divison by zero by adding 1
-      if (num_feature_true == 0) {
-        num_feature_true += 1;
-      }
-      if (num_feature_false == 0) {
-        num_feature_false += 1;
-      }
-
-      let purity_feature_true = 1.0
-        - (label_true_feature_true as f64 / num_feature_true as f64).powf(2.0)
-        - (label_false_feature_true as f64 / num_feature_true as f64).powf(2.0);
-      let purity_feature_false = 1.0
-        - (label_true_feature_false as f64 / num_feature_false as f64).powf(2.0)
-        - (label_false_feature_false as f64 / num_feature_false as f64).powf(2.0);
-
-      // Return weighted average of the two purities
-      let num_datapoints = num_feature_true + num_feature_false;
-      purity += purity_feature_true * (num_feature_true as f64 / num_datapoints as f64);
-      purity += purity_feature_false * (num_feature_false as f64 / num_datapoints as f64);
-    } else {
-      // Assumes the data is continuous and ordered
-      let mut combined: Vec<(&Vec<f64>, &f64)> = izip!(data.iter(), labels.iter()).collect();
-      combined.sort_by(|a, b| OrderedFloat(a.0[feature]).cmp(&OrderedFloat(b.0[feature])));
-
-      // From the perspective of data item at 0, everything is greater to start
-      let mut label_true_feature_less = 0;
-      let mut label_false_feature_less = 0;
-      let mut label_true_feature_greater = 0;
-      let mut label_false_feature_greater = 0;
-      for (row, label) in combined.iter() {
-        if **label == 1.0 {
-          label_true_feature_greater += 1;
-        } else {
-          label_false_feature_greater += 1;
-        }
-      }
-
-      let mut row_impurities = Vec::new();
-      for i in 1..combined.len() {
-        // First calculate the average
-        let curr_average = (combined[i - 1].0[feature] + combined[i].0[feature]) / 2.0;
-
-        // Now update the label counts
-        let prev_label = *combined[i - 1].1 == 1.0;
-        if prev_label {
-          label_true_feature_less += 1;
-          label_true_feature_greater -= 1;
-        } else {
-          label_false_feature_less += 1;
-          label_false_feature_greater -= 1;
-        }
-
-        let mut num_feature_true = label_true_feature_less + label_false_feature_less;
-        let mut num_feature_false = label_true_feature_greater + label_false_feature_greater;
-        // Avoid divison by zero by adding 1
-        if (num_feature_true == 0) {
-          num_feature_true += 1;
-        }
-        if (num_feature_false == 0) {
-          num_feature_false += 1;
-        }
-
-        let purity_feature_true = 1.0
-          - (label_true_feature_less as f64 / num_feature_true as f64).powf(2.0)
-          - (label_false_feature_less as f64 / num_feature_true as f64).powf(2.0);
-        let purity_feature_false = 1.0
-          - (label_true_feature_greater as f64 / num_feature_false as f64).powf(2.0)
-          - (label_false_feature_greater as f64 / num_feature_false as f64).powf(2.0);
-
-        // Return weighted average of the two purities
-        let num_datapoints = num_feature_true + num_feature_false;
-        let mut curr_purity = 0.0;
-        curr_purity += purity_feature_true * (num_feature_true as f64 / num_datapoints as f64);
-        curr_purity += purity_feature_false * (num_feature_false as f64 / num_datapoints as f64);
-        row_impurities.push((curr_purity, curr_average));
-      }
-
-      row_impurities.sort_by(|a, b| OrderedFloat(a.0).cmp(&OrderedFloat(b.0)));
-      if (row_impurities.len() > 0) {
-        purity = row_impurities[0].0;
-        average = row_impurities[0].1;
-      }
-    }
-
-    return (purity, average);
   }
 
   fn classify(&self, datapoint: &Vec<f64>) -> f64 {
