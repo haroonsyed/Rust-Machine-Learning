@@ -379,3 +379,26 @@ pub fn get_purity(
 
   return (purity, average);
 }
+
+pub fn normalize<
+  T: Copy
+    + Debug
+    + FromPrimitive
+    + Zero
+    + Add<T, Output = T>
+    + AddAssign<T>
+    + Div<T, Output = T>
+    + DivAssign<T>,
+>(
+  numbers: &mut Vec<T>,
+) {
+  let mut sum = T::zero();
+
+  for val in numbers.iter() {
+    sum += *val;
+  }
+
+  for val in numbers.iter_mut() {
+    *val /= sum;
+  }
+}
