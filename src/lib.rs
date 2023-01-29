@@ -2,6 +2,7 @@ pub mod adaboost;
 pub mod basic_stats;
 pub mod decision_tree;
 pub mod gradient_descent;
+pub mod gradientboost;
 pub mod k_means;
 pub mod k_nearest_neighbor;
 pub mod naive_bayes;
@@ -25,5 +26,6 @@ fn Rust_Machine_Learning(_py: Python, m: &PyModule) -> PyResult<()> {
   m.add_class::<decision_tree::DecisionTree>()?;
   m.add_class::<regression_tree::RegressionTree>()?;
   m.add_class::<adaboost::AdaBoost>()?;
+  m.add_class::<gradientboost::GradientBoost>()?;
   Ok(())
 }
