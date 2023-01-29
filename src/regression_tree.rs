@@ -195,3 +195,35 @@ impl RegressionTree {
     self.root.print(0);
   }
 }
+
+pub struct RegressionTreeRust {
+  root: RegressionTreeNode,
+}
+
+impl RegressionTreeRust {
+  pub fn new(
+    features_train: &Vec<Vec<f64>>,
+    labels: &Vec<f64>,
+    datapoints_per_node: usize,
+  ) -> Self {
+    let mut combined_data = izip!(features_train.to_owned(), labels.to_owned()).collect();
+    let mut root = RegressionTreeNode::build_tree(combined_data, datapoints_per_node);
+
+    return RegressionTreeRust { root };
+  }
+
+  pub fn classify(&self, features_test: &Vec<Vec<f64>>) -> Vec<f64> {
+    let mut labels = Vec::new();
+
+    for datapoint in features_test {
+      // Travel down tree for each node and get the correct classificiation
+      labels.push(self.root.classify(&datapoint));
+    }
+
+    return labels;
+  }
+
+  pub fn print(&self) {
+    self.root.print(0);
+  }
+}

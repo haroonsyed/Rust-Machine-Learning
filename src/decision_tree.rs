@@ -71,6 +71,7 @@ impl DecisionTreeNode {
     is_categorical: &Vec<bool>,
     labels: &Vec<f64>,
     mut features_to_process: HashSet<usize>,
+    max_depth: usize,
   ) {
     let is_pure = Self::is_pure(labels);
     if is_pure {
@@ -112,17 +113,23 @@ impl DecisionTreeNode {
       features_to_process.remove(&lowest_purity_col);
 
       // Recurse
+      if (max_depth == 1) {
+        return;
+      }
+
       self.left_child.as_mut().unwrap().insert(
         &split_left.0,
         is_categorical,
         &split_left.1,
         features_to_process.clone(),
+        max_depth - 1,
       );
       self.right_child.as_mut().unwrap().insert(
         &split_right.0,
         is_categorical,
         &split_right.1,
         features_to_process.clone(),
+        max_depth - 1,
       );
     }
   }
@@ -214,6 +221,7 @@ impl DecisionTree {
       &is_categorical,
       &labels,
       features_to_process,
+      usize::MAX,
     );
 
     return DecisionTree { root };
@@ -231,6 +239,52 @@ impl DecisionTree {
   }
 
   fn print(&self) {
+    self.root.traverse_print(0);
+  }
+}
+
+pub struct DecisionTreeRust {
+  root: DecisionTreeNode,
+}
+
+impl DecisionTreeRust {
+  pub fn new(
+    features_train: &Vec<Vec<f64>>,
+    is_categorical: &Vec<bool>,
+    labels: &Vec<f64>,
+    max_depth: usize,
+  ) -> Self {
+    let mut root = DecisionTreeNode::new();
+
+    let num_features = features_train[0].len();
+    let mut features_to_process = HashSet::new();
+    for i in 0..num_features {
+      features_to_process.insert(i);
+    }
+
+    root.insert(
+      &features_train,
+      &is_categorical,
+      &labels,
+      features_to_process,
+      max_depth,
+    );
+
+    return DecisionTreeRust { root };
+  }
+
+  pub fn classify(&self, features_test: &Vec<Vec<f64>>) -> Vec<f64> {
+    let mut labels = Vec::new();
+
+    for datapoint in features_test {
+      // Travel down tree for each node and get the correct classificiation
+      labels.push(self.root.classify(&datapoint));
+    }
+
+    return labels;
+  }
+
+  pub fn print(&self) {
     self.root.traverse_print(0);
   }
 }

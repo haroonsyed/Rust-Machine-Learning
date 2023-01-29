@@ -255,7 +255,7 @@ pub fn get_purities(
   data: &Vec<Vec<f64>>,
   labels: &Vec<f64>,
 ) -> HashMap<usize, (f64, f64)> {
-  // returns usize -> (purity, average)
+  // returns feature -> (purity, average)
   let mut purities = HashMap::new();
 
   for col in features_to_process {
@@ -401,4 +401,15 @@ pub fn normalize<
   for val in numbers.iter_mut() {
     *val /= sum;
   }
+}
+
+pub fn get_residuals<T: Copy + Debug + FromPrimitive + Zero + Sub<T, Output = T> + SubAssign<T>>(
+  observed: &Vec<T>,
+  predicted: &Vec<T>,
+) -> Vec<T> {
+  let mut residuals = Vec::new();
+  for (observed, predicted) in izip!(observed, predicted) {
+    residuals.push(*observed - *predicted);
+  }
+  return residuals;
 }
