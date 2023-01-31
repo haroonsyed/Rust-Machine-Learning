@@ -37,6 +37,7 @@ impl RegressionTreeNode {
   pub fn build_tree(
     mut features_train: Vec<(Vec<f64>, f64)>,
     datapoints_per_node: usize,
+    max_depth: usize,
   ) -> RegressionTreeNode {
     let num_features = features_train[0].0.len();
 
@@ -57,8 +58,12 @@ impl RegressionTreeNode {
     // Recurse only if data length is > DATAPOINTS_PER_NODE and no infinite recursion
     let mut left_child = None;
     let can_infinite_recurse = less.len() == 0 || gre.len() == 0;
-    if less.len() > datapoints_per_node && !can_infinite_recurse {
-      left_child = Some(Box::new(Self::build_tree(less, datapoints_per_node)));
+    if less.len() > datapoints_per_node && !can_infinite_recurse && max_depth != 0 {
+      left_child = Some(Box::new(Self::build_tree(
+        less,
+        datapoints_per_node,
+        max_depth - 1,
+      )));
     } else {
       left_child = Some(Box::new(RegressionTreeNode {
         left_child: None,
@@ -69,8 +74,12 @@ impl RegressionTreeNode {
       }));
     }
     let mut right_child = None;
-    if gre.len() > datapoints_per_node && !can_infinite_recurse {
-      right_child = Some(Box::new(Self::build_tree(gre, datapoints_per_node)));
+    if gre.len() > datapoints_per_node && !can_infinite_recurse && max_depth != 0 {
+      right_child = Some(Box::new(Self::build_tree(
+        gre,
+        datapoints_per_node,
+        max_depth - 1,
+      )));
     } else {
       right_child = Some(Box::new(RegressionTreeNode {
         left_child: None,
@@ -175,7 +184,7 @@ impl RegressionTree {
   #[new]
   fn new(features_train: Vec<Vec<f64>>, labels: Vec<f64>, datapoints_per_node: usize) -> Self {
     let mut combined_data = izip!(features_train, labels).collect();
-    let mut root = RegressionTreeNode::build_tree(combined_data, datapoints_per_node);
+    let mut root = RegressionTreeNode::build_tree(combined_data, datapoints_per_node, usize::MAX);
 
     return RegressionTree { root };
   }
@@ -205,9 +214,10 @@ impl RegressionTreeRust {
     features_train: &Vec<Vec<f64>>,
     labels: &Vec<f64>,
     datapoints_per_node: usize,
+    max_depth: usize,
   ) -> Self {
     let mut combined_data = izip!(features_train.to_owned(), labels.to_owned()).collect();
-    let mut root = RegressionTreeNode::build_tree(combined_data, datapoints_per_node);
+    let mut root = RegressionTreeNode::build_tree(combined_data, datapoints_per_node, max_depth);
 
     return RegressionTreeRust { root };
   }
