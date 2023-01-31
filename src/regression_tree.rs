@@ -35,7 +35,7 @@ impl RegressionTreeNode {
   }
 
   pub fn build_tree(
-    mut features_train: Vec<(Vec<f64>, f64)>,
+    mut features_train: Vec<&(Vec<f64>, f64)>,
     datapoints_per_node: usize,
     max_depth: usize,
   ) -> RegressionTreeNode {
@@ -101,7 +101,7 @@ impl RegressionTreeNode {
 
   /// Return feature_col, ssr, avg
   fn get_feature_ssr_avg(
-    features_train: &mut Vec<(Vec<f64>, f64)>,
+    features_train: &mut Vec<&(Vec<f64>, f64)>,
     feature_col: usize,
   ) -> (usize, f64, f64) {
     Self::sort_data_by_feature(features_train, feature_col);
@@ -113,16 +113,16 @@ impl RegressionTreeNode {
       let mut residual = 0.0;
       let split_point = (sorted[i].0[feature_col] + sorted[i + 1].0[feature_col]) / 2.0;
       let (less, gre) = Self::split_data(&sorted, feature_col, split_point);
-      let labels_less: Vec<f64> = less.iter().map(|x| x.clone().1).collect();
-      let labels_gre: Vec<f64> = gre.iter().map(|x| x.clone().1).collect();
-      let avg_less = mean(&labels_less);
 
+      let labels_less: Vec<f64> = less.iter().map(|x| x.1).collect();
+      let labels_gre: Vec<f64> = gre.iter().map(|x| x.1).collect();
+      let avg_less = mean(&labels_less);
       let avg_gre = mean(&labels_gre);
 
-      for (datapoint, label) in less.iter() {
+      for (_datapoint, label) in less.iter() {
         residual += (label - avg_less).powf(2.0);
       }
-      for (datapoint, label) in gre.iter() {
+      for (_datapoint, label) in gre.iter() {
         residual += (label - avg_gre).powf(2.0);
       }
 
@@ -135,23 +135,23 @@ impl RegressionTreeNode {
     return min_residual_data;
   }
 
-  fn sort_data_by_feature(features_train: &mut Vec<(Vec<f64>, f64)>, feature_col: usize) {
+  fn sort_data_by_feature(features_train: &mut Vec<&(Vec<f64>, f64)>, feature_col: usize) {
     features_train
       .sort_by(|a, b| OrderedFloat(a.0[feature_col]).cmp(&OrderedFloat(b.0[feature_col])));
   }
 
-  fn split_data(
-    features_train: &Vec<(Vec<f64>, f64)>,
+  fn split_data<'a>(
+    features_train: &Vec<&'a (Vec<f64>, f64)>,
     feature_col: usize,
     feature_val: f64,
-  ) -> (Vec<(Vec<f64>, f64)>, Vec<(Vec<f64>, f64)>) {
+  ) -> (Vec<&'a (Vec<f64>, f64)>, Vec<&'a (Vec<f64>, f64)>) {
     let mut feature_less = Vec::new();
     let mut feature_gre = Vec::new();
-    for row in features_train {
+    for row in features_train.iter() {
       if (row.0[feature_col] < feature_val) {
-        feature_less.push(row.clone());
+        feature_less.push(*row);
       } else {
-        feature_gre.push(row.clone());
+        feature_gre.push(*row);
       }
     }
     return (feature_less, feature_gre);
@@ -183,8 +183,10 @@ pub struct RegressionTree {
 impl RegressionTree {
   #[new]
   fn new(features_train: Vec<Vec<f64>>, labels: Vec<f64>, datapoints_per_node: usize) -> Self {
-    let mut combined_data = izip!(features_train, labels).collect();
-    let mut root = RegressionTreeNode::build_tree(combined_data, datapoints_per_node, usize::MAX);
+    let combined_data: Vec<(Vec<f64>, f64)> = izip!(features_train, labels).collect();
+    let mut combined_data_ref = combined_data.iter().collect();
+    let mut root =
+      RegressionTreeNode::build_tree(combined_data_ref, datapoints_per_node, usize::MAX);
 
     return RegressionTree { root };
   }
@@ -216,8 +218,11 @@ impl RegressionTreeRust {
     datapoints_per_node: usize,
     max_depth: usize,
   ) -> Self {
-    let mut combined_data = izip!(features_train.to_owned(), labels.to_owned()).collect();
-    let mut root = RegressionTreeNode::build_tree(combined_data, datapoints_per_node, max_depth);
+    let combined_data: Vec<(Vec<f64>, f64)> =
+      izip!(features_train.clone(), labels.clone()).collect();
+    let mut combined_data_ref = combined_data.iter().collect();
+    let mut root =
+      RegressionTreeNode::build_tree(combined_data_ref, datapoints_per_node, max_depth);
 
     return RegressionTreeRust { root };
   }
