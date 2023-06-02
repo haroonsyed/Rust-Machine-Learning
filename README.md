@@ -5,10 +5,11 @@
 Learn rust and machine learning. The notebooks, while in python, have rust bindings to the core ML/DL algorithms.
 
 ## Structure
+
 PYO3 is used to create bindings from python to the RUST binaries.
 The python code is located under notebooks.
 The rust core ML functions are located under src.
-Any data is located in the data folder. 
+Any data is located in the data folder.
 
 ### Goals
 
@@ -20,12 +21,11 @@ Any data is located in the data folder.
 6. Gradient Descent
 7. ADA Boost
 8. Gradient Boost
-9. XG Boost
-10. Basic Neural Network
-11. With backpropogation
-12. Convolutional Neural Networks
-13. Recurrent Neural Networks
-14. Generative Adversarial Networks
+9. Basic Neural Network
+10. With backpropogation
+11. Convolutional Neural Networks
+12. Recurrent Neural Networks
+13. Generative Adversarial Networks
 
 ## Setup Instructions
 

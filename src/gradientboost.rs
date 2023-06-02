@@ -69,8 +69,6 @@ impl GradientBoost {
   ) -> Self {
     let mut forest = Vec::new();
 
-    let num_features = features_train[0].len();
-
     // Initialize the residuals
     let init_prediction = mean(&input_labels);
     let mut predictions = vec![init_prediction; features_train.len()];
@@ -95,13 +93,7 @@ impl GradientBoost {
       }
 
       // Recalculate the residuals
-      for (observed, prediction, residual) in izip!(
-        input_labels.iter(),
-        predictions.iter(),
-        residuals.iter_mut()
-      ) {
-        *residual = observed - prediction;
-      }
+      residuals = get_residuals(&input_labels, &predictions);
 
       forest.push(tree);
     }

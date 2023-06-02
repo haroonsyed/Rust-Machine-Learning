@@ -35,7 +35,7 @@ impl RegressionTreeNode {
   }
 
   pub fn build_tree(
-    mut features_train: Vec<&(Vec<f64>, f64)>,
+    mut features_train: Vec<&(&Vec<f64>, &f64)>,
     datapoints_per_node: usize,
     max_depth: usize,
   ) -> RegressionTreeNode {
@@ -70,7 +70,7 @@ impl RegressionTreeNode {
         right_child: None,
         feature_col: lowest_ssr_col,
         feature_val: lowest_ssr_avg,
-        prediction: mean(&less.iter().map(|x| x.1).collect()),
+        prediction: mean(&less.iter().map(|x| *x.1).collect()),
       }));
     }
     let mut right_child = None;
@@ -86,7 +86,7 @@ impl RegressionTreeNode {
         right_child: None,
         feature_col: lowest_ssr_col,
         feature_val: lowest_ssr_avg,
-        prediction: mean(&gre.iter().map(|x| x.1).collect()),
+        prediction: mean(&gre.iter().map(|x| *x.1).collect()),
       }));
     }
 
@@ -101,7 +101,7 @@ impl RegressionTreeNode {
 
   /// Return feature_col, ssr, avg
   fn get_feature_ssr_avg(
-    features_train: &mut Vec<&(Vec<f64>, f64)>,
+    features_train: &mut Vec<&(&Vec<f64>, &f64)>,
     feature_col: usize,
   ) -> (usize, f64, f64) {
     Self::sort_data_by_feature(features_train, feature_col);
@@ -114,16 +114,16 @@ impl RegressionTreeNode {
       let split_point = (sorted[i].0[feature_col] + sorted[i + 1].0[feature_col]) / 2.0;
       let (less, gre) = Self::split_data(&sorted, feature_col, split_point);
 
-      let labels_less: Vec<f64> = less.iter().map(|x| x.1).collect();
-      let labels_gre: Vec<f64> = gre.iter().map(|x| x.1).collect();
+      let labels_less: Vec<f64> = less.iter().map(|x| *x.1).collect();
+      let labels_gre: Vec<f64> = gre.iter().map(|x| *x.1).collect();
       let avg_less = mean(&labels_less);
       let avg_gre = mean(&labels_gre);
 
       for (_datapoint, label) in less.iter() {
-        residual += (label - avg_less).powf(2.0);
+        residual += (*label - avg_less).powf(2.0);
       }
       for (_datapoint, label) in gre.iter() {
-        residual += (label - avg_gre).powf(2.0);
+        residual += (*label - avg_gre).powf(2.0);
       }
 
       if residual < min_residual_data.1 {
@@ -135,16 +135,19 @@ impl RegressionTreeNode {
     return min_residual_data;
   }
 
-  fn sort_data_by_feature(features_train: &mut Vec<&(Vec<f64>, f64)>, feature_col: usize) {
+  fn sort_data_by_feature(features_train: &mut Vec<&(&Vec<f64>, &f64)>, feature_col: usize) {
     features_train
       .sort_by(|a, b| OrderedFloat(a.0[feature_col]).cmp(&OrderedFloat(b.0[feature_col])));
   }
 
-  fn split_data<'a>(
-    features_train: &Vec<&'a (Vec<f64>, f64)>,
+  fn split_data<'a, 'b, 'c>(
+    features_train: &Vec<&'a (&'b Vec<f64>, &'c f64)>,
     feature_col: usize,
     feature_val: f64,
-  ) -> (Vec<&'a (Vec<f64>, f64)>, Vec<&'a (Vec<f64>, f64)>) {
+  ) -> (
+    Vec<&'a (&'b Vec<f64>, &'c f64)>,
+    Vec<&'a (&'b Vec<f64>, &'c f64)>,
+  ) {
     let mut feature_less = Vec::new();
     let mut feature_gre = Vec::new();
     for row in features_train.iter() {
@@ -183,7 +186,9 @@ pub struct RegressionTree {
 impl RegressionTree {
   #[new]
   fn new(features_train: Vec<Vec<f64>>, labels: Vec<f64>, datapoints_per_node: usize) -> Self {
-    let combined_data: Vec<(Vec<f64>, f64)> = izip!(features_train, labels).collect();
+    let combined_data: Vec<(&Vec<f64>, &f64)> =
+      izip!(features_train.iter(), labels.iter()).collect();
+
     let mut combined_data_ref = combined_data.iter().collect();
     let mut root =
       RegressionTreeNode::build_tree(combined_data_ref, datapoints_per_node, usize::MAX);
@@ -218,9 +223,14 @@ impl RegressionTreeRust {
     datapoints_per_node: usize,
     max_depth: usize,
   ) -> Self {
-    let combined_data: Vec<(Vec<f64>, f64)> =
-      izip!(features_train.clone(), labels.clone()).collect();
+    let mut combined_data = Vec::new();
+    for (datapoint, label) in izip!(features_train, labels) {
+      let pair = (datapoint, label);
+      combined_data.push(pair);
+    }
+
     let mut combined_data_ref = combined_data.iter().collect();
+
     let mut root =
       RegressionTreeNode::build_tree(combined_data_ref, datapoints_per_node, max_depth);
 
