@@ -8,6 +8,7 @@ pub mod k_nearest_neighbor;
 pub mod naive_bayes;
 pub mod py_util;
 pub mod regression_tree;
+pub mod xgb;
 
 use pyo3::prelude::*;
 
@@ -27,5 +28,6 @@ fn Rust_Machine_Learning(_py: Python, m: &PyModule) -> PyResult<()> {
   m.add_class::<regression_tree::RegressionTree>()?;
   m.add_class::<adaboost::AdaBoost>()?;
   m.add_class::<gradientboost::GradientBoost>()?;
+  m.add_class::<xgb::XGB>()?;
   Ok(())
 }

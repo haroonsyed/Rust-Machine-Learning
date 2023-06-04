@@ -1,13 +1,8 @@
-use std::collections::{HashMap, HashSet};
-
-use itertools::{izip, Itertools};
+use itertools::izip;
 use ordered_float::OrderedFloat;
 use pyo3::prelude::*;
 
-use crate::{
-  basic_stats::{mean, mean_2d, mean_2d_col, mode_f64},
-  py_util::py_print,
-};
+use crate::{basic_stats::mean, py_util::py_print};
 
 pub struct RegressionTreeNode {
   left_child: Option<Box<RegressionTreeNode>>,

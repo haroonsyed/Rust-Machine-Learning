@@ -21,11 +21,13 @@ Any data is located in the data folder.
 6. Gradient Descent
 7. ADA Boost
 8. Gradient Boost
-9. Basic Neural Network
-10. With backpropogation
-11. Convolutional Neural Networks
-12. Recurrent Neural Networks
-13. Generative Adversarial Networks
+9. XGBoost (Regression only, no parallelism/histogram optimizations)
+10. Basic Neural Network
+11. With backpropogation
+12. Convolutional Neural Networks
+13. Recurrent Neural Networks
+14. Generative Adversarial Networks
+15. Acceleration on CUDA with pybind11 bindings
 
 ## Setup Instructions
 
@@ -33,13 +35,10 @@ Any data is located in the data folder.
 2. Install Rust
 3. Activate python virtual environment (platform dependent)
 4. Install dependencies from requirements.txt
-5. Install jupyter notebook/jupyter lab
-6. Open notebooks in jupyter notebook/jupyter lab
+5. Compile Rust Code using `maturin develop` or `maturin develop --release`
+6. Install jupyter notebook/jupyter lab
+7. Open notebooks in jupyter notebook/jupyter lab
 
-\*\* Note
+## Credits
 
-K-Means-Clustering.ipynb uses evcxr which is purely in rust. The rest of the notebook is in python with bindings to core rust code.
-
-The switch is due to how slow dependencies installed in evcxr everytime the notebook was opened (even with caching enabled). And the general tooling is better with python.
-
-EVCXR is a very cool project though!
+All datasets are publically available from University of California Irvine here: https://archive.ics.uci.edu/ml/index.php
