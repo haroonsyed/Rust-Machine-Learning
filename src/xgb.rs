@@ -11,6 +11,8 @@ pub struct XBG_RegressionTreeNode {
   left_child: Option<Box<XBG_RegressionTreeNode>>,
   right_child: Option<Box<XBG_RegressionTreeNode>>,
   prediction: f64,
+  split_feature: usize,
+  split_val: f64,
   prunned: bool,
 }
 
@@ -40,25 +42,29 @@ impl XBG_RegressionTreeNode {
     max_depth: f64,
     sample_rate: f64,
   ) -> Self {
-    // TODO: BASE CASE
+    //py_print(&"Entering function");
     if (residuals.len() == 1 || max_depth == 0.0) {
       return XBG_RegressionTreeNode {
         left_child: None,
         right_child: None,
+        split_feature: 0,
+        split_val: 0.0,
         prediction: Self::get_output_value(residuals, lambda),
-        prunned: false,
+        prunned: true,
       };
     }
 
+    //py_print(&"Getting similarity score");
     let root_similarity_score = Self::get_similarity_score(&residuals, lambda);
 
     // Determine grouping for children
-    let mut highest_gain = 0.0;
+    let mut highest_gain = f64::MIN;
     let mut split_feature = 0;
     let mut split_pos = 0; // Left inclusive
 
     let num_features = features_train[0].len();
 
+    //py_print(&"Determining Split Position...");
     for feature in 0..num_features {
       // Sort the relevant data in range by this feature
       let sorted =
@@ -95,6 +101,8 @@ impl XBG_RegressionTreeNode {
       }
     }
 
+    //py_print(&"Determined split position");
+
     // Now build subtrees based on the split position
     let child_data =
       izip!(features_train, residuals).sorted_by_key(|row| OrderedFloat(row.0[split_feature]));
@@ -103,39 +111,85 @@ impl XBG_RegressionTreeNode {
     let child_features_train = child_data.clone().map(|row| row.0.clone()).collect_vec();
     let child_residuals = child_data.clone().map(|row| *row.1).collect_vec();
 
-    let mut left_child = Some(Box::new(Self::build_tree(
-      &child_features_train[0..=split_pos],
-      &child_residuals[0..=split_pos],
-      lambda,
-      gamma,
-      max_depth - 1.0,
-      sample_rate,
-    )));
+    //py_print(&split_pos);
+    //py_print(&features_train);
 
-    let mut right_child = Some(Box::new(Self::build_tree(
-      &child_features_train[(split_pos + 1)..],
-      &child_residuals[(split_pos + 1)..],
-      lambda,
-      gamma,
-      max_depth - 1.0,
-      sample_rate,
-    )));
+    let mut left_child = None;
+    let mut right_child = None;
+
+    let mut children_performed_pruning = true;
+
+    if (split_pos != child_features_train.len() - 1) {
+      left_child = Some(Box::new(Self::build_tree(
+        &child_features_train[0..=split_pos],
+        &child_residuals[0..=split_pos],
+        lambda,
+        gamma,
+        max_depth - 1.0,
+        sample_rate,
+      )));
+
+      right_child = Some(Box::new(Self::build_tree(
+        &child_features_train[(split_pos + 1)..],
+        &child_residuals[(split_pos + 1)..],
+        lambda,
+        gamma,
+        max_depth - 1.0,
+        sample_rate,
+      )));
+      children_performed_pruning =
+        left_child.as_ref().unwrap().prunned || right_child.as_ref().unwrap().prunned;
+    }
+
+    //py_print(&"Split Data");
 
     // Now let's perform pruning as needed
-    let children_performed_pruning =
-      left_child.as_ref().unwrap().prunned || right_child.as_ref().unwrap().prunned;
-    let should_prune = !children_performed_pruning && (highest_gain - gamma) < 0.0;
-    if !children_performed_pruning && should_prune {
+    let should_prune = (highest_gain - gamma) < 0.0;
+    if children_performed_pruning && should_prune {
       left_child = None;
       right_child = None;
     }
+
+    //py_print(&"Prunned");
+    //py_print(&child_features_train.len());
+    //py_print(&child_features_train);
+    //py_print(&split_feature);
+    //py_print(&split_pos);
 
     return XBG_RegressionTreeNode {
       left_child,
       right_child,
       prediction: Self::get_output_value(residuals, lambda),
-      prunned: children_performed_pruning || should_prune,
+      split_feature,
+      split_val: child_features_train[split_pos][split_feature],
+      prunned: children_performed_pruning && should_prune,
     };
+  }
+
+  fn classify_point(&self, datapoint: &Vec<f64>) -> f64 {
+    // Travel down tree for each node and get the correct classificiation
+    let comparison_value = datapoint[self.split_feature];
+
+    if comparison_value < self.split_val {
+      if (self.left_child.is_none()) {
+        return self.prediction;
+      }
+      return self.left_child.as_ref().unwrap().classify_point(datapoint);
+    } else {
+      if (self.right_child.is_none()) {
+        return self.prediction;
+      }
+      return self.right_child.as_ref().unwrap().classify_point(datapoint);
+    }
+  }
+  fn classify(&self, features_test: &Vec<Vec<f64>>) -> Vec<f64> {
+    let mut labels = Vec::new();
+
+    for datapoint in features_test {
+      labels.push(self.classify_point(&datapoint));
+    }
+
+    return labels;
   }
 }
 
@@ -155,6 +209,7 @@ impl XGB {
     gamma: f64,
     max_depth: f64,
     sample_rate: f64,
+    learning_rate: f64,
   ) -> Self {
     let mut forest = Vec::new();
 
@@ -173,11 +228,43 @@ impl XGB {
         max_depth,
         sample_rate,
       );
+
+      //py_print(&"Built Tree");
+
+      // Now update the predictions and residuals
+      let residual_classifications = tree.classify(&features_train);
+      for (prediction, residual_classification) in
+        izip!(predictions.iter_mut(), residual_classifications)
+      {
+        *prediction += learning_rate * residual_classification;
+      }
+
+      //py_print(&"Re Predicted");
+
+      // Recalculate the residuals
+      residuals = get_residuals(&input_labels, &predictions);
+
+      //py_print(&"Recalculated Residuals");
+
       forest.push(tree);
     }
 
     return XGB { forest };
   }
+
+  fn classify(&self, features_test: Vec<Vec<f64>>, learning_rate: f64) -> PyResult<Vec<f64>> {
+    let mut labels = vec![0.5; features_test.len()];
+
+    for tree in self.forest.iter() {
+      let residuals = tree.classify(&features_test);
+      for (label, residual) in labels.iter_mut().zip(residuals) {
+        *label += learning_rate * residual;
+      }
+    }
+
+    return Ok(labels);
+  }
+
   #[staticmethod]
   fn default_lamba() -> PyResult<f64> {
     return Ok(1.0);
