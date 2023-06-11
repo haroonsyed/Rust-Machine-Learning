@@ -33,11 +33,13 @@ Any data is located in the data folder.
 
 1. Install python3
 2. Install Rust
-3. Activate python virtual environment (platform dependent)
-4. Install dependencies from requirements.txt
+3. Activate python virtual environment (platform dependent)<br/>
+   Windows: `.\.venv\Scripts\activate.bat`<br/>
+   Mac/Linux: `source ./.venv/bin/activate`
+4. Install dependencies from requirements.txt<br/>
+   `pip install -r requirements.txt`
 5. Compile Rust Code using `maturin develop` or `maturin develop --release`
-6. Install jupyter notebook/jupyter lab
-7. Open notebooks in jupyter notebook/jupyter lab
+6. Open notebooks in jupyter notebook/jupyter lab/vscode etc..
 
 ## Credits
 
