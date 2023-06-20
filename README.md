@@ -2,7 +2,11 @@
 
 ## General Goal
 
-Learn rust and machine learning. The notebooks, while in python, have rust bindings to the core ML/DL algorithms.
+I wanted to learn rust and machine learning..so I thought why not do ML in rust. The notebooks, while in python, have rust bindings to the core ML/DL algorithms.
+
+#### NO ML CODE WAS WRITTEN IN PYTHON! <br/>
+#### Python is just used for preprocessing and loading of data, visualization and verification of results.<br/>
+That means all the ml algorithms are written using good old if/else, for loops etc. No significant help from libraries (unless you count random number generation and Rust's amazing itertools).
 
 ## Structure
 
