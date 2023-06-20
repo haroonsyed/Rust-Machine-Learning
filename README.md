@@ -43,4 +43,5 @@ Any data is located in the data folder.
 
 ## Credits
 
-All datasets are publically available from University of California Irvine here: https://archive.ics.uci.edu/ml/index.php
+MNIST Handwritten digit database available from https://yann.lecun.com/exdb/mnist/ <br/>
+All Other datasets are publically available from University of California Irvine here: https://archive.ics.uci.edu/ml/index.php
