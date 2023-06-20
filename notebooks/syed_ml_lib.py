@@ -81,3 +81,10 @@ def generate_2d_data_from_function(coefficients, xStart, xEnd, numOfPoints):
         x.append(currX)
         y.append(currY)
     return (x, y)
+
+def view_image(data, img_x, img_y, colorscale):
+    # Quick image viewer
+    img_data = data.reshape(img_x, img_y)
+
+    fig = px.imshow(img_data, color_continuous_scale=colorscale)
+    fig.show()
