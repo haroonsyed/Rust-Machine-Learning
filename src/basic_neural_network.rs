@@ -1,5 +1,7 @@
 use crate::matrix_lib::Matrix;
+use itertools::Itertools;
 use pyo3::prelude::*;
+use rand::{distributions::Uniform, prelude::Distribution, Rng};
 
 // So I was initially gonna use a class representation for each neuron
 // But I think I can make things simpler and more efficient with matrices
@@ -20,25 +22,35 @@ activation_function(raw_neuron_outputs) = neuron_outputs
  */
 
 // ACTIVATION FUNCTIONS
-fn relu(x: f64) -> f64 {
-  if x <= 0.0 {
-    return 0.0;
-  } else {
-    return x;
-  }
+
+trait ActivationFunction {
+  fn activation_function(&self, x: f64) -> f64;
+  fn activation_function_prime(&self, x: f64) -> f64;
 }
-fn relu_prime(x: f64) -> f64 {
-  if x <= 0.0 {
-    return 0.0;
-  } else {
-    return 1.0;
+
+struct Relu;
+impl ActivationFunction for Relu {
+  fn activation_function(&self, x: f64) -> f64 {
+    if x <= 0.0 {
+      return 0.0;
+    } else {
+      return x;
+    }
+  }
+
+  fn activation_function_prime(&self, x: f64) -> f64 {
+    if x <= 0.0 {
+      return 0.0;
+    } else {
+      return 1.0;
+    }
   }
 }
 
 #[pyclass]
 pub struct BasicNeuralNetwork {
-  weights: Matrix,
-  bias: Matrix,
+  weights: Vec<Matrix>,
+  bias: Vec<Matrix>,
 }
 
 #[pymethods]
@@ -52,25 +64,67 @@ impl BasicNeuralNetwork {
     learning_rate: f64,
   ) -> Self {
     // Gather data on dimensions for matrices
-    let num_layers = hidden_layer_sizes.len();
-    let num_neurons_largest_layer = *hidden_layer_sizes.iter().max().unwrap();
     let num_observations = features_train.len();
+    let mut non_input_layer_sizes = hidden_layer_sizes.clone();
+    non_input_layer_sizes.push(num_classifications);
 
     // Init the matrices
-    // let observations = Matrix {
-    //   data: features_train,
-    // }; // NEEDS TO BE TRANSPOSED!
+    let observations = Matrix {
+      data: features_train,
+    }
+    .transpose();
 
-    let mut observations = Matrix { data: Vec::new() };
-    let mut neuron_outputs: Vec<Matrix> = Vec::new();
-    let activation_function = relu;
+    // Random seed for weights
+    let mut rng = rand::thread_rng();
+    let mut range = Uniform::new(-1.0, 1.0);
+    let mut weights = (0..non_input_layer_sizes.len())
+      .map(|layer| Matrix {
+        data: vec![
+          vec![
+            range.sample(&mut rng);
+            if layer == 0 {
+              num_observations
+            } else {
+              non_input_layer_sizes[layer - 1]
+            }
+          ];
+          non_input_layer_sizes[layer]
+        ],
+      })
+      .collect_vec();
+
+    let mut biases = (0..non_input_layer_sizes.len())
+      .map(|layer| Matrix {
+        data: vec![vec![0.0; non_input_layer_sizes[layer]]],
+      })
+      .collect_vec();
+
+    let mut neuron_outputs: Vec<Matrix> = non_input_layer_sizes
+      .iter()
+      .map(|&layer_size| Matrix {
+        data: vec![vec![0.0; layer_size]; num_observations],
+      })
+      .collect();
+
+    // Create network
+    let network = BasicNeuralNetwork {
+      weights: Vec::new(),
+      bias: Vec::new(),
+    };
 
     // Train model
+    network.train(
+      &observations,
+      &mut weights,
+      &mut biases,
+      &mut neuron_outputs,
+      &input_labels,
+      learning_rate,
+      &Relu {},
+    );
 
-    return BasicNeuralNetwork {
-      weights: Matrix { data: Vec::new() },
-      bias: Matrix { data: Vec::new() },
-    };
+    // Cleanup and return
+    return network;
   }
 
   fn classify(&self, features_test: Vec<Vec<f64>>) -> PyResult<Vec<f64>> {
@@ -79,5 +133,19 @@ impl BasicNeuralNetwork {
     // Feed forward through network
 
     return Ok(labels);
+  }
+}
+
+impl BasicNeuralNetwork {
+  fn train(
+    &self,
+    observations: &Matrix,
+    weights: &mut Vec<Matrix>,
+    biases: &mut Vec<Matrix>,
+    neuron_outputs: &mut Vec<Matrix>,
+    labels: &Vec<f64>,
+    learning_rate: f64,
+    activation_function: &dyn ActivationFunction,
+  ) {
   }
 }
