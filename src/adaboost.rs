@@ -52,7 +52,7 @@ impl AdaBoost {
     for _i in 0..num_stumps {
       let mut sample_weights = vec![1.0 / samples.len() as f64; samples.len()];
 
-      let (min_feature, puritiy, avg) = get_min_purity(&is_categorical, &samples, &labels);
+      let (min_feature, _puritiy, avg) = get_min_purity(&is_categorical, &samples, &labels);
 
       let mut total_error =
         Self::calculate_total_error(&samples, &labels, &sample_weights, min_feature, avg);
@@ -62,7 +62,7 @@ impl AdaBoost {
       // 0.5 * ln((1.0-error)/error)
       let say_weight = 0.5 * ((1.0 - total_error) / total_error).ln();
 
-      if (say_weight.is_nan()) {
+      if say_weight.is_nan() {
         py_print(&format!("INVALID WEIGHT FROM: {}", total_error))
       }
 
@@ -100,7 +100,7 @@ impl AdaBoost {
       let mut weight_false = 0.0;
       for stump in self.forest.iter() {
         let label = stump.classify(&datapoint);
-        if (label == 1.0) {
+        if label == 1.0 {
           weight_true += stump.say_weight;
         } else {
           weight_false += stump.say_weight;

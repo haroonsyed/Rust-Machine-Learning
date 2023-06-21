@@ -6,13 +6,13 @@ use pyo3::prelude::*;
 use crate::basic_stats::{self, gaussian_probability};
 
 #[pyclass]
-pub struct naive_bayes_model {
+pub struct NaiveBayesModel {
   class_stats: HashMap<i64, [Vec<f64>; 3]>, // Label -> Mean, Variance, Prior for each feature.
                                             // Prior is vec of size 1.
 }
 
 #[pymethods]
-impl naive_bayes_model {
+impl NaiveBayesModel {
   #[new]
   fn new(features_train: Vec<Vec<f64>>, labels: Vec<i64>) -> Self {
     // First let's group the class data
@@ -38,7 +38,7 @@ impl naive_bayes_model {
       class_stats.insert(label, [means, variances, vec![prior]]);
     }
 
-    return naive_bayes_model { class_stats };
+    return NaiveBayesModel { class_stats };
   }
 
   fn naive_bayes_gaussian(&self, features_test: Vec<Vec<f64>>) -> PyResult<Vec<i64>> {
@@ -68,7 +68,7 @@ impl naive_bayes_model {
         }
 
         // Determine if this score is the highest
-        if (score > highest_score) {
+        if score > highest_score {
           highest_score = score;
           highest_score_label = *label;
         }

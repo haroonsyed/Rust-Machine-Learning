@@ -2,27 +2,24 @@ use itertools::{izip, Itertools};
 use ordered_float::OrderedFloat;
 use pyo3::prelude::*;
 
-use crate::{
-  basic_stats::{get_residuals, mean},
-  py_util::py_print,
-};
+use crate::basic_stats::get_residuals;
 
-pub struct XBG_RegressionTreeNode {
-  left_child: Option<Box<XBG_RegressionTreeNode>>,
-  right_child: Option<Box<XBG_RegressionTreeNode>>,
+pub struct XbgRegressionTreeNode {
+  left_child: Option<Box<XbgRegressionTreeNode>>,
+  right_child: Option<Box<XbgRegressionTreeNode>>,
   prediction: f64,
   split_feature: usize,
   split_val: f64,
   prunned: bool,
 }
 
-impl XBG_RegressionTreeNode {
+impl XbgRegressionTreeNode {
   fn get_output_value(residuals: &[f64], lambda: f64) -> f64 {
     let mut output = 0.0;
     for val in residuals {
       output += val;
     }
-    output /= (residuals.len() as f64 + lambda);
+    output /= residuals.len() as f64 + lambda;
     return output;
   }
   fn get_similarity_score(residuals: &[f64], lambda: f64) -> f64 {
@@ -43,8 +40,8 @@ impl XBG_RegressionTreeNode {
     sample_rate: f64,
   ) -> Self {
     //py_print(&"Entering function");
-    if (residuals.len() == 1 || max_depth == 0.0) {
-      return XBG_RegressionTreeNode {
+    if residuals.len() == 1 || max_depth == 0.0 {
+      return XbgRegressionTreeNode {
         left_child: None,
         right_child: None,
         split_feature: 0,
@@ -119,7 +116,7 @@ impl XBG_RegressionTreeNode {
 
     let mut children_performed_pruning = true;
 
-    if (split_pos != child_features_train.len() - 1) {
+    if split_pos != child_features_train.len() - 1 {
       left_child = Some(Box::new(Self::build_tree(
         &child_features_train[0..=split_pos],
         &child_residuals[0..=split_pos],
@@ -156,7 +153,7 @@ impl XBG_RegressionTreeNode {
     //py_print(&split_feature);
     //py_print(&split_pos);
 
-    return XBG_RegressionTreeNode {
+    return XbgRegressionTreeNode {
       left_child,
       right_child,
       prediction: Self::get_output_value(residuals, lambda),
@@ -171,12 +168,12 @@ impl XBG_RegressionTreeNode {
     let comparison_value = datapoint[self.split_feature];
 
     if comparison_value < self.split_val {
-      if (self.left_child.is_none()) {
+      if self.left_child.is_none() {
         return self.prediction;
       }
       return self.left_child.as_ref().unwrap().classify_point(datapoint);
     } else {
-      if (self.right_child.is_none()) {
+      if self.right_child.is_none() {
         return self.prediction;
       }
       return self.right_child.as_ref().unwrap().classify_point(datapoint);
@@ -195,7 +192,7 @@ impl XBG_RegressionTreeNode {
 
 #[pyclass]
 pub struct XGB {
-  forest: Vec<XBG_RegressionTreeNode>,
+  forest: Vec<XbgRegressionTreeNode>,
 }
 
 #[pymethods]
@@ -220,7 +217,7 @@ impl XGB {
     // Build forest
     for _i in 1..num_trees {
       // Build tree
-      let tree = XBG_RegressionTreeNode::build_tree(
+      let tree = XbgRegressionTreeNode::build_tree(
         &features_train,
         &residuals,
         lamba,

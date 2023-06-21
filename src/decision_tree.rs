@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use itertools::{izip, Itertools};
+use itertools::izip;
 use ordered_float::OrderedFloat;
 use pyo3::prelude::*;
 
@@ -40,7 +40,7 @@ impl DecisionTreeNode {
 
     let is_leaf = self.right_child.is_none();
 
-    if (is_leaf) {
+    if is_leaf {
       let combined = format!("{}{}", indent, str_leaf);
       py_print(&combined);
     } else {
@@ -55,7 +55,7 @@ impl DecisionTreeNode {
     let mut true_count = 0;
     let mut false_count = 0;
     for label in labels {
-      if (*label == 1.0) {
+      if *label == 1.0 {
         true_count += 1;
       } else {
         false_count += 1;
@@ -113,7 +113,7 @@ impl DecisionTreeNode {
       features_to_process.remove(&lowest_purity_col);
 
       // Recurse
-      if (max_depth == 1) {
+      if max_depth == 1 {
         return;
       }
 
@@ -143,7 +143,7 @@ impl DecisionTreeNode {
     let mut feature_true = (Vec::new(), Vec::new());
     let mut feature_false = (Vec::new(), Vec::new());
     for row in izip!(features_train, labels) {
-      if (row.0[feature] == 1.0) {
+      if row.0[feature] == 1.0 {
         feature_true.0.push(row.0.to_vec());
         feature_true.1.push(*row.1);
       } else {
@@ -164,7 +164,7 @@ impl DecisionTreeNode {
     let mut feature_less = (Vec::new(), Vec::new());
     let mut feature_gre = (Vec::new(), Vec::new());
     for row in izip!(features_train, labels) {
-      if (row.0[feature] < feature_val) {
+      if row.0[feature] < feature_val {
         feature_less.0.push(row.0.to_vec());
         feature_less.1.push(*row.1);
       } else {

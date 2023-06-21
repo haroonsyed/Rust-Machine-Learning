@@ -231,7 +231,7 @@ pub fn get_min_purity(
   data: &Vec<Vec<f64>>,
   labels: &Vec<f64>,
 ) -> (usize, f64, f64) {
-  if (data.len() == 0) {
+  if data.len() == 0 {
     py_print(&format!("INVALID DATA LENGTH GIVEN TO get_min_purity"));
   }
   let num_features = data[0].len();
@@ -240,7 +240,7 @@ pub fn get_min_purity(
   let mut min_average = 0.0;
   for feature in 0..num_features {
     let (purity, average) = get_purity(feature, is_categorical[feature], data, labels);
-    if (purity < min_purity) {
+    if purity < min_purity {
       min_feature_col = feature;
       min_purity = purity;
       min_average = average;
@@ -294,10 +294,10 @@ pub fn get_purity(
     let mut num_feature_true = label_true_feature_true + label_false_feature_true;
     let mut num_feature_false = label_true_feature_false + label_false_feature_false;
     // Avoid divison by zero by adding 1
-    if (num_feature_true == 0) {
+    if num_feature_true == 0 {
       num_feature_true += 1;
     }
-    if (num_feature_false == 0) {
+    if num_feature_false == 0 {
       num_feature_false += 1;
     }
 
@@ -322,7 +322,7 @@ pub fn get_purity(
     let mut label_false_feature_less = 0;
     let mut label_true_feature_greater = 0;
     let mut label_false_feature_greater = 0;
-    for (row, label) in combined.iter() {
+    for (_row, label) in combined.iter() {
       if **label == 1.0 {
         label_true_feature_greater += 1;
       } else {
@@ -348,10 +348,10 @@ pub fn get_purity(
       let mut num_feature_true = label_true_feature_less + label_false_feature_less;
       let mut num_feature_false = label_true_feature_greater + label_false_feature_greater;
       // Avoid divison by zero by adding 1
-      if (num_feature_true == 0) {
+      if num_feature_true == 0 {
         num_feature_true += 1;
       }
-      if (num_feature_false == 0) {
+      if num_feature_false == 0 {
         num_feature_false += 1;
       }
 
@@ -371,7 +371,7 @@ pub fn get_purity(
     }
 
     row_impurities.sort_by(|a, b| OrderedFloat(a.0).cmp(&OrderedFloat(b.0)));
-    if (row_impurities.len() > 0) {
+    if row_impurities.len() > 0 {
       purity = row_impurities[0].0;
       average = row_impurities[0].1;
     }

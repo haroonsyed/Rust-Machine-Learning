@@ -22,9 +22,9 @@ impl GradientBoost {
     tree_depth: usize,
     num_trees: usize,
     learning_rate: f64,
-    is_categorical: bool,
+    _is_categorical: bool,
   ) -> Self {
-    return GradientBoost::buildForestNumeric(
+    return GradientBoost::build_forest_numeric(
       features_train,
       input_labels,
       tree_depth,
@@ -60,7 +60,7 @@ impl GradientBoost {
 }
 
 impl GradientBoost {
-  fn buildForestNumeric(
+  fn build_forest_numeric(
     features_train: Vec<Vec<f64>>,
     input_labels: Vec<f64>,
     tree_depth: usize,

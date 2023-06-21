@@ -1,4 +1,4 @@
-use itertools::{izip, Itertools};
+use itertools::izip;
 use pyo3::prelude::*;
 
 #[pyfunction]
@@ -12,7 +12,7 @@ pub fn gradient_descent(
   let mut intercept = 1.0;
 
   // Find gradient for intercept and slope at each iteration
-  for i in 0..max_iter {
+  for _i in 0..max_iter {
     let g_intercept = ssr_gradient_intercept(&x, &y, &slope, &intercept);
     let g_slope = ssr_gradient_slope(&x, &y, &slope, &intercept);
 
@@ -26,19 +26,6 @@ pub fn gradient_descent(
   }
 
   return Ok((intercept, slope));
-}
-
-fn ssr(x: &Vec<f64>, y: &Vec<f64>, coefficients: &Vec<f64>) -> f64 {
-  let mut ssr = 0.0;
-
-  for (x, y) in izip!(x, y) {
-    let expected = y;
-    let predicted = coefficients[0] + x * coefficients[1];
-
-    ssr += (expected - predicted).powf(2.0);
-  }
-
-  return ssr;
 }
 
 fn ssr_gradient_intercept(x: &Vec<f64>, y: &Vec<f64>, slope: &f64, intercept: &f64) -> f64 {

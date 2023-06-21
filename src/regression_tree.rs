@@ -44,11 +44,10 @@ impl RegressionTreeNode {
       }
     }
     let lowest_ssr_col = lowest_ssr_data.0;
-    let lowest_ssr = lowest_ssr_data.1;
     let lowest_ssr_avg = lowest_ssr_data.2;
 
     // Now split the data
-    let (mut less, mut gre) = Self::split_data(&features_train, lowest_ssr_col, lowest_ssr_avg);
+    let (less, gre) = Self::split_data(&features_train, lowest_ssr_col, lowest_ssr_avg);
 
     // Recurse only if data length is > DATAPOINTS_PER_NODE and no infinite recursion
     let mut left_child = None;
@@ -146,7 +145,7 @@ impl RegressionTreeNode {
     let mut feature_less = Vec::new();
     let mut feature_gre = Vec::new();
     for row in features_train.iter() {
-      if (row.0[feature_col] < feature_val) {
+      if row.0[feature_col] < feature_val {
         feature_less.push(*row);
       } else {
         feature_gre.push(*row);
@@ -159,12 +158,12 @@ impl RegressionTreeNode {
     let comparison_value = datapoint[self.feature_col];
 
     if comparison_value < self.feature_val {
-      if (self.left_child.is_none()) {
+      if self.left_child.is_none() {
         return self.prediction;
       }
       return self.left_child.as_ref().unwrap().classify(datapoint);
     } else {
-      if (self.right_child.is_none()) {
+      if self.right_child.is_none() {
         return self.prediction;
       }
       return self.right_child.as_ref().unwrap().classify(datapoint);
@@ -184,9 +183,8 @@ impl RegressionTree {
     let combined_data: Vec<(&Vec<f64>, &f64)> =
       izip!(features_train.iter(), labels.iter()).collect();
 
-    let mut combined_data_ref = combined_data.iter().collect();
-    let mut root =
-      RegressionTreeNode::build_tree(combined_data_ref, datapoints_per_node, usize::MAX);
+    let combined_data_ref = combined_data.iter().collect();
+    let root = RegressionTreeNode::build_tree(combined_data_ref, datapoints_per_node, usize::MAX);
 
     return RegressionTree { root };
   }
@@ -224,10 +222,9 @@ impl RegressionTreeRust {
       combined_data.push(pair);
     }
 
-    let mut combined_data_ref = combined_data.iter().collect();
+    let combined_data_ref = combined_data.iter().collect();
 
-    let mut root =
-      RegressionTreeNode::build_tree(combined_data_ref, datapoints_per_node, max_depth);
+    let root = RegressionTreeNode::build_tree(combined_data_ref, datapoints_per_node, max_depth);
 
     return RegressionTreeRust { root };
   }

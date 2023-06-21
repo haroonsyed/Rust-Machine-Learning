@@ -91,11 +91,11 @@ fn get_closest_center_2d_internal(clusters: &Vec<Vec<f64>>, x: &f64, y: &f64) ->
 
 #[pyfunction]
 pub fn centers_are_equal(centers1: Vec<Vec<f64>>, centers2: Vec<Vec<f64>>) -> PyResult<bool> {
-  if (centers1.len() != centers2.len()) {
+  if centers1.len() != centers2.len() {
     return Ok(false);
   }
   for (center1, center2) in centers1.iter().zip(centers2.iter()) {
-    if (center1[0] != center2[0] || center1[1] != center2[1]) {
+    if center1[0] != center2[0] || center1[1] != center2[1] {
       return Ok(false);
     }
   }
@@ -103,11 +103,11 @@ pub fn centers_are_equal(centers1: Vec<Vec<f64>>, centers2: Vec<Vec<f64>>) -> Py
 }
 
 fn centers_are_equal_internal(centers1: &Vec<Vec<f64>>, centers2: &Vec<Vec<f64>>) -> bool {
-  if (centers1.len() != centers2.len()) {
+  if centers1.len() != centers2.len() {
     return false;
   }
   for (center1, center2) in centers1.iter().zip(centers2.iter()) {
-    if (center1[0] != center2[0] || center1[1] != center2[1]) {
+    if center1[0] != center2[0] || center1[1] != center2[1] {
       return false;
     }
   }
