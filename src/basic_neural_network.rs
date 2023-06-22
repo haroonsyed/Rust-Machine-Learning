@@ -50,7 +50,7 @@ impl ActivationFunction for Relu {
 #[pyclass]
 pub struct BasicNeuralNetwork {
   weights: Vec<Matrix>,
-  bias: Vec<Matrix>,
+  biases: Vec<Matrix>,
 }
 
 #[pymethods]
@@ -107,20 +107,15 @@ impl BasicNeuralNetwork {
       .collect();
 
     // Create network
-    let network = BasicNeuralNetwork {
-      weights: Vec::new(),
-      bias: Vec::new(),
-    };
+    let network = BasicNeuralNetwork { weights, biases };
 
     // Train model
     network.train(
       &observations,
-      &mut weights,
-      &mut biases,
       &mut neuron_outputs,
       &input_labels,
       learning_rate,
-      &Relu {},
+      Box::new(Relu {}),
     );
 
     // Cleanup and return
@@ -137,15 +132,54 @@ impl BasicNeuralNetwork {
 }
 
 impl BasicNeuralNetwork {
+  fn feed_forward(
+    &self,
+    observations: &Matrix,
+    neuron_outputs: &mut Vec<Matrix>,
+    activation_function: Box<dyn ActivationFunction>,
+  ) {
+    let num_layers = self.weights.len();
+    for layer in 0..num_layers {
+      neuron_outputs[layer] = self.weights[layer]
+        .matrix_multiply(if layer == 0 {
+          observations
+        } else {
+          &neuron_outputs[layer - 1]
+        })
+        .element_add(&self.biases[layer])
+        .element_apply(&|x| activation_function.activation_function(x));
+    }
+  }
+
+  fn softmax(neuron_outputs: &Vec<Matrix>) -> Matrix {
+    let mut exp_final_layer_outputs =
+      neuron_outputs[neuron_outputs.len() - 1].element_apply(&|x| f64::exp(x));
+    let exp_final_layer_outputs_summed: Vec<f64> = exp_final_layer_outputs
+      .data
+      .iter()
+      .map(|predictions| predictions.iter().sum())
+      .collect_vec();
+
+    // Divide all data by layer data
+    for observation_number in 0..exp_final_layer_outputs.get_rows() {
+      for output in 0..exp_final_layer_outputs.get_columns() {
+        exp_final_layer_outputs.data[observation_number][output] /=
+          exp_final_layer_outputs_summed[observation_number];
+      }
+    }
+
+    return exp_final_layer_outputs;
+  }
+
   fn train(
     &self,
     observations: &Matrix,
-    weights: &mut Vec<Matrix>,
-    biases: &mut Vec<Matrix>,
     neuron_outputs: &mut Vec<Matrix>,
     labels: &Vec<f64>,
     learning_rate: f64,
-    activation_function: &dyn ActivationFunction,
+    activation_function: Box<dyn ActivationFunction>,
   ) {
+    // For now we will make the number of iterations a constant
+    let num_iterations = 1;
   }
 }

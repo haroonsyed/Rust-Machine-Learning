@@ -62,7 +62,7 @@ mod matrix_tests {
       data: vec![vec![0.0, 1.0, 2.0], vec![3.0, 4.0, 5.0]],
     };
 
-    let observed_result = test_data.element_apply(|x| x - 1.0);
+    let observed_result = test_data.element_apply(&|x| x - 1.0);
 
     assert!(matrix_are_equal(observed_result, expected_result));
   }

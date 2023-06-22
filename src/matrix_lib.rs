@@ -75,7 +75,7 @@ impl Matrix {
 
     return Matrix { data: result_data };
   }
-  pub fn element_apply(&self, func: fn(f64) -> f64) -> Self {
+  pub fn element_apply(&self, func: &dyn Fn(f64) -> f64) -> Self {
     let result_data = self
       .data
       .iter()
