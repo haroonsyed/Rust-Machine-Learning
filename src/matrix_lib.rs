@@ -15,7 +15,6 @@ impl Matrix {
         .map(|num| format! {"{:<5}", num})
         .collect::<Vec<String>>()
         .join(" ");
-      println!("{}", formatted);
       py_print(&formatted);
     }
     println!();

@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 use crate::{matrix_lib::Matrix, py_util::py_print};
 use itertools::{izip, Itertools};
 use pyo3::prelude::*;
@@ -147,6 +145,8 @@ impl BasicNeuralNetwork {
       })
       .collect_vec();
 
+    observations.print();
+
     let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
     self.feed_forward(&observations, &mut neuron_outputs, &activation_function);
     let predicted_probabilities = Self::softmax(&neuron_outputs);
@@ -165,7 +165,6 @@ impl BasicNeuralNetwork {
   ) {
     let num_layers = self.weights.len();
     for layer in 0..num_layers {
-      py_print(&format!("Layer {} Matrix dimensions are \n{} {} for weights \n{} {} for observations\n{} {} for neuron outputs\n{} {} for biases", layer, self.weights[layer].get_rows(), self.weights[layer].get_columns(), observations.get_rows(), observations.get_columns(), neuron_outputs[layer].get_rows(), neuron_outputs[layer].get_columns(), self.biases[layer].get_rows(), self.biases[layer].get_columns()));
       neuron_outputs[layer] = self.weights[layer]
         .matrix_multiply(if layer == 0 {
           observations
@@ -181,21 +180,18 @@ impl BasicNeuralNetwork {
     let mut predictions = neuron_outputs[neuron_outputs.len() - 1].element_apply(&|x| f64::exp(x));
     let exp_final_layer_outputs_summed: Vec<f64> = predictions.sum_columns();
 
+    py_print(&"IN SOFTMAX");
+    neuron_outputs[neuron_outputs.len() - 1].print();
+    py_print(&"PREDICTIONS");
+    predictions.print();
+    py_print(&"EXP SUMMED");
+    py_print(&exp_final_layer_outputs_summed);
+
     // Divide all data by col sum
     for output_neuron in 0..predictions.get_rows() {
       for observation_number in 0..predictions.get_columns() {
         predictions.data[output_neuron][observation_number] /=
           exp_final_layer_outputs_summed[observation_number];
-
-        if f64::is_infinite(exp_final_layer_outputs_summed[observation_number])
-          || f64::is_infinite(predictions.data[output_neuron][observation_number])
-        {
-          py_print(&format!(
-            "def {} {}",
-            predictions.data[output_neuron][observation_number],
-            exp_final_layer_outputs_summed[observation_number]
-          ));
-        }
       }
     }
 
@@ -331,11 +327,6 @@ impl BasicNeuralNetwork {
           });
 
         *weight = *weight + learning_rate * dw;
-        // DEBUG
-        println!(
-          "PREV LAYER: \n{:?}",
-          prev_layer_outputs.data[incoming_weight_index]
-        );
       }
     }
 
@@ -364,8 +355,14 @@ impl BasicNeuralNetwork {
       py_print(&format!("Starting iteration {}", _i));
       self.feed_forward(observations, neuron_outputs, &activation_function);
       py_print(&format!("Finished feed forward for iteration {}", _i));
+      self.biases.iter().for_each(|x| x.print());
+      self.weights.iter().for_each(|x| x.print());
+
       let predicted_probabilities = Self::softmax(neuron_outputs);
       py_print(&format!("Finished softmax for iteration {}", _i));
+      self.biases.iter().for_each(|x| x.print());
+      self.weights.iter().for_each(|x| x.print());
+
       self.backpropogation_output_layer(
         &predicted_probabilities,
         labels,
@@ -376,6 +373,9 @@ impl BasicNeuralNetwork {
         "Finished backprop output layer for iteration {}",
         _i
       ));
+      self.biases.iter().for_each(|x| x.print());
+      self.weights.iter().for_each(|x| x.print());
+
       self.backpropogation_hidden_layer(
         observations,
         neuron_outputs,
@@ -387,6 +387,9 @@ impl BasicNeuralNetwork {
         "Finished backprop hidden layers for iteration {}",
         _i
       ));
+
+      self.biases.iter().for_each(|x| x.print());
+      self.weights.iter().for_each(|x| x.print());
     }
   }
 }

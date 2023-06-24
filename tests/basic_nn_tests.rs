@@ -374,6 +374,90 @@ mod basic_nn_tests {
     })
   }
 
+  #[test]
+  fn multi_epoch_test() {
+    let labels = vec![1.0, 0.0, 1.0];
+
+    let observations = Matrix {
+      data: vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
+    };
+
+    let weights = vec![
+      Matrix {
+        data: vec![
+          // Layer 1 has 3 neurons, with 2 inputs per neuron
+          vec![0.1, 0.2],
+          vec![0.3, 0.4],
+          vec![0.5, 0.6],
+        ],
+      },
+      Matrix {
+        data: vec![
+          // Layer 2 has 2 neurons, with 3 inputs per neuron
+          vec![0.1, 0.2, 0.3],
+          vec![0.4, 0.5, 0.6],
+        ],
+      },
+    ];
+
+    let biases = vec![
+      Matrix {
+        data: vec![
+          // Layer 1 biases, 3 neurons
+          vec![0.1],
+          vec![0.2],
+          vec![0.3],
+        ],
+      },
+      Matrix {
+        data: vec![
+          // Layer 2 biases, 2 neurons
+          vec![0.1],
+          vec![0.2],
+        ],
+      },
+    ];
+
+    let mut network = BasicNeuralNetwork { weights, biases };
+
+    // Create a matrix to hold the actual output
+    // Remember each output is product of matmul between weights and observations/neuron_outputs[layer-1] + (bias to each column)
+    let mut neuron_outputs = vec![
+      Matrix {
+        // 3 neurons x 3 observations
+        data: vec![vec![0.0; 3]; 3],
+      },
+      Matrix {
+        // 2 neurons x 3 observations
+        data: vec![vec![0.0; 3]; 2],
+      },
+    ];
+
+    let learning_rate = 0.1;
+
+    (0..40).for_each(|_| {
+      let activation_func: Box<dyn ActivationFunction> = Box::new(Relu {});
+
+      network.train(
+        &observations,
+        &mut neuron_outputs,
+        &labels,
+        learning_rate,
+        activation_func,
+        1,
+      );
+
+      izip!(&network.weights, &network.biases).for_each(|(w, b)| {
+        w.data
+          .iter()
+          .for_each(|row| row.iter().for_each(|&val| assert!(!val.is_nan())));
+        b.data
+          .iter()
+          .for_each(|row| row.iter().for_each(|&val| assert!(!val.is_nan())));
+      })
+    });
+  }
+
   fn matrix_are_equal(a: Matrix, b: Matrix, precision: usize) -> bool {
     if a.get_rows() != b.get_rows() || a.get_columns() != b.get_columns() {
       return false;
