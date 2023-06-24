@@ -248,6 +248,132 @@ mod basic_nn_tests {
     })
   }
 
+  #[test]
+  fn backpropogation_hidden_layer() {
+    let observations = Matrix {
+      data: vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
+    };
+
+    let weights = vec![
+      Matrix {
+        data: vec![
+          // Layer 1 has 3 neurons, with 2 inputs per neuron
+          vec![0.1, 0.2],
+          vec![0.3, 0.4],
+          vec![0.5, 0.6],
+        ],
+      },
+      Matrix {
+        data: vec![
+          // Layer 2 has 2 neurons, with 3 inputs per neuron
+          vec![0.1025792, 0.2053728, 0.3081664],
+          vec![0.397323, 0.4944262, 0.5915294],
+        ],
+      },
+    ];
+
+    let biases = vec![
+      Matrix {
+        data: vec![
+          // Layer 1 biases, 3 neurons
+          vec![0.1],
+          vec![0.2],
+          vec![0.3],
+        ],
+      },
+      Matrix {
+        data: vec![
+          // Layer 2 biases, 2 neurons
+          vec![0.1121],
+          vec![0.18739],
+        ],
+      },
+    ];
+
+    let mut network = BasicNeuralNetwork { weights, biases };
+
+    // Create a matrix to hold the actual output
+    // Remember each output is product of matmul between weights and observations/neuron_outputs[layer-1] + (bias to each column)
+    let neuron_outputs = vec![
+      Matrix {
+        // 3 neurons x 3 observations
+        data: vec![
+          vec![0.19, 0.22, 0.25],
+          vec![0.39, 0.46, 0.53],
+          vec![0.59, 0.7, 0.81],
+        ],
+      },
+      Matrix {
+        // 2 neurons x 3 observations
+        data: vec![vec![0.374, 0.424, 0.474], vec![0.825, 0.938, 1.051]],
+      },
+    ];
+
+    let activation_func: Box<dyn ActivationFunction> = Box::new(Relu {});
+    let learning_rate = 0.1;
+
+    // Backprop output layer
+    network.backpropogation_hidden_layer(
+      &observations,
+      &neuron_outputs,
+      learning_rate,
+      &activation_func,
+      network.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
+    );
+
+    let expected_weights = vec![
+      Matrix {
+        data: vec![
+          // Layer 1 has 3 neurons, with 2 inputs per neuron
+          vec![0.129994132, 0.27498533],
+          vec![0.34198794, 0.50496985],
+          vec![0.553981748, 0.73495437],
+        ],
+      },
+      Matrix {
+        data: vec![
+          // Layer 2 has 2 neurons, with 3 inputs per neuron
+          vec![0.1025792, 0.2053728, 0.3081664],
+          vec![0.397323, 0.4944262, 0.5915294],
+        ],
+      },
+    ];
+
+    let expected_biases = vec![
+      Matrix {
+        data: vec![
+          // Layer 1 biases, 3 neurons
+          vec![0.24997066],
+          vec![0.4099397],
+          vec![0.56990874],
+        ],
+      },
+      Matrix {
+        data: vec![
+          // Layer 2 biases, 2 neurons
+          vec![0.1121],
+          vec![0.18739],
+        ],
+      },
+    ];
+
+    izip!(
+      expected_weights,
+      network.weights,
+      expected_biases,
+      network.biases
+    )
+    .for_each(|(ew, w, eb, b)| {
+      eb.print();
+      b.print();
+      ew.print();
+      w.print();
+
+      assert!(matrix_are_equal(eb, b, 12));
+      assert!(matrix_are_equal(ew, w, 12));
+    })
+  }
+
   fn matrix_are_equal(a: Matrix, b: Matrix, precision: usize) -> bool {
     if a.get_rows() != b.get_rows() || a.get_columns() != b.get_columns() {
       return false;

@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crate::{matrix_lib::Matrix, py_util::py_print};
 use itertools::{izip, Itertools};
 use pyo3::prelude::*;
@@ -302,10 +304,10 @@ impl BasicNeuralNetwork {
 
     // Update biases
     // b' = b + learning_rate * sum(Wout) * batch_sum(activation'(x))
-    let layer_biases = &mut self.biases[layer].data[0];
+    let layer_biases = &mut self.biases[layer];
     let weight_summed_activation_prime_x = activation_prime_x.sum_rows();
-    for bias_index in 0..layer_biases.len() {
-      let bias = &mut layer_biases[bias_index];
+    for bias_index in 0..layer_biases.data.len() {
+      let bias = &mut layer_biases.data[bias_index][0];
 
       let db = wout[bias_index] * weight_summed_activation_prime_x[bias_index];
 
@@ -329,6 +331,11 @@ impl BasicNeuralNetwork {
           });
 
         *weight = *weight + learning_rate * dw;
+        // DEBUG
+        println!(
+          "PREV LAYER: \n{:?}",
+          prev_layer_outputs.data[incoming_weight_index]
+        );
       }
     }
 
