@@ -67,6 +67,51 @@ mod matrix_tests {
     assert!(matrix_are_equal(observed_result, expected_result));
   }
 
+  #[test]
+  fn add_vector_to_columns() {
+    let matrix = Matrix {
+      data: vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]],
+    };
+
+    let vector = Matrix {
+      data: vec![vec![1.0], vec![-1.0]],
+    };
+
+    let expected_result = Matrix {
+      data: vec![vec![2.0, 3.0, 4.0], vec![3.0, 4.0, 5.0]],
+    };
+
+    let observed_result = matrix.add_vector_to_columns(&vector);
+
+    assert!(matrix_are_equal(observed_result, expected_result));
+  }
+
+  #[test]
+  fn sum_row() {
+    let matrix = Matrix {
+      data: vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]],
+    };
+
+    let expected_result = vec![6.0, 15.0];
+
+    let observed_result = matrix.sum_rows();
+
+    assert_eq!(observed_result, expected_result);
+  }
+
+  #[test]
+  fn sum_column() {
+    let matrix = Matrix {
+      data: vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]],
+    };
+
+    let expected_result = vec![5.0, 7.0, 9.0];
+
+    let observed_result = matrix.sum_columns();
+
+    assert_eq!(observed_result, expected_result);
+  }
+
   fn matrix_are_equal(a: Matrix, b: Matrix) -> bool {
     if a.get_rows() != b.get_rows() || a.get_columns() != b.get_columns() {
       return false;

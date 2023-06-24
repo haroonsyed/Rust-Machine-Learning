@@ -1,4 +1,6 @@
-use itertools::izip;
+use itertools::{izip, Itertools};
+
+use crate::py_util::py_print;
 
 pub struct Matrix {
   pub data: Vec<Vec<f64>>,
@@ -6,6 +8,7 @@ pub struct Matrix {
 
 impl Matrix {
   pub fn print(&self) {
+    println!();
     for row in self.data.iter() {
       let formatted = row
         .iter()
@@ -13,7 +16,9 @@ impl Matrix {
         .collect::<Vec<String>>()
         .join(" ");
       println!("{}", formatted);
+      py_print(&formatted);
     }
+    println!();
   }
   pub fn get_rows(&self) -> usize {
     return self.data.len();
@@ -26,7 +31,7 @@ impl Matrix {
   }
   pub fn element_add(&self, other: &Matrix) -> Self {
     if !self.same_shape(other) {
-      panic!("Matrices not the same shape!");
+      panic!("Matrices not the same shape for addition!");
     }
 
     let result_data = izip!(self.data.iter(), other.data.iter())
@@ -39,6 +44,27 @@ impl Matrix {
 
     return Matrix { data: result_data };
   }
+
+  pub fn add_vector_to_columns(&self, other: &Matrix) -> Self {
+    if self.get_rows() != other.get_rows() {
+      panic!("Matrices not the correct shape for add_vector_to_columns!");
+    }
+
+    let result_data = self
+      .data
+      .iter()
+      .enumerate()
+      .map(|(row_index, row_data)| {
+        row_data
+          .iter()
+          .map(|val| val + other.data[row_index][0])
+          .collect_vec()
+      })
+      .collect_vec();
+
+    return Matrix { data: result_data };
+  }
+
   pub fn matrix_multiply(&self, other: &Matrix) -> Self {
     // Bound Check
     if self.get_columns() != other.get_rows() {
@@ -83,5 +109,21 @@ impl Matrix {
       .collect();
 
     return Matrix { data: result_data };
+  }
+
+  pub fn sum_rows(&self) -> Vec<f64> {
+    return self.data.iter().map(|row| row.iter().sum()).collect_vec();
+  }
+
+  pub fn sum_columns(&self) -> Vec<f64> {
+    let mut result = vec![0.0; self.get_columns()];
+
+    for i in 0..self.get_rows() {
+      for j in 0..self.get_columns() {
+        result[j] += self.data[i][j];
+      }
+    }
+
+    return result;
   }
 }
