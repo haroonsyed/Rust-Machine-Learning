@@ -90,51 +90,9 @@ mod basic_nn_tests {
 
   #[test]
   fn soft_max() {
-    let observations = Matrix {
-      data: vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
-    };
-
-    let weights = vec![
-      Matrix {
-        data: vec![
-          // Layer 1 has 3 neurons, with 2 inputs per neuron
-          vec![0.1, 0.2],
-          vec![0.3, 0.4],
-          vec![0.5, 0.6],
-        ],
-      },
-      Matrix {
-        data: vec![
-          // Layer 2 has 2 neurons, with 3 inputs per neuron
-          vec![0.1, 0.2, 0.3],
-          vec![0.4, 0.5, 0.6],
-        ],
-      },
-    ];
-
-    let biases = vec![
-      Matrix {
-        data: vec![
-          // Layer 1 biases, 3 neurons
-          vec![0.1],
-          vec![0.2],
-          vec![0.3],
-        ],
-      },
-      Matrix {
-        data: vec![
-          // Layer 2 biases, 2 neurons
-          vec![0.1],
-          vec![0.2],
-        ],
-      },
-    ];
-
-    let network = BasicNeuralNetwork { weights, biases };
-
     // Create a matrix to hold the actual output
     // Remember each output is product of matmul between weights and observations/neuron_outputs[layer-1] + (bias to each column)
-    let mut neuron_outputs = vec![
+    let neuron_outputs = vec![
       Matrix {
         // 3 neurons x 3 observations
         data: vec![
@@ -163,9 +121,9 @@ mod basic_nn_tests {
 
   #[test]
   fn backpropogation_output_layer() {
-    let observations = Matrix {
-      data: vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
-    };
+    // let observations = Matrix {
+    //   data: vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
+    // };
 
     let labels = vec![1.0, 0.0, 1.0];
 
@@ -209,7 +167,7 @@ mod basic_nn_tests {
 
     // Create a matrix to hold the actual output
     // Remember each output is product of matmul between weights and observations/neuron_outputs[layer-1] + (bias to each column)
-    let mut neuron_outputs = vec![
+    let neuron_outputs = vec![
       Matrix {
         // 3 neurons x 3 observations
         data: vec![
@@ -249,8 +207,8 @@ mod basic_nn_tests {
       Matrix {
         data: vec![
           // Layer 2 has 2 neurons, with 3 inputs per neuron
-          vec![0.1, 0.2, 0.3],
-          vec![0.4, 0.5, 0.6],
+          vec![0.1025792, 0.2053728, 0.3081664],
+          vec![0.397323, 0.4944262, 0.5915294],
         ],
       },
     ];

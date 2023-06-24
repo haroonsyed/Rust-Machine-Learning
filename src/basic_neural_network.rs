@@ -1,5 +1,3 @@
-use std::fmt::format;
-
 use crate::{matrix_lib::Matrix, py_util::py_print};
 use itertools::{izip, Itertools};
 use pyo3::prelude::*;
@@ -259,17 +257,17 @@ impl BasicNeuralNetwork {
         let w_prev_layer_outputs = &prev_layer_outputs.data[incoming_weight_index];
 
         let dw = izip!(
-          predicted_probabilities.data.iter(),
+          predicted_probabilities.data[output_neuron_index].iter(),
           labels.iter(),
           w_prev_layer_outputs.iter()
         )
-        .fold(0.0, |acc, (sample_predictions, label, yin)| {
+        .fold(0.0, |acc, (sample_prediction, label, yin)| {
           acc
             + yin
               * (if *label == output_neuron_index as f64 {
-                sample_predictions[output_neuron_index] - 1.0
+                *sample_prediction - 1.0
               } else {
-                sample_predictions[output_neuron_index]
+                *sample_prediction
               })
         });
         *weight = *weight + learning_rate * dw;
