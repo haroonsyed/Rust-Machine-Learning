@@ -19,20 +19,22 @@ Any data is located in the data folder.
 
 ### Goals
 
-1. K-Means
-2. K-Nearest Neighbors
-3. Naive Bayes
-4. Decision Trees/Random Forest
-5. Regression Tree
-6. Gradient Descent
-7. ADA Boost
-8. Gradient Boost
-9. XGBoost (Regression only, no parallelism/histogram optimizations)
-10. Basic Neural Network With backpropogation
-11. Convolutional Neural Networks
-12. Recurrent Neural Networks
-13. Generative Adversarial Networks
-14. Acceleration on CUDA with pybind11 bindings
+| Algorithm                          | Status             |
+| ---------------------------------- | ------------------ |
+| K-Means                            | :white_check_mark: |
+| K-Nearest Neighbors                | :white_check_mark: |
+| Naive Bayes                        | :white_check_mark: |
+| Decision Trees/Random Forest       | :white_check_mark: |
+| Regression Tree                    | :white_check_mark: |
+| Gradient Descent                   | :white_check_mark: |
+| ADA Boost                          | :white_check_mark: |
+| Gradient Boost                     | :white_check_mark: |
+| XGBoost                            | :white_check_mark: |
+| Neural Network w/t backpropogation | :white_check_mark: |
+| Convolutional Neural Networks      | :x:                |
+| Recurrent Neural Networks          | :x:                |
+| Generative Adversarial Networks    | :x:                |
+| CUDA Acceleration w/t pybind11     | :x:                |
 
 ## Setup Instructions
 
