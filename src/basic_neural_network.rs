@@ -1,7 +1,8 @@
 use crate::{matrix_lib::Matrix, py_util::py_print};
 use itertools::{izip, Itertools};
 use pyo3::prelude::*;
-use rand::{distributions::Uniform, prelude::Distribution};
+use rand::prelude::Distribution;
+use statrs::distribution::Normal;
 
 // So I was initially gonna use a class representation for each neuron
 // But I think I can make things simpler and more efficient with matrices
@@ -70,8 +71,6 @@ impl BasicNeuralNetwork {
     let mut non_input_layer_sizes = hidden_layer_sizes.clone();
     non_input_layer_sizes.push(num_classifications);
 
-    py_print(&format!("{} {}", num_observations, num_features));
-
     // Init the matrices
     let observations = Matrix {
       data: features_train,
@@ -80,7 +79,7 @@ impl BasicNeuralNetwork {
 
     // Random seed for weights
     let mut rng = rand::thread_rng();
-    let range = Uniform::new(-1.0, 1.0);
+    let range = Normal::new(0.0, 0.68).unwrap();
 
     let weights = (0..non_input_layer_sizes.len())
       .map(|layer| Matrix {
@@ -145,8 +144,6 @@ impl BasicNeuralNetwork {
       })
       .collect_vec();
 
-    observations.print();
-
     let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
     self.feed_forward(&observations, &mut neuron_outputs, &activation_function);
     let predicted_probabilities = Self::softmax(&neuron_outputs);
@@ -179,13 +176,6 @@ impl BasicNeuralNetwork {
   pub fn softmax(neuron_outputs: &Vec<Matrix>) -> Matrix {
     let mut predictions = neuron_outputs[neuron_outputs.len() - 1].element_apply(&|x| f64::exp(x));
     let exp_final_layer_outputs_summed: Vec<f64> = predictions.sum_columns();
-
-    py_print(&"IN SOFTMAX");
-    neuron_outputs[neuron_outputs.len() - 1].print();
-    py_print(&"PREDICTIONS");
-    predictions.print();
-    py_print(&"EXP SUMMED");
-    py_print(&exp_final_layer_outputs_summed);
 
     // Divide all data by col sum
     for output_neuron in 0..predictions.get_rows() {
@@ -220,67 +210,57 @@ impl BasicNeuralNetwork {
     labels: &Vec<f64>,
     neuron_outputs: &Vec<Matrix>,
     learning_rate: f64,
-  ) {
+  ) -> Matrix {
     let output_layer_index = self.biases.len() - 1;
     let prev_layer_outputs = &neuron_outputs[output_layer_index - 1];
+    let output_biases = &self.biases[output_layer_index];
+    let output_weights = &self.weights[output_layer_index];
+    let normalization_factor = 1.0 / labels.len() as f64;
+
+    // Shared error calculations
+    let error = Matrix {
+      data: (0..output_biases.get_rows())
+        .map(|index| {
+          izip!(labels.iter(), predicted_probabilities.data[index].iter())
+            .map(|(label, predicted_probability)| {
+              if *label == index as f64 {
+                *predicted_probability - 1.0
+              } else {
+                *predicted_probability
+              }
+            })
+            .collect_vec()
+        })
+        .collect_vec(),
+    };
 
     // Update biases first
-    // b' = b + learning_rate * batch_sum( if label==Output bias codes for {predicted coded for -1} else {predicted coded for} )
-    let output_biases = &mut self.biases[output_layer_index].data;
-    for bias_index in 0..output_biases.len() {
-      let bias = &mut output_biases[bias_index][0];
-      let bias_neuron_predicted = &predicted_probabilities.data[bias_index];
-
-      let db = izip!(bias_neuron_predicted.iter(), labels.iter()).fold(
-        0.0,
-        |acc, (neuron_prediction, label)| {
-          acc
-            + if *label == bias_index as f64 {
-              *neuron_prediction - 1.0
-            } else {
-              *neuron_prediction
-            }
-        },
-      );
-
-      *bias = *bias + learning_rate * db;
-    }
+    // b' = b - learning_rate * batch_sum( if label==Output bias codes for {predicted coded for -1} else {predicted coded for} )
+    let db = error.sum_rows_matrix();
+    self.biases[output_layer_index] =
+      output_biases.element_subtract(&db.scalar_multiply(learning_rate * normalization_factor));
 
     // Update weights
-    // w' = w * learning_rate * batch_sum( Output bias codes for Yin * {predicted coded for -1} else Yin * {predicted coded for} )
-    let output_weights = &mut self.weights[output_layer_index];
-    for output_neuron_index in 0..output_weights.get_rows() {
-      for incoming_weight_index in 0..output_weights.get_columns() {
-        let weight = &mut output_weights.data[output_neuron_index][incoming_weight_index];
-        let w_prev_layer_outputs = &prev_layer_outputs.data[incoming_weight_index];
+    // w' = w - learning_rate * batch_sum( Output bias codes for Yin * {predicted coded for -1} else Yin * {predicted coded for} )
+    let dw = error.matrix_multiply(&prev_layer_outputs.transpose());
+    self.weights[output_layer_index] =
+      output_weights.element_subtract(&dw.scalar_multiply(learning_rate * normalization_factor));
 
-        let dw = izip!(
-          predicted_probabilities.data[output_neuron_index].iter(),
-          labels.iter(),
-          w_prev_layer_outputs.iter()
-        )
-        .fold(0.0, |acc, (sample_prediction, label, yin)| {
-          acc
-            + yin
-              * (if *label == output_neuron_index as f64 {
-                *sample_prediction - 1.0
-              } else {
-                *sample_prediction
-              })
-        });
-        *weight = *weight + learning_rate * dw;
-      }
-    }
+    // Return error for use in other backpropogation
+    return error;
   }
 
   pub fn backpropogation_hidden_layer(
     &mut self,
     observations: &Matrix,
     neuron_outputs: &Vec<Matrix>,
+    next_layer_error: &Matrix,
     learning_rate: f64,
     activation_function: &Box<dyn ActivationFunction>,
     layer: usize,
   ) {
+    let normalization_factor = 1.0 / observations.get_columns() as f64;
+
     // Used for yin
     let prev_layer_outputs = if layer == 0 {
       observations
@@ -289,51 +269,38 @@ impl BasicNeuralNetwork {
     };
 
     // Used for wout
-    let wout = self.weights[layer + 1].sum_columns();
+    let wout = &self.weights[layer + 1];
 
     // Used for x
-    //POSSIBLE OPTIMIZATION: Calculate at feed forward step
+    //POSSIBLE OPTIMIZATION: Cache at feed forward step
     let activation_prime_x = &self.weights[layer]
       .matrix_multiply(prev_layer_outputs)
       .add_vector_to_columns(&self.biases[layer])
       .element_apply(&|x| activation_function.activation_function_prime(x));
 
+    // Shared error calculations
+    let error = wout
+      .transpose()
+      .matrix_multiply(next_layer_error)
+      .element_multiply(activation_prime_x);
+
     // Update biases
-    // b' = b + learning_rate * sum(Wout) * batch_sum(activation'(x))
-    let layer_biases = &mut self.biases[layer];
-    let weight_summed_activation_prime_x = activation_prime_x.sum_rows();
-    for bias_index in 0..layer_biases.data.len() {
-      let bias = &mut layer_biases.data[bias_index][0];
-
-      let db = wout[bias_index] * weight_summed_activation_prime_x[bias_index];
-
-      *bias = *bias + learning_rate * db;
-    }
+    // b' = b - learning_rate * batch_sum(wout * activation'(x) * next_layer_error)
+    let db = error.sum_rows_matrix();
+    self.biases[layer] = self.biases[layer]
+      .element_subtract(&db.scalar_multiply(learning_rate * normalization_factor));
 
     // Update weights
-    // b' = b + learning_rate * sum(Wout) * batch_sum(activation'(x))
-    let layer_weights = &mut self.weights[layer];
-    for neuron_index in 0..layer_weights.get_rows() {
-      for incoming_weight_index in 0..layer_weights.get_columns() {
-        let weight = &mut layer_weights.data[neuron_index][incoming_weight_index];
-
-        let dw = wout[neuron_index]
-          * izip!(
-            activation_prime_x.data[neuron_index].iter(),
-            prev_layer_outputs.data[incoming_weight_index].iter()
-          )
-          .fold(0.0, |acc, (sample_active_prime_x, yin)| {
-            acc + sample_active_prime_x * yin
-          });
-
-        *weight = *weight + learning_rate * dw;
-      }
-    }
+    // w' = w - learning_rate * batch_sum(wout * activation'(x) * next_layer_error * yin)
+    let dw = error.matrix_multiply(&prev_layer_outputs.transpose());
+    self.weights[layer] = self.weights[layer]
+      .element_subtract(&dw.scalar_multiply(learning_rate * normalization_factor));
 
     if layer != 0 {
       self.backpropogation_hidden_layer(
         observations,
         neuron_outputs,
+        &error,
         learning_rate,
         activation_function,
         layer - 1,
@@ -351,45 +318,72 @@ impl BasicNeuralNetwork {
     num_iterations: usize,
   ) {
     // For now we will make the number of iterations a constant
-    for _i in 0..num_iterations {
-      py_print(&format!("Starting iteration {}", _i));
+    for i in 0..num_iterations {
+      // py_print(&format!("Starting iteration {}", i));
       self.feed_forward(observations, neuron_outputs, &activation_function);
-      py_print(&format!("Finished feed forward for iteration {}", _i));
-      self.biases.iter().for_each(|x| x.print());
-      self.weights.iter().for_each(|x| x.print());
+      // py_print(&format!("Finished feed forward for iteration {}", i));
 
       let predicted_probabilities = Self::softmax(neuron_outputs);
-      py_print(&format!("Finished softmax for iteration {}", _i));
-      self.biases.iter().for_each(|x| x.print());
-      self.weights.iter().for_each(|x| x.print());
+      // py_print(&format!("Finished softmax for iteration {}", i));
 
-      self.backpropogation_output_layer(
+      let output_error = self.backpropogation_output_layer(
         &predicted_probabilities,
         labels,
         neuron_outputs,
         learning_rate,
       );
-      py_print(&format!(
-        "Finished backprop output layer for iteration {}",
-        _i
-      ));
-      self.biases.iter().for_each(|x| x.print());
-      self.weights.iter().for_each(|x| x.print());
+      // py_print(&format!(
+      //   "Finished backprop output layer for iteration {}",
+      //   i
+      // ));
 
       self.backpropogation_hidden_layer(
         observations,
         neuron_outputs,
+        &output_error,
         learning_rate,
         &activation_function,
         self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
       );
-      py_print(&format!(
-        "Finished backprop hidden layers for iteration {}",
-        _i
-      ));
+      // py_print(&format!(
+      //   "Finished backprop hidden layers for iteration {}",
+      //   i
+      // ));
 
-      self.biases.iter().for_each(|x| x.print());
-      self.weights.iter().for_each(|x| x.print());
+      if i % 10 == 0 {
+        self.test_train_performance(observations, labels);
+      }
     }
+  }
+
+  fn test_train_performance(&self, observations: &Matrix, labels: &Vec<f64>) {
+    let classifications = self.train_classify(&observations);
+    let num_correct = izip!(classifications.iter(), labels.iter())
+      .fold(0.0, |acc, (classification, label)| {
+        acc + if classification == label { 1.0 } else { 0.0 }
+      });
+
+    let percent_correct = num_correct / labels.len() as f64;
+
+    py_print(&format!("% Correct: {}", percent_correct));
+  }
+
+  fn train_classify(&self, observations: &Matrix) -> Vec<f64> {
+    let num_observations = observations.get_columns();
+
+    let mut neuron_outputs: Vec<Matrix> = self
+      .weights
+      .iter()
+      .map(|layer| Matrix {
+        data: vec![vec![0.0; num_observations]; layer.data.len()],
+      })
+      .collect_vec();
+
+    let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
+    self.feed_forward(&observations, &mut neuron_outputs, &activation_function);
+    let predicted_probabilities = Self::softmax(&neuron_outputs);
+    let classifications = Self::get_classification(&predicted_probabilities);
+
+    return classifications;
   }
 }

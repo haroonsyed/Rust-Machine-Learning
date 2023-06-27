@@ -8,7 +8,7 @@ pub struct Matrix {
 
 impl Matrix {
   pub fn print(&self) {
-    println!();
+    py_print(&"");
     for row in self.data.iter() {
       let formatted = row
         .iter()
@@ -17,7 +17,7 @@ impl Matrix {
         .join(" ");
       py_print(&formatted);
     }
-    println!();
+    py_print(&"");
   }
   pub fn get_rows(&self) -> usize {
     return self.data.len();
@@ -37,6 +37,38 @@ impl Matrix {
       .map(|(row_a, row_b)| {
         izip!(row_a.iter(), row_b.iter())
           .map(|(&a, &b)| a + b)
+          .collect()
+      })
+      .collect();
+
+    return Matrix { data: result_data };
+  }
+
+  pub fn element_multiply(&self, other: &Matrix) -> Self {
+    if !self.same_shape(other) {
+      panic!("Matrices not the same shape for element_multiply!");
+    }
+
+    let result_data = izip!(self.data.iter(), other.data.iter())
+      .map(|(row_a, row_b)| {
+        izip!(row_a.iter(), row_b.iter())
+          .map(|(&a, &b)| a * b)
+          .collect()
+      })
+      .collect();
+
+    return Matrix { data: result_data };
+  }
+
+  pub fn element_subtract(&self, other: &Matrix) -> Self {
+    if !self.same_shape(other) {
+      panic!("Matrices not the same shape for element_subtract!");
+    }
+
+    let result_data = izip!(self.data.iter(), other.data.iter())
+      .map(|(row_a, row_b)| {
+        izip!(row_a.iter(), row_b.iter())
+          .map(|(&a, &b)| a - b)
           .collect()
       })
       .collect();
@@ -87,6 +119,23 @@ impl Matrix {
 
     return Matrix { data: result_data };
   }
+
+  pub fn scalar_multiply(&self, scalar: f64) -> Self {
+    // Result dimensions will be rows self x columns other
+    let result_rows = self.get_rows();
+    let result_columns = self.get_columns();
+    let mut result_data = vec![vec![0.0; result_columns]; result_rows];
+
+    // Row of this * column of that
+    for result_row in 0..result_rows {
+      for result_col in 0..result_columns {
+        result_data[result_row][result_col] = self.data[result_row][result_col] * scalar;
+      }
+    }
+
+    return Matrix { data: result_data };
+  }
+
   pub fn transpose(&self) -> Self {
     // Create result 2d vec with #rows and #columns flipped
     let mut result_data = vec![vec![0.0; self.get_rows()]; self.get_columns()];
@@ -112,6 +161,16 @@ impl Matrix {
 
   pub fn sum_rows(&self) -> Vec<f64> {
     return self.data.iter().map(|row| row.iter().sum()).collect_vec();
+  }
+
+  pub fn sum_rows_matrix(&self) -> Matrix {
+    let result_data: Vec<Vec<f64>> = self
+      .data
+      .iter()
+      .map(|row| vec![row.iter().sum()])
+      .collect_vec();
+
+    return Matrix { data: result_data };
   }
 
   pub fn sum_columns(&self) -> Vec<f64> {

@@ -5,7 +5,9 @@
 I wanted to learn rust and machine learning..so I thought why not do ML in rust. The notebooks, while in python, have rust bindings to the core ML/DL algorithms.
 
 #### NO ML CODE WAS WRITTEN IN PYTHON! <br/>
+
 #### Python is just used for preprocessing and loading of data, visualization and verification of results.<br/>
+
 That means all the ml algorithms are written using good old if/else, for loops etc. No significant help from libraries (unless you count random number generation and Rust's amazing itertools).
 
 ## Structure
@@ -26,12 +28,11 @@ Any data is located in the data folder.
 7. ADA Boost
 8. Gradient Boost
 9. XGBoost (Regression only, no parallelism/histogram optimizations)
-10. Basic Neural Network
-11. With backpropogation
-12. Convolutional Neural Networks
-13. Recurrent Neural Networks
-14. Generative Adversarial Networks
-15. Acceleration on CUDA with pybind11 bindings
+10. Basic Neural Network With backpropogation
+11. Convolutional Neural Networks
+12. Recurrent Neural Networks
+13. Generative Adversarial Networks
+14. Acceleration on CUDA with pybind11 bindings
 
 ## Setup Instructions
 
