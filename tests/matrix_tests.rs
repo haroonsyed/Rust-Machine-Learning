@@ -5,16 +5,11 @@ mod matrix_tests {
 
   #[test]
   fn element_add() {
-    let test_data = Matrix {
-      data: vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]],
-    };
-    let test_data_2 = Matrix {
-      data: vec![vec![5.0, 1.0, 3.3], vec![0.0, -1.0, 1000.0]],
-    };
+    let test_data = Matrix::new_2d(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
 
-    let expected_result = Matrix {
-      data: vec![vec![6.0, 3.0, 6.3], vec![4.0, 4.0, 1006.0]],
-    };
+    let test_data_2 = Matrix::new_2d(vec![vec![5.0, 1.0, 3.3], vec![0.0, -1.0, 1000.0]]);
+
+    let expected_result = Matrix::new_2d(vec![vec![6.0, 3.0, 6.3], vec![4.0, 4.0, 1006.0]]);
 
     let observed_result = test_data.element_add(&test_data_2);
 
@@ -23,16 +18,10 @@ mod matrix_tests {
 
   #[test]
   fn matrix_multiply() {
-    let test_data = Matrix {
-      data: vec![vec![2.0, 4.0], vec![1.0, 3.0]],
-    };
-    let test_data_2 = Matrix {
-      data: vec![vec![3.0, 1.0, 5.0], vec![-2.0, 1.0, 3.0]],
-    };
+    let test_data = Matrix::new_2d(vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let test_data_2 = Matrix::new_2d(vec![vec![3.0, 1.0, 5.0], vec![-2.0, 1.0, 3.0]]);
 
-    let expected_result = Matrix {
-      data: vec![vec![-2.0, 6.0, 22.0], vec![-3.0, 4.0, 14.0]],
-    };
+    let expected_result = Matrix::new_2d(vec![vec![-2.0, 6.0, 22.0], vec![-3.0, 4.0, 14.0]]);
 
     let observed_result = test_data.matrix_multiply(&test_data_2);
 
@@ -41,12 +30,9 @@ mod matrix_tests {
 
   #[test]
   fn transpose() {
-    let test_data = Matrix {
-      data: vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]],
-    };
-    let expected_result = Matrix {
-      data: vec![vec![1.0, 4.0], vec![2.0, 5.0], vec![3.0, 6.0]],
-    };
+    let test_data = Matrix::new_2d(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+
+    let expected_result = Matrix::new_2d(vec![vec![1.0, 4.0], vec![2.0, 5.0], vec![3.0, 6.0]]);
 
     let observed_result = test_data.transpose();
 
@@ -55,12 +41,9 @@ mod matrix_tests {
 
   #[test]
   fn element_apply() {
-    let test_data = Matrix {
-      data: vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]],
-    };
-    let expected_result = Matrix {
-      data: vec![vec![0.0, 1.0, 2.0], vec![3.0, 4.0, 5.0]],
-    };
+    let test_data = Matrix::new_2d(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+
+    let expected_result = Matrix::new_2d(vec![vec![0.0, 1.0, 2.0], vec![3.0, 4.0, 5.0]]);
 
     let observed_result = test_data.element_apply(&|x| x - 1.0);
 
@@ -69,17 +52,11 @@ mod matrix_tests {
 
   #[test]
   fn add_vector_to_columns() {
-    let matrix = Matrix {
-      data: vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]],
-    };
+    let matrix = Matrix::new_2d(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
 
-    let vector = Matrix {
-      data: vec![vec![1.0], vec![-1.0]],
-    };
+    let vector = Matrix::new_2d(vec![vec![1.0], vec![-1.0]]);
 
-    let expected_result = Matrix {
-      data: vec![vec![2.0, 3.0, 4.0], vec![3.0, 4.0, 5.0]],
-    };
+    let expected_result = Matrix::new_2d(vec![vec![2.0, 3.0, 4.0], vec![3.0, 4.0, 5.0]]);
 
     let observed_result = matrix.add_vector_to_columns(&vector);
 
@@ -88,9 +65,7 @@ mod matrix_tests {
 
   #[test]
   fn sum_row() {
-    let matrix = Matrix {
-      data: vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]],
-    };
+    let matrix = Matrix::new_2d(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
 
     let expected_result = vec![6.0, 15.0];
 
@@ -101,9 +76,7 @@ mod matrix_tests {
 
   #[test]
   fn sum_column() {
-    let matrix = Matrix {
-      data: vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]],
-    };
+    let matrix = Matrix::new_2d(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
 
     let expected_result = vec![5.0, 7.0, 9.0];
 
@@ -113,13 +86,13 @@ mod matrix_tests {
   }
 
   fn matrix_are_equal(a: Matrix, b: Matrix) -> bool {
-    if a.get_rows() != b.get_rows() || a.get_columns() != b.get_columns() {
+    if a.rows != b.rows || a.columns != b.columns {
       return false;
     }
 
-    for i in 0..a.get_rows() {
-      for j in 0..a.get_columns() {
-        if a.data[i][j] != b.data[i][j] {
+    for i in 0..a.rows {
+      for j in 0..a.columns {
+        if a[i][j] != b[i][j] {
           return false;
         }
       }

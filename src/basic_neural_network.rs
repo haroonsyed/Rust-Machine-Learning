@@ -72,42 +72,37 @@ impl BasicNeuralNetwork {
     non_input_layer_sizes.push(num_classifications);
 
     // Init the matrices
-    let observations = Matrix {
-      data: features_train,
-    }
-    .transpose();
+    let observations = Matrix::new_2d(features_train).transpose();
 
     // Random seed for weights
     let mut rng = rand::thread_rng();
     let range = Normal::new(0.0, 0.68).unwrap();
 
     let weights = (0..non_input_layer_sizes.len())
-      .map(|layer| Matrix {
-        data: (0..non_input_layer_sizes[layer])
-          .map(|_| {
-            (0..if layer == 0 {
-              num_features
-            } else {
-              non_input_layer_sizes[layer - 1]
+      .map(|layer| {
+        Matrix::new_2d(
+          (0..non_input_layer_sizes[layer])
+            .map(|_| {
+              (0..if layer == 0 {
+                num_features
+              } else {
+                non_input_layer_sizes[layer - 1]
+              })
+                .map(|_| range.sample(&mut rng))
+                .collect_vec()
             })
-              .map(|_| range.sample(&mut rng))
-              .collect_vec()
-          })
-          .collect_vec(),
+            .collect_vec(),
+        )
       })
       .collect_vec();
 
     let biases = (0..non_input_layer_sizes.len())
-      .map(|layer| Matrix {
-        data: vec![vec![0.0]; non_input_layer_sizes[layer]],
-      })
+      .map(|layer| Matrix::zeros(non_input_layer_sizes[layer], 1))
       .collect_vec();
 
     let mut neuron_outputs: Vec<Matrix> = non_input_layer_sizes
       .iter()
-      .map(|&layer_size| Matrix {
-        data: vec![vec![0.0; num_observations]; layer_size],
-      })
+      .map(|&layer_size| Matrix::zeros(layer_size, num_observations))
       .collect();
 
     // Create network
@@ -131,17 +126,12 @@ impl BasicNeuralNetwork {
     let num_observations = features_test.len();
 
     // Feed forward through network
-    let observations = Matrix {
-      data: features_test,
-    }
-    .transpose();
+    let observations = Matrix::new_2d(features_test).transpose();
 
     let mut neuron_outputs: Vec<Matrix> = self
       .weights
       .iter()
-      .map(|layer| Matrix {
-        data: vec![vec![0.0; num_observations]; layer.data.len()],
-      })
+      .map(|layer| Matrix::zeros(layer.data.len(), num_observations))
       .collect_vec();
 
     let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
@@ -178,9 +168,9 @@ impl BasicNeuralNetwork {
     let exp_final_layer_outputs_summed: Vec<f64> = predictions.sum_columns();
 
     // Divide all data by col sum
-    for output_neuron in 0..predictions.get_rows() {
-      for observation_number in 0..predictions.get_columns() {
-        predictions.data[output_neuron][observation_number] /=
+    for output_neuron in 0..predictions.rows {
+      for observation_number in 0..predictions.columns {
+        predictions[output_neuron][observation_number] /=
           exp_final_layer_outputs_summed[observation_number];
       }
     }
@@ -191,7 +181,6 @@ impl BasicNeuralNetwork {
   pub fn get_classification(predicted_probabilities: &Matrix) -> Vec<f64> {
     return predicted_probabilities
       .transpose()
-      .data
       .iter()
       .map(|outputs| {
         outputs
@@ -218,10 +207,10 @@ impl BasicNeuralNetwork {
     let normalization_factor = 1.0 / labels.len() as f64;
 
     // Shared error calculations
-    let error = Matrix {
-      data: (0..output_biases.get_rows())
+    let error = Matrix::new_2d(
+      (0..output_biases.rows)
         .map(|index| {
-          izip!(labels.iter(), predicted_probabilities.data[index].iter())
+          izip!(labels.iter(), predicted_probabilities[index].iter())
             .map(|(label, predicted_probability)| {
               if *label == index as f64 {
                 *predicted_probability - 1.0
@@ -232,7 +221,7 @@ impl BasicNeuralNetwork {
             .collect_vec()
         })
         .collect_vec(),
-    };
+    );
 
     // Update biases first
     // b' = b - learning_rate * batch_sum( if label==Output bias codes for {predicted coded for -1} else {predicted coded for} )
@@ -259,7 +248,7 @@ impl BasicNeuralNetwork {
     activation_function: &Box<dyn ActivationFunction>,
     layer: usize,
   ) {
-    let normalization_factor = 1.0 / observations.get_columns() as f64;
+    let normalization_factor = 1.0 / observations.columns as f64;
 
     // Used for yin
     let prev_layer_outputs = if layer == 0 {
@@ -350,7 +339,7 @@ impl BasicNeuralNetwork {
       //   i
       // ));
 
-      if i % 10 == 0 {
+      if i % 50 == 0 {
         self.test_train_performance(observations, labels);
       }
     }
@@ -369,14 +358,12 @@ impl BasicNeuralNetwork {
   }
 
   fn train_classify(&self, observations: &Matrix) -> Vec<f64> {
-    let num_observations = observations.get_columns();
+    let num_observations = observations.columns;
 
     let mut neuron_outputs: Vec<Matrix> = self
       .weights
       .iter()
-      .map(|layer| Matrix {
-        data: vec![vec![0.0; num_observations]; layer.data.len()],
-      })
+      .map(|layer| Matrix::zeros(layer.data.len(), num_observations))
       .collect_vec();
 
     let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
