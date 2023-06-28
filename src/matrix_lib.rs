@@ -1,6 +1,7 @@
 use std::ops::{Index, IndexMut};
 
-use itertools::{concat, izip, Itertools};
+use itertools::{concat, Itertools};
+use rayon::prelude::*;
 
 use crate::py_util::py_print;
 
@@ -144,14 +145,18 @@ impl Matrix {
     let mut result = Self::zeros(result_rows, result_columns);
 
     // Row of this * column of that
-    for result_row in 0..result_rows {
-      for vector_offset in 0..self.columns {
-        for result_col in 0..result_columns {
-          result[result_row][result_col] +=
-            self[result_row][vector_offset] * other[vector_offset][result_col];
+    result
+      .data
+      .par_chunks_mut(result_columns)
+      .enumerate()
+      .for_each(|(result_row_index, result_row_slice)| {
+        for vector_offset in 0..self.columns {
+          for result_col in 0..result_columns {
+            result_row_slice[result_col] +=
+              self[result_row_index][vector_offset] * other[vector_offset][result_col];
+          }
         }
-      }
-    }
+      });
 
     return result;
   }
