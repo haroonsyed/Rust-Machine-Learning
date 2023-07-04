@@ -167,7 +167,7 @@ mod basic_nn_tests {
     let learning_rate = 0.1;
 
     // Backprop output layer
-    network.backpropogation_output_layer(
+    network.backpropogation_output_layer_classification(
       &predicted_probabilities,
       &labels,
       &neuron_outputs,
