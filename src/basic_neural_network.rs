@@ -172,6 +172,109 @@ impl BasicNeuralNetwork {
 }
 
 impl BasicNeuralNetwork {
+  fn rust_classify(&self, observations: &Matrix) -> Vec<f64> {
+    let num_observations = observations.columns;
+
+    let mut neuron_outputs: Vec<Matrix> = self
+      .weights
+      .iter()
+      .map(|layer| Matrix::zeros(layer.data.len(), num_observations))
+      .collect_vec();
+
+    let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
+    self.feed_forward(&observations, &mut neuron_outputs, &activation_function);
+    let predicted_probabilities = Self::softmax(&neuron_outputs);
+    let classifications = Self::get_classification(&predicted_probabilities);
+
+    return classifications;
+  }
+
+  pub fn get_classification(predicted_probabilities: &Matrix) -> Vec<f64> {
+    return predicted_probabilities
+      .transpose()
+      .iter()
+      .map(|outputs| {
+        outputs
+          .iter()
+          .enumerate()
+          .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+          .map(|a| a.0 as f64)
+          .unwrap()
+      })
+      .collect();
+  }
+
+  pub fn train_regression(
+    &mut self,
+    observations: &Matrix,
+    neuron_outputs: &mut Vec<Matrix>,
+    labels: &Vec<f64>,
+    learning_rate: f64,
+    activation_function: Box<dyn ActivationFunction>,
+    num_iterations: usize,
+  ) {
+    for i in 0..num_iterations {
+      // Feed forward
+      self.feed_forward(observations, neuron_outputs, &activation_function);
+
+      // Calculate error from feed forward step
+      let output_error =
+        self.backpropogation_output_layer_regression(labels, neuron_outputs, learning_rate);
+
+      // Backpropogate hidden
+      self.backpropogation_hidden_layer(
+        observations,
+        neuron_outputs,
+        &output_error,
+        learning_rate,
+        &activation_function,
+        self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
+      );
+
+      // Print progress here (TODO)
+      if i % 50 == 0 {
+        self.test_train_performance_regression(observations, labels);
+      }
+    }
+  }
+
+  pub fn train_classification(
+    &mut self,
+    observations: &Matrix,
+    neuron_outputs: &mut Vec<Matrix>,
+    labels: &Vec<f64>,
+    learning_rate: f64,
+    activation_function: Box<dyn ActivationFunction>,
+    num_iterations: usize,
+  ) {
+    // For now we will make the number of iterations a constant
+    for i in 0..num_iterations {
+      self.feed_forward(observations, neuron_outputs, &activation_function);
+
+      let predicted_probabilities = Self::softmax(neuron_outputs);
+
+      let output_error = self.backpropogation_output_layer_classification(
+        &predicted_probabilities,
+        labels,
+        neuron_outputs,
+        learning_rate,
+      );
+
+      self.backpropogation_hidden_layer(
+        observations,
+        neuron_outputs,
+        &output_error,
+        learning_rate,
+        &activation_function,
+        self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
+      );
+
+      if i % 50 == 0 {
+        self.test_train_performance_classification(observations, labels);
+      }
+    }
+  }
+
   pub fn feed_forward(
     &self,
     observations: &Matrix,
@@ -204,21 +307,6 @@ impl BasicNeuralNetwork {
     }
 
     return predictions;
-  }
-
-  pub fn get_classification(predicted_probabilities: &Matrix) -> Vec<f64> {
-    return predicted_probabilities
-      .transpose()
-      .iter()
-      .map(|outputs| {
-        outputs
-          .iter()
-          .enumerate()
-          .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-          .map(|a| a.0 as f64)
-          .unwrap()
-      })
-      .collect();
   }
 
   pub fn backpropogation_output_layer_regression(
@@ -358,98 +446,7 @@ impl BasicNeuralNetwork {
     }
   }
 
-  pub fn train_regression(
-    &mut self,
-    observations: &Matrix,
-    neuron_outputs: &mut Vec<Matrix>,
-    labels: &Vec<f64>,
-    learning_rate: f64,
-    activation_function: Box<dyn ActivationFunction>,
-    num_iterations: usize,
-  ) {
-    for _i in 0..num_iterations {
-      // Feed forward
-      self.feed_forward(observations, neuron_outputs, &activation_function);
-
-      // Calculate error from feed forward step
-      let output_error =
-        self.backpropogation_output_layer_regression(labels, neuron_outputs, learning_rate);
-
-      // Backpropogate hidden
-      self.backpropogation_hidden_layer(
-        observations,
-        neuron_outputs,
-        &output_error,
-        learning_rate,
-        &activation_function,
-        self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
-      );
-
-      // Print progress here (TODO)
-    }
-  }
-
-  pub fn train_classification(
-    &mut self,
-    observations: &Matrix,
-    neuron_outputs: &mut Vec<Matrix>,
-    labels: &Vec<f64>,
-    learning_rate: f64,
-    activation_function: Box<dyn ActivationFunction>,
-    num_iterations: usize,
-  ) {
-    // For now we will make the number of iterations a constant
-    for i in 0..num_iterations {
-      // py_print(&format!("Starting iteration {}", i));
-      self.feed_forward(observations, neuron_outputs, &activation_function);
-      // py_print(&format!("Finished feed forward for iteration {}", i));
-
-      let predicted_probabilities = Self::softmax(neuron_outputs);
-      // py_print(&format!("Finished softmax for iteration {}", i));
-
-      let output_error = self.backpropogation_output_layer_classification(
-        &predicted_probabilities,
-        labels,
-        neuron_outputs,
-        learning_rate,
-      );
-      // py_print(&format!(
-      //   "Finished backprop output layer for iteration {}",
-      //   i
-      // ));
-
-      self.backpropogation_hidden_layer(
-        observations,
-        neuron_outputs,
-        &output_error,
-        learning_rate,
-        &activation_function,
-        self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
-      );
-      // py_print(&format!(
-      //   "Finished backprop hidden layers for iteration {}",
-      //   i
-      // ));
-
-      if i % 50 == 0 {
-        self.test_train_performance(observations, labels);
-      }
-    }
-  }
-
-  fn test_train_performance(&self, observations: &Matrix, labels: &Vec<f64>) {
-    let classifications = self.train_classify(&observations);
-    let num_correct = izip!(classifications.iter(), labels.iter())
-      .fold(0.0, |acc, (classification, label)| {
-        acc + if classification == label { 1.0 } else { 0.0 }
-      });
-
-    let percent_correct = num_correct / labels.len() as f64;
-
-    py_print(&format!("% Correct: {}", percent_correct));
-  }
-
-  fn train_classify(&self, observations: &Matrix) -> Vec<f64> {
+  fn rust_regression(&self, observations: &Matrix) -> Vec<f64> {
     let num_observations = observations.columns;
 
     let mut neuron_outputs: Vec<Matrix> = self
@@ -460,9 +457,38 @@ impl BasicNeuralNetwork {
 
     let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
     self.feed_forward(&observations, &mut neuron_outputs, &activation_function);
-    let predicted_probabilities = Self::softmax(&neuron_outputs);
-    let classifications = Self::get_classification(&predicted_probabilities);
+    let classifications = neuron_outputs[neuron_outputs.len() - 1][0].to_vec();
 
     return classifications;
+  }
+
+  fn test_train_performance_regression(&self, observations: &Matrix, labels: &Vec<f64>) {
+    let classifications = self.rust_regression(&observations);
+    let tolerance = 0.05;
+    let num_correct =
+      izip!(classifications.iter(), labels.iter()).fold(0.0, |acc, (classification, label)| {
+        acc
+          + if (classification - label).abs() <= (label * tolerance).abs() {
+            1.0
+          } else {
+            0.0
+          }
+      });
+
+    let percent_correct = num_correct / labels.len() as f64;
+
+    py_print(&format!("% Correct: {}", percent_correct));
+  }
+
+  fn test_train_performance_classification(&self, observations: &Matrix, labels: &Vec<f64>) {
+    let classifications = self.rust_classify(&observations);
+    let num_correct = izip!(classifications.iter(), labels.iter())
+      .fold(0.0, |acc, (classification, label)| {
+        acc + if classification == label { 1.0 } else { 0.0 }
+      });
+
+    let percent_correct = num_correct / labels.len() as f64;
+
+    py_print(&format!("% Correct: {}", percent_correct));
   }
 }
