@@ -1,7 +1,7 @@
 use crate::{matrix_lib::Matrix, py_util::py_print};
 use itertools::{izip, Itertools};
 use pyo3::prelude::*;
-use rand::prelude::Distribution;
+use rand::{distributions::Uniform, prelude::Distribution};
 use statrs::distribution::Normal;
 
 // So I was initially gonna use a class representation for each neuron
@@ -64,6 +64,7 @@ impl BasicNeuralNetwork {
     num_classifications: usize, // Set to anything 1 to perform regression
     learning_rate: f64,
     num_iterations: usize,
+    batch_size: usize, // Set to 0 to use stochastic GD
   ) -> Self {
     // Gather data on dimensions for matrices
     let num_observations = features_train.len();
@@ -117,6 +118,7 @@ impl BasicNeuralNetwork {
         learning_rate,
         Box::new(Relu {}),
         num_iterations,
+        batch_size,
       );
     } else {
       network.train_classification(
@@ -126,6 +128,7 @@ impl BasicNeuralNetwork {
         learning_rate,
         Box::new(Relu {}),
         num_iterations,
+        batch_size,
       );
     }
 
@@ -204,6 +207,27 @@ impl BasicNeuralNetwork {
       .collect();
   }
 
+  pub fn mini_batch(
+    observations: &Matrix,
+    labels: &Vec<f64>,
+    batch_size: usize,
+  ) -> (Matrix, Vec<f64>) {
+    let mut rng = rand::thread_rng();
+    let column_dist = Uniform::new(0, observations.columns);
+
+    let mut mini_batch = Matrix::zeros(observations.rows, batch_size);
+    let mut mini_batch_labels = vec![0.0; batch_size];
+    for i in 0..batch_size {
+      let column_index = column_dist.sample(&mut rng);
+      for j in 0..observations.rows {
+        mini_batch[j][i] = observations[j][column_index];
+      }
+      mini_batch_labels[i] = labels[column_index];
+    }
+
+    return (mini_batch, mini_batch_labels);
+  }
+
   pub fn train_regression(
     &mut self,
     observations: &Matrix,
@@ -212,18 +236,33 @@ impl BasicNeuralNetwork {
     learning_rate: f64,
     activation_function: Box<dyn ActivationFunction>,
     num_iterations: usize,
+    batch_size: usize,
   ) {
     for i in 0..num_iterations {
+      // Batch
+      let batch_data = BasicNeuralNetwork::mini_batch(observations, labels, batch_size);
+
+      let batch = if batch_size == 0 {
+        observations
+      } else {
+        &batch_data.0
+      };
+      let batch_labels = if batch_size == 0 {
+        labels
+      } else {
+        &batch_data.1
+      };
+
       // Feed forward
-      self.feed_forward(observations, neuron_outputs, &activation_function);
+      self.feed_forward(batch, neuron_outputs, &activation_function);
 
       // Calculate error from feed forward step
       let output_error =
-        self.backpropogation_output_layer_regression(labels, neuron_outputs, learning_rate);
+        self.backpropogation_output_layer_regression(batch_labels, neuron_outputs, learning_rate);
 
       // Backpropogate hidden
       self.backpropogation_hidden_layer(
-        observations,
+        batch,
         neuron_outputs,
         &output_error,
         learning_rate,
@@ -231,7 +270,7 @@ impl BasicNeuralNetwork {
         self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
       );
 
-      // Print progress here (TODO)
+      // Print progress
       if i % 50 == 0 {
         self.test_train_performance_regression(observations, labels);
       }
@@ -246,22 +285,39 @@ impl BasicNeuralNetwork {
     learning_rate: f64,
     activation_function: Box<dyn ActivationFunction>,
     num_iterations: usize,
+    batch_size: usize,
   ) {
     // For now we will make the number of iterations a constant
     for i in 0..num_iterations {
-      self.feed_forward(observations, neuron_outputs, &activation_function);
+      // Batch
+      let batch_data = BasicNeuralNetwork::mini_batch(observations, labels, batch_size);
 
+      let batch = if batch_size == 0 {
+        observations
+      } else {
+        &batch_data.0
+      };
+      let batch_labels = if batch_size == 0 {
+        labels
+      } else {
+        &batch_data.1
+      };
+
+      // Feed forward
+      self.feed_forward(batch, neuron_outputs, &activation_function);
+
+      // Calculate error from feed forward step
       let predicted_probabilities = Self::softmax(neuron_outputs);
-
       let output_error = self.backpropogation_output_layer_classification(
         &predicted_probabilities,
-        labels,
+        batch_labels,
         neuron_outputs,
         learning_rate,
       );
 
+      // Backpropogate hidden
       self.backpropogation_hidden_layer(
-        observations,
+        batch,
         neuron_outputs,
         &output_error,
         learning_rate,
@@ -475,7 +531,7 @@ impl BasicNeuralNetwork {
           }
       });
 
-    let percent_correct = num_correct / labels.len() as f64;
+    let percent_correct = 100.0 * num_correct / labels.len() as f64;
 
     py_print(&format!("% Correct: {}", percent_correct));
   }
@@ -487,7 +543,7 @@ impl BasicNeuralNetwork {
         acc + if classification == label { 1.0 } else { 0.0 }
       });
 
-    let percent_correct = num_correct / labels.len() as f64;
+    let percent_correct = 100.0 * num_correct / labels.len() as f64;
 
     py_print(&format!("% Correct: {}", percent_correct));
   }
