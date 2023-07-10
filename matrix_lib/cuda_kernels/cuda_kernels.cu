@@ -17,11 +17,20 @@ void test() {
     int result;
     int* d_result;
 
-    cudaMalloc((void**)&d_result, sizeof(int));
+    cudaError_t err = cudaMalloc((void**)&d_result, sizeof(int));
+    if (err != cudaSuccess) {
+        printf("The error is %s", cudaGetErrorString(err));
+    }
 
     add_kernel<<<1, 1>>>(d_result);
+    if (cudaPeekAtLastError() != cudaSuccess) {
+        printf("The error is %s", cudaGetErrorString(cudaGetLastError()));
+    }
 
-    cudaMemcpy(&result, d_result, sizeof(int), cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(&result, d_result, sizeof(int), cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess) {
+        printf("The error is %s", cudaGetErrorString(err));
+    }
     cudaDeviceSynchronize();
 
     cudaFree(d_result);
