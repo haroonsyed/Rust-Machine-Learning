@@ -1,31 +1,20 @@
-use std::{fs, path::Path};
+use cc;
+use std::env;
 
 fn main() {
-  #[cfg(target_os = "windows")]
-  {
-    if let Ok(cuda_lib_dir) = std::env::var("CUDA_PATH").map(|path| format!("{}/lib/x64", path)) {
-      println!("CUDA library directory: {}", cuda_lib_dir);
-      println!("cargo:rustc-link-search=native={}", cuda_lib_dir);
-    } else {
-      println!("CUDA_PATH environment variable not found");
-    }
-  }
-
-  #[cfg(target_os = "linux")]
-  {
+  if let Ok(cuda_path) = env::var("CUDA_HOME") {
+    println!("cargo:rustc-link-search=native={}/lib64", cuda_path);
+  } else {
     println!("cargo:rustc-link-search=native=/usr/local/cuda/lib64");
-    println!("cargo:rustc-link-lib=dylib=stdc++");
   }
 
-  let out_dir = std::env::var("OUT_DIR").unwrap();
-  let dest_dir = Path::new(&out_dir).join("../../../cuda_kernels");
-  fs::create_dir_all(&dest_dir).unwrap();
-  fs::copy(
-    "cuda_kernels/libcuda_kernels.so",
-    dest_dir.join("libcuda_kernels.so"),
-  )
-  .unwrap();
-  println!("cargo:rustc-link-search=native={}", dest_dir.display());
+  println!("cargo:rustc-link-lib=dylib=cuda");
+  println!("cargo:rustc-link-lib=dylib=cudart");
+  println!("cargo:rustc-link-lib=dylib=cublas");
+  println!("cargo:rustc-link-lib=dylib=curand");
 
-  println!("cargo:rustc-link-lib=dylib=cuda_kernels");
+  cc::Build::new()
+    .cuda(true)
+    .file("cuda_kernels/cuda_kernels.cu")
+    .compile("cuda_kernels");
 }
