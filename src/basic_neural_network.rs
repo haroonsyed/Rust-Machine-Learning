@@ -1,5 +1,6 @@
-use crate::{matrix_lib::Matrix, py_util::py_print};
+use crate::py_util::py_print;
 use itertools::{izip, Itertools};
+use matrix_lib::Matrix;
 use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
 use statrs::distribution::Normal;

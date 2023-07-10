@@ -6,7 +6,6 @@ pub mod gradient_descent;
 pub mod gradientboost;
 pub mod k_means;
 pub mod k_nearest_neighbor;
-pub mod matrix_lib;
 pub mod naive_bayes;
 pub mod py_util;
 pub mod regression_tree;

@@ -2,7 +2,7 @@ use rand::prelude::Distribution;
 use statrs::distribution::Normal;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use Rust_Machine_Learning::matrix_lib::Matrix;
+use matrix_lib::Matrix;
 
 // Define the benchmark function
 pub fn matrix_multiply_benchmark(criterion: &mut Criterion) {

@@ -15,7 +15,7 @@ itertools = "0.10.5"
 ordered-float = "3.4.0"
 num = "0.4.0" 
 statrs = "0.16.0"
-rayon = "1.7.0"
+matrix_lib = { path = "./matrix_lib" }
 
 [dev-dependencies]
 criterion = "0.4.0"

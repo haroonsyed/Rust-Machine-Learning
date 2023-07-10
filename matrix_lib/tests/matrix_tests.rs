@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod matrix_tests {
 
-  use Rust_Machine_Learning::matrix_lib::Matrix;
+  use matrix_lib::Matrix;
 
   #[test]
   fn element_add() {

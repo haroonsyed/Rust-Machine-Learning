@@ -3,8 +3,6 @@ use std::ops::{Index, IndexMut};
 use itertools::{concat, Itertools};
 use rayon::prelude::*;
 
-use crate::py_util::py_print;
-
 pub struct Matrix {
   pub data: Vec<f64>,
   pub rows: usize,
@@ -54,17 +52,17 @@ impl Matrix {
   }
 
   pub fn print(&self) {
-    py_print(&"");
-    py_print(&"");
+    println!("");
+    println!("");
     for row in 0..self.rows {
       let formatted = (0..self.columns)
         .map(|col| format!("{:<5}", self[row][col]))
         .collect::<Vec<String>>()
         .join(" ");
-      py_print(&formatted);
+      println!("{}", formatted);
     }
-    py_print(&"");
-    py_print(&"");
+    println!("");
+    println!("");
   }
   pub fn same_shape(&self, other: &Matrix) -> bool {
     return self.rows == other.rows && self.columns == other.columns;

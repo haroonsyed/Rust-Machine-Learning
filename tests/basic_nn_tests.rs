@@ -2,8 +2,8 @@
 mod basic_nn_tests {
 
   use itertools::izip;
+  use matrix_lib::Matrix;
   use Rust_Machine_Learning::basic_neural_network::{ActivationFunction, BasicNeuralNetwork, Relu};
-  use Rust_Machine_Learning::matrix_lib::Matrix;
 
   #[test]
   fn feed_forward() {
