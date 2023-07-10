@@ -47,8 +47,8 @@ Any data is located in the data folder.
    `pip install -r requirements.txt`
 5. Build cuda kernels<br/>
    - `cd matrix_lib`
-   - compile_cuda_kernels.bat (Windows)<br/>
-     chmod +x compile_cuda_kernels.sh && ./compile_cuda_kernels.sh (Linux)
+   - `compile_cuda_kernels.bat` (Windows)<br/>
+     `chmod +x build_kernels.sh` && `./build_kernels.sh` (Linux)
    - `cd ..`
 6. Compile Rust Code using `maturin develop` or `maturin develop --release`
 7. Open notebooks in jupyter notebook/jupyter lab/vscode etc..
