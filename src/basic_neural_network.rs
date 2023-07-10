@@ -136,7 +136,6 @@ impl BasicNeuralNetwork {
     unsafe {
       matrix_lib::bindings::test();
     }
-    py_print(&matrix_lib::bindings::test_2());
 
     // Cleanup and return
     return network;
