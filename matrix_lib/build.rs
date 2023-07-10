@@ -1,35 +1,31 @@
-use std::{env, path::PathBuf};
+use std::{fs, path::Path};
 
 fn main() {
-  if let Ok(cuda_lib_dir) = env::var("CUDA_PATH").map(|path| {
-    #[cfg(target_os = "windows")]
-    {
-      format!("{}/lib/x64", path)
+  #[cfg(target_os = "windows")]
+  {
+    if let Ok(cuda_lib_dir) = std::env::var("CUDA_PATH").map(|path| format!("{}/lib/x64", path)) {
+      println!("CUDA library directory: {}", cuda_lib_dir);
+      println!("cargo:rustc-link-search=native={}", cuda_lib_dir);
+    } else {
+      println!("CUDA_PATH environment variable not found");
     }
-    #[cfg(target_os = "linux")]
-    {
-      format!("{}/lib64", path)
-    }
-  }) {
-    println!("CUDA library directory: {}", cuda_lib_dir);
-    println!("cargo:rustc-link-search=native={}", cuda_lib_dir);
-  } else {
-    println!("CUDA_PATH environment variable not found");
   }
 
-  // Get the directory containing the `matrix_lib` crate's `Cargo.toml`
-  let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("Failed to get manifest directory");
+  #[cfg(target_os = "linux")]
+  {
+    println!("cargo:rustc-link-search=native=/usr/local/cuda/lib64");
+    println!("cargo:rustc-link-lib=dylib=stdc++");
+  }
 
-  // Construct the relative path to the cuda_kernels directory
-  let cuda_kernels_dir = PathBuf::from(manifest_dir).join("cuda_kernels");
+  let out_dir = std::env::var("OUT_DIR").unwrap();
+  let dest_dir = Path::new(&out_dir).join("../../../cuda_kernels");
+  fs::create_dir_all(&dest_dir).unwrap();
+  fs::copy(
+    "cuda_kernels/libcuda_kernels.so",
+    dest_dir.join("libcuda_kernels.so"),
+  )
+  .unwrap();
+  println!("cargo:rustc-link-search=native={}", dest_dir.display());
 
-  // Convert the path to a string
-  let cuda_kernels_dir_str = cuda_kernels_dir
-    .to_str()
-    .expect("Failed to convert path to string");
-
-  // Set the search path for the linker
-  println!("cargo:rustc-link-search={}", cuda_kernels_dir_str);
-  println!("cargo:rustc-link-lib=static=cuda_kernels");
-  println!("cargo:rustc-link-lib=static=cudart");
+  println!("cargo:rustc-link-lib=dylib=cuda_kernels");
 }
