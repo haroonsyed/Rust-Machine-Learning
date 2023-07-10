@@ -1,3 +1,5 @@
+pub mod bindings;
+
 use std::ops::{Index, IndexMut};
 
 use itertools::{concat, Itertools};

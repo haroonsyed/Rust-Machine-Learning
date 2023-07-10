@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod matrix_tests {
 
+  use matrix_lib::bindings::test;
   use matrix_lib::Matrix;
 
   #[test]
@@ -99,5 +100,12 @@ mod matrix_tests {
     }
 
     return true;
+  }
+
+  #[test]
+  fn cuda_accessible() {
+    unsafe {
+      test();
+    }
   }
 }

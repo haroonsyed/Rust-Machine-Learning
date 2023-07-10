@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 rayon = "1.7.0"
 itertools = "0.10.5"
+
+[build-dependencies]
+cc = "1.0.79"
