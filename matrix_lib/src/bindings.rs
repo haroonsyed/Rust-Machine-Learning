@@ -3,7 +3,7 @@ use std::ffi::c_double;
 extern "C" {
   pub fn test();
   pub fn test_array_fill(out: *mut c_double, length: usize);
-  pub fn cuda_element_add(
+  pub fn cuda_matrix_multiply(
     mat1_buffer: *const c_double,
     mat1_rows: usize,
     mat1_cols: usize,

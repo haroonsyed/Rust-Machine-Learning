@@ -44,18 +44,29 @@ void test_array_fill(double* buffer, size_t length) {
     }
 }
 
-__global__ void element_add_kernel(double* mat1_buffer, int mat1_rows, int mat1_cols, double* mat2_buffer, int mat2_rows, int mat2_cols, double* out_buffer, int out_rows, int out_cols) {
+__global__ void matrix_multiply_kernel(double* mat1_buffer, int mat1_rows, int mat1_cols, double* mat2_buffer, int mat2_rows, int mat2_cols, double* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
-    const int max_index = out_cols * out_rows;
-    int index = tidX * out_cols + tidY;
+    if (tidX < out_rows && tidY < out_cols) {
+        // O[i][j] = mat1[i][:] weighted sum mat2[:][j]
+        // Where common dimension : is mat1col/mat2row
 
-    if (index < max_index) {
-        out_buffer[index] = mat1_buffer[index] + mat2_buffer[index];
+        double weighted_sum = 0.0;
+        for (int common = 0; common < mat1_cols; common++) {
+            // mat1[i][common]
+            int mat1_index = mat1_cols * tidX + common;
+            // mat1[common][j]
+            int mat2_index = mat2_cols * common + tidY;
+
+            weighted_sum += mat1_buffer[mat1_index] * mat2_buffer[mat2_index];
+        }
+
+        int output_index = tidX * out_cols + tidY;
+        out_buffer[output_index] = weighted_sum;
     }
 }
-void cuda_element_add(double* mat1_buffer, size_t mat1_rows, size_t mat1_cols, double* mat2_buffer, size_t mat2_rows, size_t mat2_cols, double* out_buffer, size_t out_rows, size_t out_cols) {
+void cuda_matrix_multiply(double* mat1_buffer, size_t mat1_rows, size_t mat1_cols, double* mat2_buffer, size_t mat2_rows, size_t mat2_cols, double* out_buffer, size_t out_rows, size_t out_cols) {
     // Setup the cuda buffers
     double* gpu_mat1_buffer;
     double* gpu_mat2_buffer;
@@ -74,8 +85,13 @@ void cuda_element_add(double* mat1_buffer, size_t mat1_rows, size_t mat1_cols, d
     dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
 
     // Run the kernels
-    element_add_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    matrix_multiply_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
 
     // Download results to output
     cudaMemcpy(out_buffer, gpu_out_buffer, sizeof(double) * out_rows * out_cols, cudaMemcpyDeviceToHost);
+
+    // Free resources
+    cudaFree(gpu_mat1_buffer);
+    cudaFree(gpu_mat2_buffer);
+    cudaFree(gpu_out_buffer);
 }

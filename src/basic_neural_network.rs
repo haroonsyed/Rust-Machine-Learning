@@ -133,10 +133,6 @@ impl BasicNeuralNetwork {
       );
     }
 
-    unsafe {
-      matrix_lib::bindings::test();
-    }
-
     // Cleanup and return
     return network;
   }
