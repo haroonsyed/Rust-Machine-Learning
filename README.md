@@ -34,7 +34,7 @@ Any data is located in the data folder.
 | Convolutional Neural Networks      | :x:                |
 | Recurrent Neural Networks          | :x:                |
 | Generative Adversarial Networks    | :x:                |
-| CUDA Acceleration w/t pybind11     | :x:                |
+| CUDA Acceleration w/t rust ffi     | :x:                |
 
 ## Setup Instructions
 
