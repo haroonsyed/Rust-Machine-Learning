@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod matrix_tests {
-
-  use matrix_lib::bindings::test;
+  use matrix_lib::bindings::*;
   use matrix_lib::Matrix;
+  use std::ffi::c_double;
 
   #[test]
   fn element_add() {
@@ -107,5 +107,19 @@ mod matrix_tests {
     unsafe {
       test();
     }
+  }
+
+  #[test]
+  fn cuda_data_passing() {
+    // Create vector to fill
+    let len: usize = 1000;
+    let mut out = Vec::<c_double>::with_capacity(len);
+    unsafe {
+      test_array_fill(out.as_mut_ptr(), len);
+      out.set_len(len);
+    }
+
+    // Ensure output is correct
+    (0..len).for_each(|i| assert_eq!(out[i], i as f64));
   }
 }

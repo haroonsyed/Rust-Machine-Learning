@@ -41,3 +41,9 @@ void test() {
     printf("Result: %d\n", result);
     std::cout << "Finished Running Kernels." << std::endl;
 }
+
+void test_array_fill(double* buffer, size_t length) {
+    for (int i = 0; i < length; i++) {
+        buffer[i] = i;
+    }
+}
