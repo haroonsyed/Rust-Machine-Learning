@@ -1,9 +1,12 @@
 pub mod bindings;
 
-use std::ops::{Index, IndexMut};
-
+use bindings::*;
 use itertools::{concat, Itertools};
 use rayon::prelude::*;
+use std::{
+  ffi::c_double,
+  ops::{Index, IndexMut},
+};
 
 pub struct Matrix {
   pub data: Vec<f64>,
@@ -74,15 +77,33 @@ impl Matrix {
       panic!("Matrices not the same shape for addition!");
     }
 
-    let mut result = Self::zeros(self.rows, self.columns);
+    // Create vector to fill
+    let result_rows = self.rows;
+    let result_columns = self.columns;
+    let result_len: usize = result_rows * result_columns;
+    let mut result = Vec::<c_double>::with_capacity(result_len);
 
-    for i in 0..result.rows {
-      for j in 0..result.columns {
-        result[i][j] = self[i][j] + other[i][j];
-      }
+    // Run cuda kernel
+    unsafe {
+      cuda_element_add(
+        self.data.as_ptr(),
+        self.rows,
+        self.columns,
+        other.data.as_ptr(),
+        other.rows,
+        other.columns,
+        result.as_mut_ptr(),
+        result_rows,
+        result_columns,
+      );
+      result.set_len(result_len);
     }
 
-    return result;
+    return Matrix {
+      data: result,
+      rows: result_rows,
+      columns: result_columns,
+    };
   }
 
   pub fn element_multiply(&self, other: &Matrix) -> Self {
