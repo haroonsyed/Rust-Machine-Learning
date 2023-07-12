@@ -1,67 +1,78 @@
 pub mod bindings;
 
 use bindings::*;
-use itertools::{concat, Itertools};
-use rayon::prelude::*;
-use std::{
-  ffi::c_double,
-  ops::{Index, IndexMut},
-};
+use itertools::concat;
+use std::ffi::c_double;
 
 pub struct Matrix {
-  pub data: Vec<f64>,
+  id: usize,
   pub rows: usize,
   pub columns: usize,
 }
 
-impl Index<usize> for Matrix {
-  type Output = [f64];
-
-  fn index(&self, row: usize) -> &Self::Output {
-    let start = row * self.columns;
-    let end = start + self.columns;
-    &self.data[start..end]
-  }
-}
-
-impl IndexMut<usize> for Matrix {
-  fn index_mut(&mut self, row: usize) -> &mut Self::Output {
-    let start = row * self.columns;
-    let end = start + self.columns;
-    &mut self.data[start..end]
+impl Drop for Matrix {
+  fn drop(&mut self) {
+    unsafe {
+      unregister_matrix(self.id);
+    }
   }
 }
 
 impl Matrix {
+  pub fn get_data_length(&self) -> usize {
+    return self.rows * self.columns;
+  }
+
+  pub fn get_data(&self) -> Vec<Vec<f64>> {
+    let mut data = Vec::<c_double>::with_capacity(self.get_data_length());
+    unsafe {
+      get_matrix_data(self.id, self.rows, self.columns, data.as_mut_ptr());
+      data.set_len(self.get_data_length());
+    }
+
+    let mut index = 0;
+    let mut result = Vec::new();
+    for _ in 0..self.rows {
+      let row_slice = data[index..index + self.columns as usize].to_owned();
+      result.push(row_slice);
+      index += self.columns as usize;
+    }
+
+    return result;
+  }
+
   pub fn zeros(rows: usize, columns: usize) -> Self {
-    return Matrix {
-      data: vec![0.0; rows * columns],
-      rows,
-      columns,
-    };
+    let data = vec![0.0; rows * columns];
+    let id;
+    unsafe {
+      id = register_matrix(data.as_ptr(), rows, columns);
+    }
+    return Matrix { id, rows, columns };
   }
 
   pub fn new_2d(data: Vec<Vec<f64>>) -> Self {
     let rows = data.len();
     let columns = data[0].len();
     let flattened = concat(data);
-    return Matrix {
-      data: flattened,
-      rows,
-      columns,
-    };
-  }
 
-  pub fn iter(&self) -> impl Iterator<Item = &[f64]> {
-    self.data.chunks(self.columns)
+    let id;
+    unsafe {
+      id = register_matrix(flattened.as_ptr(), rows, columns);
+    }
+
+    return Matrix { id, rows, columns };
   }
 
   pub fn print(&self) {
     println!("");
     println!("");
+
+    // OPTIMIZE!
+    let data = self.get_data();
+
     for row in 0..self.rows {
       let formatted = (0..self.columns)
-        .map(|col| format!("{:<5}", self[row][col]))
+        .map(|col| format!("{:<5}", data[row][col]))
         .collect::<Vec<String>>()
         .join(" ");
       println!("{}", formatted);
@@ -77,39 +88,26 @@ impl Matrix {
       panic!("Matrices not the same shape for addition!");
     }
 
-    let mut result = Self::zeros(self.rows, self.columns);
-
-    result
-      .data
-      .par_chunks_mut(result.columns)
-      .enumerate()
-      .for_each(|(result_row_index, result_row_slice)| {
-        for j in 0..result.columns {
-          result_row_slice[j] = self[result_row_index][j] + other[result_row_index][j];
-        }
-      });
-
-    return result;
-  }
-
-  pub fn element_multiply(&self, other: &Matrix) -> Self {
-    if !self.same_shape(other) {
-      panic!("Matrices not the same shape for element_multiply!");
+    let result_id: usize;
+    unsafe {
+      result_id = cuda_element_add(
+        self.id,
+        self.rows,
+        self.columns,
+        other.id,
+        other.rows,
+        other.columns,
+      )
     }
 
-    let mut result = Self::zeros(self.rows, self.columns);
+    let output_rows = self.rows;
+    let output_columns = self.columns;
 
-    result
-      .data
-      .par_chunks_mut(result.columns)
-      .enumerate()
-      .for_each(|(result_row_index, result_row_slice)| {
-        for j in 0..result.columns {
-          result_row_slice[j] = self[result_row_index][j] * other[result_row_index][j];
-        }
-      });
-
-    return result;
+    return Matrix {
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
+    };
   }
 
   pub fn element_subtract(&self, other: &Matrix) -> Self {
@@ -117,35 +115,67 @@ impl Matrix {
       panic!("Matrices not the same shape for element_subtract!");
     }
 
-    let mut result = Self::zeros(self.rows, self.columns);
+    let result_id: usize;
+    unsafe {
+      result_id = cuda_element_subtract(
+        self.id,
+        self.rows,
+        self.columns,
+        other.id,
+        other.rows,
+        other.columns,
+      )
+    }
 
-    result
-      .data
-      .par_chunks_mut(result.columns)
-      .enumerate()
-      .for_each(|(result_row_index, result_row_slice)| {
-        for j in 0..result.columns {
-          result_row_slice[j] = self[result_row_index][j] - other[result_row_index][j];
-        }
-      });
+    let output_rows = self.rows;
+    let output_columns = self.columns;
 
-    return result;
+    return Matrix {
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
+    };
   }
 
-  pub fn add_vector_to_columns(&self, other: &Matrix) -> Self {
-    if self.rows != other.rows {
-      panic!("Matrices not the correct shape for add_vector_to_columns!");
+  pub fn element_multiply(&self, other: &Matrix) -> Self {
+    if !self.same_shape(other) {
+      panic!("Matrices not the same shape for element_multiply!");
     }
 
-    let mut result = Self::zeros(self.rows, self.columns);
-
-    for i in 0..result.rows {
-      for j in 0..result.columns {
-        result[i][j] = self[i][j] + other[i][0];
-      }
+    let result_id: usize;
+    unsafe {
+      result_id = cuda_element_multiply(
+        self.id,
+        self.rows,
+        self.columns,
+        other.id,
+        other.rows,
+        other.columns,
+      )
     }
 
-    return result;
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix {
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
+    };
+  }
+
+  pub fn scalar_multiply(&self, scalar: f64) -> Self {
+    let result_id: usize;
+    unsafe { result_id = cuda_scalar_multiply(self.id, self.rows, self.columns, scalar) }
+
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix {
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
+    };
   }
 
   pub fn matrix_multiply(&self, other: &Matrix) -> Self {
@@ -154,147 +184,112 @@ impl Matrix {
       panic!("Matrices not compatible shape for mat mult!");
     }
 
-    // For larger matrices use gpu (idk i'm gonna say anything with > 16384 elements)
-    let gpu_threshold = 16384;
-    let total_output_elements = self.rows * other.columns;
-
-    if total_output_elements < gpu_threshold {
-      return self.matrix_multiply_cpu(other);
-    } else {
-      return self.matrix_multiply_gpu(other);
-    }
-  }
-
-  fn matrix_multiply_gpu(&self, other: &Matrix) -> Self {
-    // Create vector to fill
-    let result_rows = self.rows;
-    let result_columns = other.columns;
-    let result_len: usize = result_rows * result_columns;
-    let mut result = Vec::<c_double>::with_capacity(result_len);
-
-    // Run cuda kernel
+    let result_id: usize;
     unsafe {
-      cuda_matrix_multiply(
-        self.data.as_ptr(),
+      result_id = cuda_matrix_multiply(
+        self.id,
         self.rows,
         self.columns,
-        other.data.as_ptr(),
+        other.id,
         other.rows,
         other.columns,
-        result.as_mut_ptr(),
-        result_rows,
-        result_columns,
-      );
-      result.set_len(result_len);
+      )
     }
 
+    let output_rows = self.rows;
+    let output_columns = other.columns;
+
     return Matrix {
-      data: result,
-      rows: result_rows,
-      columns: result_columns,
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
     };
   }
 
-  fn matrix_multiply_cpu(&self, other: &Matrix) -> Self {
-    // Result dimensions will be rows self x columns other
-    let result_rows = self.rows;
-    let result_columns = other.columns;
-    let mut result = Self::zeros(result_rows, result_columns);
+  pub fn add_vector_to_columns(&self, other: &Matrix) -> Self {
+    if self.rows != other.rows || other.columns != 1 {
+      panic!("Matrices not the correct shape for add_vector_to_columns!");
+    }
 
-    // Row of this * column of that
-    result
-      .data
-      .par_chunks_mut(result_columns)
-      .enumerate()
-      .for_each(|(result_row_index, result_row_slice)| {
-        for vector_offset in 0..self.columns {
-          for result_col in 0..result_columns {
-            result_row_slice[result_col] +=
-              self[result_row_index][vector_offset] * other[vector_offset][result_col];
-          }
-        }
-      });
+    let result_id: usize;
+    unsafe {
+      result_id = cuda_add_vector_to_columns(
+        self.id,
+        self.rows,
+        self.columns,
+        other.id,
+        other.rows,
+        other.columns,
+      )
+    }
 
-    return result;
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix {
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
+    };
   }
 
-  pub fn scalar_multiply(&self, scalar: f64) -> Self {
-    let mut result = Self::zeros(self.rows, self.columns);
+  pub fn sum_rows_matrix(&self) -> Matrix {
+    let result_id: usize;
+    unsafe { result_id = cuda_sum_rows(self.id, self.rows, self.columns) }
 
-    result
-      .data
-      .par_chunks_mut(result.columns)
-      .enumerate()
-      .for_each(|(result_row_index, result_row_slice)| {
-        for j in 0..result.columns {
-          result_row_slice[j] = self[result_row_index][j] * scalar;
-        }
-      });
+    let output_rows = self.rows;
+    let output_columns = 1;
 
+    return Matrix {
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
+    };
+  }
+
+  pub fn sum_columns(&self) -> Vec<f64> {
+    let result_id: usize;
+    unsafe { result_id = cuda_sum_columns(self.id, self.rows, self.columns) }
+
+    let output_rows = 1;
+    let output_columns = self.columns;
+
+    let result_matrix = Matrix {
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
+    };
+
+    let result = result_matrix.get_data()[0].to_vec();
     return result;
   }
 
   pub fn transpose(&self) -> Self {
-    // Create result 2d vec with #rows and #columns flipped
-    let mut result = Self::zeros(self.columns, self.rows);
+    let result_id: usize;
+    unsafe { result_id = cuda_transpose(self.id, self.rows, self.columns) }
 
-    // Every row becomes column
-    result
-      .data
-      .par_chunks_mut(result.columns)
-      .enumerate()
-      .for_each(|(result_row_index, result_row_slice)| {
-        for j in 0..result.columns {
-          result_row_slice[j] = self[j][result_row_index];
-        }
-      });
+    let output_rows = self.columns;
+    let output_columns = self.rows;
 
-    return result;
-  }
-  pub fn element_apply(&self, func: &dyn Fn(f64) -> f64) -> Self {
-    let mut result = Self::zeros(self.rows, self.columns);
-
-    for i in 0..self.rows {
-      for j in 0..self.columns {
-        result[i][j] += func(self[i][j]);
-      }
-    }
-
-    return result;
+    return Matrix {
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
+    };
   }
 
-  pub fn sum_rows(&self) -> Vec<f64> {
-    return self.iter().map(|row| row.iter().sum()).collect_vec();
-  }
+  // TODO: Figure out what to do here? (Probably replace with specific functions for ml)
+  // pub fn element_apply(&self, func: &dyn Fn(f64) -> f64) -> Self {
+  //   let mut result = Self::zeros(self.rows, self.columns);
 
-  pub fn sum_rows_matrix(&self) -> Matrix {
-    let mut result = Self::zeros(self.rows, 1);
+  //   for i in 0..self.rows {
+  //     for j in 0..self.columns {
+  //       result[i][j] += func(self[i][j]);
+  //     }
+  //   }
 
-    result
-      .data
-      .par_chunks_mut(1)
-      .enumerate()
-      .for_each(|(result_row_index, result_row_slice)| {
-        result_row_slice[0] = self[result_row_index].iter().sum();
-      });
-
-    return result;
-  }
-
-  pub fn sum_columns(&self) -> Vec<f64> {
-    let mut result = vec![0.0; self.columns];
-
-    result
-      .par_iter_mut()
-      .enumerate()
-      .for_each(|(column_sum_index, val)| {
-        for i in 0..self.rows {
-          *val += self[i][column_sum_index];
-        }
-      });
-
-    return result;
-  }
+  //   return result;
+  // }
 }
 
 #[cfg(test)]
@@ -331,25 +326,13 @@ mod tests {
   }
 
   #[test]
-  fn matrix_multiply_cpu() {
-    let test_data = Matrix::new_2d(vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
-    let test_data_2 = Matrix::new_2d(vec![vec![3.0, 1.0, 5.0], vec![-2.0, 1.0, 3.0]]);
-
-    let expected_result = Matrix::new_2d(vec![vec![-2.0, 6.0, 22.0], vec![-3.0, 4.0, 14.0]]);
-
-    let observed_result = test_data.matrix_multiply_cpu(&test_data_2);
-
-    assert!(matrix_are_equal(observed_result, expected_result, 8));
-  }
-
-  #[test]
   fn matrix_multiply_gpu() {
     let test_data = Matrix::new_2d(vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
     let test_data_2 = Matrix::new_2d(vec![vec![3.0, 1.0, 5.0], vec![-2.0, 1.0, 3.0]]);
 
     let expected_result = Matrix::new_2d(vec![vec![-2.0, 6.0, 22.0], vec![-3.0, 4.0, 14.0]]);
 
-    let observed_result = test_data.matrix_multiply_gpu(&test_data_2);
+    let observed_result = test_data.matrix_multiply(&test_data_2);
 
     assert!(matrix_are_equal(observed_result, expected_result, 8));
   }
@@ -365,16 +348,16 @@ mod tests {
     assert!(matrix_are_equal(observed_result, expected_result, 8));
   }
 
-  #[test]
-  fn element_apply() {
-    let test_data = Matrix::new_2d(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+  // #[test]
+  // fn element_apply() {
+  //   let test_data = Matrix::new_2d(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
 
-    let expected_result = Matrix::new_2d(vec![vec![0.0, 1.0, 2.0], vec![3.0, 4.0, 5.0]]);
+  //   let expected_result = Matrix::new_2d(vec![vec![0.0, 1.0, 2.0], vec![3.0, 4.0, 5.0]]);
 
-    let observed_result = test_data.element_apply(&|x| x - 1.0);
+  //   let observed_result = test_data.element_apply(&|x| x - 1.0);
 
-    assert!(matrix_are_equal(observed_result, expected_result, 8));
-  }
+  //   assert!(matrix_are_equal(observed_result, expected_result, 8));
+  // }
 
   #[test]
   fn add_vector_to_columns() {
@@ -385,19 +368,7 @@ mod tests {
     let expected_result = Matrix::new_2d(vec![vec![2.0, 3.0, 4.0], vec![3.0, 4.0, 5.0]]);
 
     let observed_result = matrix.add_vector_to_columns(&vector);
-
     assert!(matrix_are_equal(observed_result, expected_result, 8));
-  }
-
-  #[test]
-  fn sum_row() {
-    let matrix = Matrix::new_2d(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
-
-    let expected_result = vec![6.0, 15.0];
-
-    let observed_result = matrix.sum_rows();
-
-    assert_eq!(observed_result, expected_result);
   }
 
   #[test]
@@ -427,9 +398,14 @@ mod tests {
       return false;
     }
 
+    a.print();
+    b.print();
+
+    let a_data = a.get_data();
+    let b_data = b.get_data();
     for i in 0..a.rows {
       for j in 0..a.columns {
-        if !approx_equal(a[i][j], b[i][j], precision) {
+        if !approx_equal(a_data[i][j], b_data[i][j], precision) {
           return false;
         }
       }
