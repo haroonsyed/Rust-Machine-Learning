@@ -44,12 +44,7 @@ Any data is located in the data folder.
    Windows: `.\.venv\Scripts\activate.bat`<br/>
    Mac/Linux: `source ./.venv/bin/activate`
 4. Install dependencies from requirements.txt<br/>
-   `pip install -r requirements.txt`
-5. Build cuda kernels<br/>
-   - `cd matrix_lib`
-   - `compile_cuda_kernels.bat` (Windows)<br/>
-     `chmod +x build_kernels.sh` && `./build_kernels.sh` (Linux)
-   - `cd ..`
+   `pip install -r requirements_{platform}.txt`
 6. Compile Rust Code using `maturin develop` or `maturin develop --release`
 7. Open notebooks in jupyter notebook/jupyter lab/vscode etc..
 
