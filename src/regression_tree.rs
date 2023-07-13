@@ -50,7 +50,7 @@ impl RegressionTreeNode {
     let (less, gre) = Self::split_data(&features_train, lowest_ssr_col, lowest_ssr_avg);
 
     // Recurse only if data length is > DATAPOINTS_PER_NODE and no infinite recursion
-    let mut left_child = None;
+    let left_child;
     let can_infinite_recurse = less.len() == 0 || gre.len() == 0;
     if less.len() > datapoints_per_node && !can_infinite_recurse && max_depth != 0 {
       left_child = Some(Box::new(Self::build_tree(
@@ -67,7 +67,7 @@ impl RegressionTreeNode {
         prediction: mean(&less.iter().map(|x| *x.1).collect()),
       }));
     }
-    let mut right_child = None;
+    let right_child;
     if gre.len() > datapoints_per_node && !can_infinite_recurse && max_depth != 0 {
       right_child = Some(Box::new(Self::build_tree(
         gre,

@@ -44,7 +44,7 @@ extern "C" {
     mat2_rows: usize,
     mat2_cols: usize,
   ) -> usize;
-  pub fn cuda_add_vector_to_columns(
+  pub fn cuda_add_vector(
     mat1_id: usize,
     mat1_rows: usize,
     mat1_cols: usize,
@@ -52,6 +52,17 @@ extern "C" {
     mat2_rows: usize,
     mat2_cols: usize,
   ) -> usize;
+  pub fn cuda_divide_by_vector(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    mat2_buffer: usize,
+    mat2_rows: usize,
+    mat2_cols: usize,
+  ) -> usize;
+  pub fn cuda_element_exp(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
+  pub fn cuda_element_ReLU(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
+  pub fn cuda_element_ReLU_prime(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_sum_rows(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_sum_columns(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_transpose(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;

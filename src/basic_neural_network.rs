@@ -23,32 +23,6 @@ weights.matmult(observations).elem_add(bias) = raw_neuron_outputs
 activation_function(raw_neuron_outputs) = neuron_outputs
  */
 
-// ACTIVATION FUNCTIONS
-
-pub trait ActivationFunction {
-  fn activation_function(&self, x: f64) -> f64;
-  fn activation_function_prime(&self, x: f64) -> f64;
-}
-
-pub struct Relu;
-impl ActivationFunction for Relu {
-  fn activation_function(&self, x: f64) -> f64 {
-    if x <= 0.0 {
-      return 0.0;
-    } else {
-      return x;
-    }
-  }
-
-  fn activation_function_prime(&self, x: f64) -> f64 {
-    if x <= 0.0 {
-      return 0.0;
-    } else {
-      return 1.0;
-    }
-  }
-}
-
 #[pyclass]
 pub struct BasicNeuralNetwork {
   pub weights: Vec<Matrix>,
@@ -74,8 +48,6 @@ impl BasicNeuralNetwork {
     non_input_layer_sizes.push(num_classifications);
 
     // Init the matrices
-    let observations = Matrix::new_2d(features_train).transpose();
-
     // Random seed for weights
     let mut rng = rand::thread_rng();
     let range = Normal::new(0.0, 0.68).unwrap();
@@ -83,7 +55,7 @@ impl BasicNeuralNetwork {
     let weights = (0..non_input_layer_sizes.len())
       .map(|layer| {
         Matrix::new_2d(
-          (0..non_input_layer_sizes[layer])
+          &(0..non_input_layer_sizes[layer])
             .map(|_| {
               (0..if layer == 0 {
                 num_features
@@ -113,21 +85,19 @@ impl BasicNeuralNetwork {
     // Train model, choose regression or classification
     if num_classifications == 1 {
       network.train_regression(
-        &observations,
+        features_train,
         &mut neuron_outputs,
-        &input_labels,
+        input_labels,
         learning_rate,
-        Box::new(Relu {}),
         num_iterations,
         batch_size,
       );
     } else {
       network.train_classification(
-        &observations,
+        features_train,
         &mut neuron_outputs,
-        &input_labels,
+        input_labels,
         learning_rate,
-        Box::new(Relu {}),
         num_iterations,
         batch_size,
       );
@@ -141,16 +111,15 @@ impl BasicNeuralNetwork {
     let num_observations = features_test.len();
 
     // Feed forward through network
-    let observations = Matrix::new_2d(features_test).transpose();
+    let observations = Matrix::new_2d(&features_test).transpose();
 
     let mut neuron_outputs: Vec<Matrix> = self
       .weights
       .iter()
-      .map(|layer| Matrix::zeros(layer.data.len(), num_observations))
+      .map(|layer| Matrix::zeros(layer.get_data_length(), num_observations))
       .collect_vec();
 
-    let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
-    self.feed_forward(&observations, &mut neuron_outputs, &activation_function);
+    self.feed_forward(&observations, &mut neuron_outputs);
     let predicted_probabilities = Self::softmax(&neuron_outputs);
     let classifications = Self::get_classification(&predicted_probabilities);
 
@@ -161,17 +130,17 @@ impl BasicNeuralNetwork {
     let num_observations = features_test.len();
 
     // Feed forward through network
-    let observations = Matrix::new_2d(features_test).transpose();
+    let observations = Matrix::new_2d(&features_test).transpose();
 
     let mut neuron_outputs: Vec<Matrix> = self
       .weights
       .iter()
-      .map(|layer| Matrix::zeros(layer.data.len(), num_observations))
+      .map(|layer| Matrix::zeros(layer.get_data_length(), num_observations))
       .collect_vec();
 
-    let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
-    self.feed_forward(&observations, &mut neuron_outputs, &activation_function);
-    return Ok(neuron_outputs[neuron_outputs.len() - 1][0].to_vec());
+    self.feed_forward(&observations, &mut neuron_outputs);
+
+    return Ok(neuron_outputs[neuron_outputs.len() - 1].get_data()[0].to_vec());
   }
 }
 
@@ -182,11 +151,10 @@ impl BasicNeuralNetwork {
     let mut neuron_outputs: Vec<Matrix> = self
       .weights
       .iter()
-      .map(|layer| Matrix::zeros(layer.data.len(), num_observations))
+      .map(|layer| Matrix::zeros(layer.get_data_length(), num_observations))
       .collect_vec();
 
-    let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
-    self.feed_forward(&observations, &mut neuron_outputs, &activation_function);
+    self.feed_forward(&observations, &mut neuron_outputs);
     let predicted_probabilities = Self::softmax(&neuron_outputs);
     let classifications = Self::get_classification(&predicted_probabilities);
 
@@ -196,6 +164,7 @@ impl BasicNeuralNetwork {
   pub fn get_classification(predicted_probabilities: &Matrix) -> Vec<f64> {
     return predicted_probabilities
       .transpose()
+      .get_data()
       .iter()
       .map(|outputs| {
         outputs
@@ -209,53 +178,54 @@ impl BasicNeuralNetwork {
   }
 
   pub fn mini_batch(
-    observations: &Matrix,
+    row_based_observations: &Vec<Vec<f64>>,
     labels: &Vec<f64>,
     batch_size: usize,
   ) -> (Matrix, Vec<f64>) {
     let mut rng = rand::thread_rng();
-    let column_dist = Uniform::new(0, observations.columns);
+    let row_dist = Uniform::new(0, row_based_observations.len());
 
-    let mut mini_batch = Matrix::zeros(observations.rows, batch_size);
+    let mut mini_batch_data = Vec::new();
     let mut mini_batch_labels = vec![0.0; batch_size];
     for i in 0..batch_size {
-      let column_index = column_dist.sample(&mut rng);
-      for j in 0..observations.rows {
-        mini_batch[j][i] = observations[j][column_index];
-      }
-      mini_batch_labels[i] = labels[column_index];
+      let row_index = row_dist.sample(&mut rng);
+      let sampled_row = row_based_observations[row_index].to_vec();
+      mini_batch_data.push(sampled_row);
+      mini_batch_labels[i] = labels[row_index];
     }
 
+    let mini_batch = Matrix::new_2d(&mini_batch_data).transpose();
     return (mini_batch, mini_batch_labels);
   }
 
   pub fn train_regression(
     &mut self,
-    observations: &Matrix,
+    observations: Vec<Vec<f64>>,
     neuron_outputs: &mut Vec<Matrix>,
-    labels: &Vec<f64>,
+    labels: Vec<f64>,
     learning_rate: f64,
-    activation_function: Box<dyn ActivationFunction>,
     num_iterations: usize,
     batch_size: usize,
   ) {
+    let observations_matrix = Matrix::new_2d(&observations).transpose();
+
     for i in 0..num_iterations {
       // Batch
-      let batch_data = BasicNeuralNetwork::mini_batch(observations, labels, batch_size);
+      let batch_data = BasicNeuralNetwork::mini_batch(&observations, &labels, batch_size);
 
       let batch = if batch_size == 0 {
-        observations
+        &observations_matrix
       } else {
         &batch_data.0
       };
       let batch_labels = if batch_size == 0 {
-        labels
+        &labels
       } else {
         &batch_data.1
       };
 
       // Feed forward
-      self.feed_forward(batch, neuron_outputs, &activation_function);
+      self.feed_forward(batch, neuron_outputs);
 
       // Calculate error from feed forward step
       let output_error =
@@ -267,45 +237,45 @@ impl BasicNeuralNetwork {
         neuron_outputs,
         &output_error,
         learning_rate,
-        &activation_function,
         self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
       );
 
       // Print progress
       if i % 50 == 0 {
-        self.test_train_performance_regression(observations, labels);
+        self.test_train_performance_regression(&observations_matrix, &labels);
       }
     }
   }
 
   pub fn train_classification(
     &mut self,
-    observations: &Matrix,
+    observations: Vec<Vec<f64>>,
     neuron_outputs: &mut Vec<Matrix>,
-    labels: &Vec<f64>,
+    labels: Vec<f64>,
     learning_rate: f64,
-    activation_function: Box<dyn ActivationFunction>,
     num_iterations: usize,
     batch_size: usize,
   ) {
+    let observations_matrix = Matrix::new_2d(&observations).transpose();
+
     // For now we will make the number of iterations a constant
     for i in 0..num_iterations {
       // Batch
-      let batch_data = BasicNeuralNetwork::mini_batch(observations, labels, batch_size);
+      let batch_data = BasicNeuralNetwork::mini_batch(&observations, &labels, batch_size);
 
       let batch = if batch_size == 0 {
-        observations
+        &observations_matrix
       } else {
         &batch_data.0
       };
       let batch_labels = if batch_size == 0 {
-        labels
+        &labels
       } else {
         &batch_data.1
       };
 
       // Feed forward
-      self.feed_forward(batch, neuron_outputs, &activation_function);
+      self.feed_forward(batch, neuron_outputs);
 
       // Calculate error from feed forward step
       let predicted_probabilities = Self::softmax(neuron_outputs);
@@ -322,22 +292,16 @@ impl BasicNeuralNetwork {
         neuron_outputs,
         &output_error,
         learning_rate,
-        &activation_function,
         self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
       );
 
       if i % 50 == 0 {
-        self.test_train_performance_classification(observations, labels);
+        self.test_train_performance_classification(&observations_matrix, &labels);
       }
     }
   }
 
-  pub fn feed_forward(
-    &self,
-    observations: &Matrix,
-    neuron_outputs: &mut Vec<Matrix>,
-    activation_function: &Box<dyn ActivationFunction>,
-  ) {
+  pub fn feed_forward(&self, observations: &Matrix, neuron_outputs: &mut Vec<Matrix>) {
     let num_layers = self.weights.len();
     for layer in 0..num_layers {
       neuron_outputs[layer] = self.weights[layer]
@@ -346,22 +310,17 @@ impl BasicNeuralNetwork {
         } else {
           &neuron_outputs[layer - 1]
         })
-        .add_vector_to_columns(&self.biases[layer])
-        .element_apply(&|x| activation_function.activation_function(x));
+        .add_vector(&self.biases[layer])
+        .element_ReLU();
     }
   }
 
   pub fn softmax(neuron_outputs: &Vec<Matrix>) -> Matrix {
-    let mut predictions = neuron_outputs[neuron_outputs.len() - 1].element_apply(&|x| f64::exp(x));
-    let exp_final_layer_outputs_summed: Vec<f64> = predictions.sum_columns();
+    let outputs_exp = neuron_outputs[neuron_outputs.len() - 1].element_exp();
+    let exp_final_layer_outputs_summed = outputs_exp.sum_columns_matrix();
 
     // Divide all data by col sum
-    for output_neuron in 0..predictions.rows {
-      for observation_number in 0..predictions.columns {
-        predictions[output_neuron][observation_number] /=
-          exp_final_layer_outputs_summed[observation_number];
-      }
-    }
+    let predictions = outputs_exp.divide_by_vector(&exp_final_layer_outputs_summed);
 
     return predictions;
   }
@@ -380,8 +339,9 @@ impl BasicNeuralNetwork {
 
     // Shared error calculations (dSSR)
     // neuron_output[output_layer_index][0] because there is only one output neuron
-    let error = Matrix::new_2d(vec![(0..labels.len())
-      .map(|index| -2.0 * (labels[index] - neuron_outputs[output_layer_index][0][index]))
+    let output_layer_data = neuron_outputs[output_layer_index].get_data(); // TODO: Measure performance impact of copying to host
+    let error = Matrix::new_2d(&vec![(0..labels.len())
+      .map(|index| -2.0 * (labels[index] - output_layer_data[0][index]))
       .collect_vec()]);
 
     // Update biases first
@@ -414,10 +374,11 @@ impl BasicNeuralNetwork {
     let normalization_factor = 1.0 / prev_layer_outputs.columns as f64;
 
     // Shared error calculations (dCE * dSoftmax)
+    let predicted_probabilities_data = predicted_probabilities.get_data(); // TODO: Measure performance impact of copying to host
     let error = Matrix::new_2d(
-      (0..output_biases.rows)
+      &(0..output_biases.rows)
         .map(|index| {
-          izip!(labels.iter(), predicted_probabilities[index].iter())
+          izip!(labels.iter(), predicted_probabilities_data[index].iter())
             .map(|(label, predicted_probability)| {
               if *label == index as f64 {
                 *predicted_probability - 1.0
@@ -452,7 +413,6 @@ impl BasicNeuralNetwork {
     neuron_outputs: &Vec<Matrix>,
     next_layer_error: &Matrix,
     learning_rate: f64,
-    activation_function: &Box<dyn ActivationFunction>,
     layer: usize,
   ) {
     // Used for yin
@@ -468,10 +428,9 @@ impl BasicNeuralNetwork {
     let wout = &self.weights[layer + 1];
 
     // Used for x
-    //POSSIBLE OPTIMIZATION: Cache at feed forward step
-    // ASSUMPTION: Since using ReLU, I can just take activation_function_prime of layer output
-    let activation_prime_x =
-      neuron_outputs[layer].element_apply(&|x| activation_function.activation_function_prime(x));
+    // ASSUMPTION: Since using ReLU, I can just take activation_function_prime of layer output.
+    // Otherwise you may have to use raw input to original activation function
+    let activation_prime_x = neuron_outputs[layer].element_ReLU_prime();
 
     // Shared error calculations
     let error = wout
@@ -497,7 +456,6 @@ impl BasicNeuralNetwork {
         neuron_outputs,
         &error,
         learning_rate,
-        activation_function,
         layer - 1,
       );
     }
@@ -509,12 +467,11 @@ impl BasicNeuralNetwork {
     let mut neuron_outputs: Vec<Matrix> = self
       .weights
       .iter()
-      .map(|layer| Matrix::zeros(layer.data.len(), num_observations))
+      .map(|layer| Matrix::zeros(layer.get_data_length(), num_observations))
       .collect_vec();
 
-    let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
-    self.feed_forward(&observations, &mut neuron_outputs, &activation_function);
-    let classifications = neuron_outputs[neuron_outputs.len() - 1][0].to_vec();
+    self.feed_forward(&observations, &mut neuron_outputs);
+    let classifications = neuron_outputs[neuron_outputs.len() - 1].get_data()[0].to_vec();
 
     return classifications;
   }

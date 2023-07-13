@@ -1,5 +1,15 @@
 #include "./cuda_kernels.cuh"
 
+// Error checking macro: https://stackoverflow.com/a/14038590
+#define gpuErrchk(ans) \
+    { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char* file, int line, bool abort = false) {
+    if (code != cudaSuccess) {
+        fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+        if (abort) exit(code);
+    }
+}
+
 /////////////////////
 /// TEST FUNCTIONS
 /////////////////////
@@ -59,7 +69,7 @@ size_t register_matrix_buffer(double* gpu_buffer) {
 size_t register_matrix(size_t rows, size_t cols) {
     // Upload the data
     double* gpu_buffer;
-    cudaMalloc(&gpu_buffer, sizeof(double) * rows * cols);
+    gpuErrchk(cudaMalloc(&gpu_buffer, sizeof(double) * rows * cols));
 
     return register_matrix_buffer(gpu_buffer);
 }
@@ -67,20 +77,20 @@ size_t register_matrix(size_t rows, size_t cols) {
 size_t register_matrix(double* data, size_t rows, size_t cols) {
     // Upload the data
     double* gpu_buffer;
-    cudaMalloc(&gpu_buffer, sizeof(double) * rows * cols);
-    cudaMemcpy(gpu_buffer, data, sizeof(double) * rows * cols, cudaMemcpyHostToDevice);
-
+    gpuErrchk(cudaMalloc(&gpu_buffer, sizeof(double) * rows * cols));
+    gpuErrchk(cudaMemcpy(gpu_buffer, data, sizeof(double) * rows * cols, cudaMemcpyHostToDevice));
+    // Potentially nasty bug by acting like you copied data when you havent finished if using cudaMemCpyAsync...
     return register_matrix_buffer(gpu_buffer);
 }
 
 void unregister_matrix(size_t mat_id) {
-    cudaFree(mat_map[mat_id]);
+    gpuErrchk(cudaFree(mat_map[mat_id]));
     mat_map.erase(mat_id);
 }
 
 void get_matrix_data(size_t mat_id, int rows, int cols, double* data_buffer) {
     double* gpu_buffer = mat_map[mat_id];
-    cudaMemcpy(data_buffer, gpu_buffer, sizeof(double) * rows * cols, cudaMemcpyDeviceToHost);
+    gpuErrchk(cudaMemcpy(data_buffer, gpu_buffer, sizeof(double) * rows * cols, cudaMemcpyDeviceToHost));
 }
 
 //////////////////////////
@@ -194,6 +204,108 @@ size_t cuda_element_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     return out_mat_id;
 }
 
+__global__ void element_exp_kernel(double* mat1_buffer, int mat1_rows, int mat1_cols, double* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_rows && tidY < out_cols) {
+        // O[i][j] = exp(mat1[i][j])
+
+        int index = tidX * out_cols + tidY;
+        out_buffer[index] = exp(mat1_buffer[index]);  // Also available __exp for fast
+    }
+}
+
+size_t cuda_element_exp(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
+    // Create output buffer
+    int out_rows = mat1_rows;
+    int out_cols = mat1_cols;
+    size_t out_mat_id = register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    double* gpu_mat1_buffer = mat_map[mat1_id];
+    double* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 32;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+
+    // Run the kernels
+    element_exp_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+
+    // Return result matrix id
+    return out_mat_id;
+}
+
+__global__ void element_ReLU_kernel(double* mat1_buffer, int mat1_rows, int mat1_cols, double* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_rows && tidY < out_cols) {
+        // O[i][j] = x if x>0 else 0
+
+        int index = tidX * out_cols + tidY;
+        out_buffer[index] = mat1_buffer[index] > 0 ? mat1_buffer[index] : 0.0;
+    }
+}
+
+size_t cuda_element_ReLU(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
+    // Create output buffer
+    int out_rows = mat1_rows;
+    int out_cols = mat1_cols;
+    size_t out_mat_id = register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    double* gpu_mat1_buffer = mat_map[mat1_id];
+    double* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 32;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+
+    // Run the kernels
+    element_ReLU_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+
+    // Return result matrix id
+    return out_mat_id;
+}
+
+__global__ void element_ReLU_prime_kernel(double* mat1_buffer, int mat1_rows, int mat1_cols, double* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_rows && tidY < out_cols) {
+        // O[i][j] = x if x>0 else 1
+
+        int index = tidX * out_cols + tidY;
+        out_buffer[index] = mat1_buffer[index] == 0.0 ? 0.0 : 1.0;
+    }
+}
+
+size_t cuda_element_ReLU_prime(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
+    // Create output buffer
+    int out_rows = mat1_rows;
+    int out_cols = mat1_cols;
+    size_t out_mat_id = register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    double* gpu_mat1_buffer = mat_map[mat1_id];
+    double* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 32;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+
+    // Run the kernels
+    element_ReLU_prime_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+
+    // Return result matrix id
+    return out_mat_id;
+}
+
 __global__ void scalar_multiply_kernel(double* mat1_buffer, int mat1_rows, int mat1_cols, double scalar, double* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
@@ -289,7 +401,25 @@ __global__ void add_vector_to_columns_kernel(double* mat1_buffer, int mat1_rows,
     }
 }
 
-size_t cuda_add_vector_to_columns(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols) {
+__global__ void add_vector_to_rows_kernel(double* mat1_buffer, int mat1_rows, int mat1_cols, double* mat2_buffer, int mat2_rows, int mat2_cols, double* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_rows && tidY < out_cols) {
+        // O[i][j] = mat1[i][j] + mat2[0][j]
+
+        int mat1_index = tidX * mat1_cols + tidY;
+        int mat2_index = tidY;
+
+        int output_index = mat1_index;
+        out_buffer[output_index] = mat1_buffer[mat1_index] + mat2_buffer[mat2_index];
+    }
+}
+
+size_t cuda_add_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols) {
+    // Determine orientation
+    bool is_column_vector = mat2_cols == 1;
+
     // Create output buffer
     int out_rows = mat1_rows;
     int out_cols = mat1_cols;
@@ -306,7 +436,71 @@ size_t cuda_add_vector_to_columns(size_t mat1_id, size_t mat1_rows, size_t mat1_
     dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
 
     // Run the kernels
-    add_vector_to_columns_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    if (is_column_vector) {
+        add_vector_to_columns_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    } else {
+        add_vector_to_rows_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    }
+
+    // Return result matrix id
+    return out_mat_id;
+}
+
+__global__ void divide_by_column_vector_kernel(double* mat1_buffer, int mat1_rows, int mat1_cols, double* mat2_buffer, int mat2_rows, int mat2_cols, double* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_rows && tidY < out_cols) {
+        // O[i][j] = mat1[i][j] / mat2[i][0]
+
+        int mat1_index = tidX * mat1_cols + tidY;
+        int mat2_index = tidX;
+
+        int output_index = mat1_index;
+        out_buffer[output_index] = mat1_buffer[mat1_index] / mat2_buffer[mat2_index];
+    }
+}
+
+__global__ void divide_by_row_vector_kernel(double* mat1_buffer, int mat1_rows, int mat1_cols, double* mat2_buffer, int mat2_rows, int mat2_cols, double* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_rows && tidY < out_cols) {
+        // O[i][j] = mat1[i][j] / mat2[0][j]
+
+        int mat1_index = tidX * mat1_cols + tidY;
+        int mat2_index = tidY;
+
+        int output_index = mat1_index;
+        out_buffer[output_index] = mat1_buffer[mat1_index] / mat2_buffer[mat2_index];
+    }
+}
+
+size_t cuda_divide_by_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols) {
+    // Determine orientation
+    bool is_column_vector = mat2_cols == 1;
+
+    // Create output buffer
+    int out_rows = mat1_rows;
+    int out_cols = mat1_cols;
+    size_t out_mat_id = register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    double* gpu_mat1_buffer = mat_map[mat1_id];
+    double* gpu_mat2_buffer = mat_map[mat2_id];
+    double* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 32;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+
+    // Run the kernels
+    if (is_column_vector) {
+        divide_by_column_vector_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    } else {
+        divide_by_row_vector_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    }
 
     // Return result matrix id
     return out_mat_id;
