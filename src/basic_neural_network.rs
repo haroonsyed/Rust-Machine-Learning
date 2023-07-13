@@ -1,4 +1,4 @@
-use crate::py_util::py_print;
+// use crate::py_util::py_print;
 use itertools::{izip, Itertools};
 use matrix_lib::Matrix;
 use pyo3::prelude::*;
@@ -73,7 +73,7 @@ pub struct BasicNeuralNetworkRust {
 }
 
 impl BasicNeuralNetworkRust {
-  fn new(
+  pub fn new(
     features_train: Vec<Vec<f64>>,
     input_labels: Vec<f64>,
     hidden_layer_sizes: Vec<usize>,
@@ -534,7 +534,7 @@ impl BasicNeuralNetworkRust {
 
     let percent_correct = 100.0 * num_correct / labels.len() as f64;
 
-    py_print(&format!("% Correct: {}", percent_correct));
+    // py_print(&format!("% Correct: {}", percent_correct));
   }
 
   fn test_train_performance_classification(&self, observations: &Matrix, labels: &Vec<f64>) {
@@ -546,6 +546,6 @@ impl BasicNeuralNetworkRust {
 
     let percent_correct = 100.0 * num_correct / labels.len() as f64;
 
-    py_print(&format!("% Correct: {}", percent_correct));
+    // py_print(&format!("% Correct: {}", percent_correct));
   }
 }

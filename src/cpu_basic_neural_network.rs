@@ -1,4 +1,4 @@
-use crate::py_util::py_print;
+// use crate::py_util::py_print;
 use itertools::{izip, Itertools};
 use matrix_lib::lib_cpu::Matrix_CPU;
 use pyo3::prelude::*;
@@ -75,7 +75,7 @@ pub struct BasicNeuralNetworkCPURust {
 }
 
 impl BasicNeuralNetworkCPURust {
-  fn new(
+  pub fn new(
     features_train: Vec<Vec<f64>>,
     input_labels: Vec<f64>,
     hidden_layer_sizes: Vec<usize>,
@@ -287,9 +287,9 @@ impl BasicNeuralNetworkCPURust {
       );
 
       // Print progress
-      if i % 50 == 0 {
-        self.test_train_performance_regression(observations, labels);
-      }
+      //   if i % 50 == 0 {
+      //     self.test_train_performance_regression(observations, labels);
+      //   }
     }
   }
 
@@ -549,7 +549,7 @@ impl BasicNeuralNetworkCPURust {
 
     let percent_correct = 100.0 * num_correct / labels.len() as f64;
 
-    py_print(&format!("% Correct: {}", percent_correct));
+    // py_print(&format!("% Correct: {}", percent_correct));
   }
 
   fn test_train_performance_classification(&self, observations: &Matrix_CPU, labels: &Vec<f64>) {
@@ -561,6 +561,6 @@ impl BasicNeuralNetworkCPURust {
 
     let percent_correct = 100.0 * num_correct / labels.len() as f64;
 
-    py_print(&format!("% Correct: {}", percent_correct));
+    // py_print(&format!("% Correct: {}", percent_correct));
   }
 }

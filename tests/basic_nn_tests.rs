@@ -2,8 +2,12 @@
 mod basic_nn_tests {
 
   use itertools::izip;
+  use matrix_lib::lib_cpu::Matrix_CPU;
   use matrix_lib::Matrix;
   use Rust_Machine_Learning::basic_neural_network::BasicNeuralNetworkRust;
+  use Rust_Machine_Learning::cpu_basic_neural_network::{
+    ActivationFunction, BasicNeuralNetworkCPURust, Relu,
+  };
 
   #[test]
   fn feed_forward() {
@@ -427,6 +431,227 @@ mod basic_nn_tests {
     }
   }
 
+  #[test]
+  fn cpu_gpu_agreement() {
+    let observations_gpu = Matrix::new_2d(
+      &vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
+    );
+    let observations_cpu = Matrix_CPU::new_2d(
+      vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
+    );
+    let labels = vec![1.0, 0.0, 1.0];
+
+    let weights_gpu = vec![
+      Matrix::new_2d(&vec![
+        // Layer 1 has 3 neurons, with 2 inputs per neuron
+        vec![0.1, 0.2],
+        vec![0.3, 0.4],
+        vec![0.5, 0.6],
+      ]),
+      Matrix::new_2d(&vec![
+        // Layer 2 has 2 neurons, with 3 inputs per neuron
+        vec![0.1, 0.2, 0.3],
+        vec![0.4, 0.5, 0.6],
+      ]),
+    ];
+
+    let biases_gpu = vec![
+      Matrix::new_2d(&vec![
+        // Layer 1 biases, 3 neurons
+        vec![0.1],
+        vec![0.2],
+        vec![0.3],
+      ]),
+      Matrix::new_2d(&vec![
+        // Layer 2 biases, 2 neurons
+        vec![0.1],
+        vec![0.2],
+      ]),
+    ];
+
+    let weights_cpu = vec![
+      Matrix_CPU::new_2d(vec![
+        // Layer 1 has 3 neurons, with 2 inputs per neuron
+        vec![0.1, 0.2],
+        vec![0.3, 0.4],
+        vec![0.5, 0.6],
+      ]),
+      Matrix_CPU::new_2d(vec![
+        // Layer 2 has 2 neurons, with 3 inputs per neuron
+        vec![0.1, 0.2, 0.3],
+        vec![0.4, 0.5, 0.6],
+      ]),
+    ];
+
+    let biases_cpu = vec![
+      Matrix_CPU::new_2d(vec![
+        // Layer 1 biases, 3 neurons
+        vec![0.1],
+        vec![0.2],
+        vec![0.3],
+      ]),
+      Matrix_CPU::new_2d(vec![
+        // Layer 2 biases, 2 neurons
+        vec![0.1],
+        vec![0.2],
+      ]),
+    ];
+
+    let mut neuron_outputs_gpu = vec![
+      Matrix::new_2d(&
+        // 3 neurons x 3 observations
+        vec![vec![0.0; 3]; 3]),
+      Matrix::new_2d(&
+        // 2 neurons x 3 observations
+        vec![vec![0.0; 3]; 2]),
+    ];
+
+    let mut neuron_outputs_cpu = vec![
+      Matrix_CPU::new_2d(
+        // 3 neurons x 3 observations
+        vec![vec![0.0; 3]; 3],
+      ),
+      Matrix_CPU::new_2d(
+        // 2 neurons x 3 observations
+        vec![vec![0.0; 3]; 2],
+      ),
+    ];
+
+    // Create the networks
+    let mut gpu_network = BasicNeuralNetworkRust {
+      weights: weights_gpu,
+      biases: biases_gpu,
+    };
+    let mut cpu_network = BasicNeuralNetworkCPURust {
+      weights: weights_cpu,
+      biases: biases_cpu,
+    };
+    let learning_rate = 0.1;
+
+    let activation_func: Box<dyn ActivationFunction> = Box::new(Relu {});
+
+    // Run the networks, compare outputs at each stage
+    for _ in 0..1000 {
+      // FEED FORWARD
+      println!("TESTING FEED FORWARD");
+      gpu_network.feed_forward(&observations_gpu, &mut neuron_outputs_gpu);
+      cpu_network.feed_forward(&observations_cpu, &mut neuron_outputs_cpu, &activation_func);
+      networks_are_equal(
+        &gpu_network,
+        &neuron_outputs_gpu,
+        &cpu_network,
+        &neuron_outputs_cpu,
+      );
+
+      // Softmax
+      println!("TESTING SOFTMAX");
+      let predicted_gpu = BasicNeuralNetworkRust::softmax(&neuron_outputs_gpu);
+      let predicted_cpu = BasicNeuralNetworkCPURust::softmax(&neuron_outputs_cpu);
+      assert!(matrix_are_equal_gpu_cpu(&predicted_gpu, &predicted_cpu, 8));
+
+      // Backprop output
+      println!("TESTING BACKPROP");
+      let next_layer_error_gpu = gpu_network.backpropogation_output_layer_classification(
+        &predicted_gpu,
+        &labels,
+        &neuron_outputs_gpu,
+        learning_rate,
+      );
+      let next_layer_error_cpu = cpu_network.backpropogation_output_layer_classification(
+        &predicted_cpu,
+        &labels,
+        &neuron_outputs_cpu,
+        learning_rate,
+      );
+      matrix_are_equal_gpu_cpu(&next_layer_error_gpu, &next_layer_error_cpu, 8);
+      networks_are_equal(
+        &gpu_network,
+        &neuron_outputs_gpu,
+        &cpu_network,
+        &neuron_outputs_cpu,
+      );
+
+      // Backprop hidden
+      println!("TESTING BACKPROP HIDDEN");
+      gpu_network.backpropogation_hidden_layer(
+        &observations_gpu,
+        &neuron_outputs_gpu,
+        &next_layer_error_gpu,
+        learning_rate,
+        gpu_network.weights.len() - 2,
+      );
+      cpu_network.backpropogation_hidden_layer(
+        &observations_cpu,
+        &neuron_outputs_cpu,
+        &next_layer_error_cpu,
+        learning_rate,
+        &activation_func,
+        cpu_network.weights.len() - 2,
+      );
+      networks_are_equal(
+        &gpu_network,
+        &neuron_outputs_gpu,
+        &cpu_network,
+        &neuron_outputs_cpu,
+      );
+    }
+
+    izip!(gpu_network.weights.iter(), cpu_network.weights.iter()).for_each(|(a, b)| {
+      a.print();
+      b.print();
+    });
+    izip!(gpu_network.biases.iter(), cpu_network.biases.iter()).for_each(|(a, b)| {
+      a.print();
+      b.print();
+    });
+    izip!(neuron_outputs_gpu.iter(), neuron_outputs_cpu.iter()).for_each(|(a, b)| {
+      a.print();
+      b.print();
+    });
+    // assert_eq!(1, 2);
+  }
+
+  #[test]
+  fn cpu_gpu_agreement_e2e() {
+    let observations = vec![vec![0.1, 0.4], vec![0.2, 0.5], vec![0.3, 0.6]]; // 3 observations with 2 features
+    let labels = vec![1.0, 0.0, 1.0];
+    let hidden_layer_sizes = vec![10];
+    let num_classifications = 2;
+    let learning_rate = 1e-2;
+    let num_iterations = 1;
+    let batch_size = 0;
+
+    // Create the networks
+    let gpu_network = BasicNeuralNetworkRust::new(
+      observations.clone(),
+      labels.clone(),
+      hidden_layer_sizes.clone(),
+      num_classifications,
+      learning_rate,
+      num_iterations,
+      batch_size,
+    );
+    let cpu_network = BasicNeuralNetworkCPURust::new(
+      observations.clone(),
+      labels.clone(),
+      hidden_layer_sizes.clone(),
+      num_classifications,
+      learning_rate,
+      num_iterations,
+      batch_size,
+    );
+
+    izip!(gpu_network.weights.iter(), cpu_network.weights.iter()).for_each(|(a, b)| {
+      a.print();
+      b.print();
+    });
+    izip!(gpu_network.biases.iter(), cpu_network.biases.iter()).for_each(|(a, b)| {
+      a.print();
+      b.print();
+    });
+    // assert_eq!(1, 2);
+  }
+
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
     if a.rows != b.rows || a.columns != b.columns {
       return false;
@@ -446,6 +671,50 @@ mod basic_nn_tests {
     }
 
     return true;
+  }
+
+  fn matrix_are_equal_gpu_cpu(a: &Matrix, b: &Matrix_CPU, precision: usize) -> bool {
+    a.print();
+    b.print();
+
+    if a.rows != b.rows || a.columns != b.columns {
+      println!("Matrices do not even share dimensions");
+      return false;
+    }
+
+    let a_data = a.get_data();
+    for i in 0..a.rows {
+      for j in 0..a.columns {
+        if !approx_equal(a_data[i][j], b[i][j], precision) {
+          println!("Matrices not equal at {} {}", a_data[i][j], b[i][j]);
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  fn networks_are_equal(
+    gpu_net: &BasicNeuralNetworkRust,
+    gpu_outputs: &Vec<Matrix>,
+    cpu_net: &BasicNeuralNetworkCPURust,
+    cpu_outputs: &Vec<Matrix_CPU>,
+  ) {
+    // Check weights
+    izip!(gpu_net.weights.iter(), cpu_net.weights.iter()).for_each(|(a, b)| {
+      assert!(matrix_are_equal_gpu_cpu(&a, &b, 8));
+    });
+
+    // Check biases
+    izip!(gpu_net.biases.iter(), cpu_net.biases.iter()).for_each(|(a, b)| {
+      assert!(matrix_are_equal_gpu_cpu(&a, &b, 8));
+    });
+
+    // Check neuron outputs
+    izip!(gpu_outputs, cpu_outputs).for_each(|(a, b)| {
+      assert!(matrix_are_equal_gpu_cpu(&a, &b, 8));
+    });
   }
 
   fn approx_equal(a: f64, b: f64, precision: usize) -> bool {
