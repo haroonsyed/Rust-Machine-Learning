@@ -1,6 +1,7 @@
 pub mod adaboost;
 pub mod basic_neural_network;
 pub mod basic_stats;
+pub mod cpu_basic_neural_network;
 pub mod decision_tree;
 pub mod gradient_descent;
 pub mod gradientboost;
@@ -31,5 +32,6 @@ fn Rust_Machine_Learning(_py: Python, m: &PyModule) -> PyResult<()> {
   m.add_class::<gradientboost::GradientBoost>()?;
   m.add_class::<xgb::XGB>()?;
   m.add_class::<basic_neural_network::BasicNeuralNetwork>()?;
+  m.add_class::<cpu_basic_neural_network::BasicNeuralNetworkCPU>()?;
   Ok(())
 }

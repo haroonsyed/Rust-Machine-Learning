@@ -1,4 +1,5 @@
 pub mod bindings;
+pub mod lib_cpu;
 
 use bindings::*;
 use std::ffi::c_double;
@@ -40,6 +41,15 @@ impl Matrix {
     return result;
   }
 
+  pub fn no_fill(rows: usize, columns: usize) -> Self {
+    let data = Vec::<c_double>::with_capacity(rows * columns);
+    let id;
+    unsafe {
+      id = register_matrix(data.as_ptr(), rows, columns);
+    }
+    return Matrix { id, rows, columns };
+  }
+
   pub fn zeros(rows: usize, columns: usize) -> Self {
     let data = vec![0.0; rows * columns];
     let id;
@@ -50,6 +60,10 @@ impl Matrix {
   }
 
   pub fn new_2d(data: &Vec<Vec<f64>>) -> Self {
+    if data.len() == 0 {
+      return Self::no_fill(0, 0);
+    }
+
     let rows = data.len();
     let columns = data[0].len();
     let mut flattened = Vec::<f64>::with_capacity(rows * columns);
@@ -85,7 +99,10 @@ impl Matrix {
   }
   pub fn element_add(&self, other: &Matrix) -> Self {
     if !self.same_shape(other) {
-      panic!("Matrices not the same shape for addition!");
+      panic!(
+        "Matrices not the same shape for addition! A: {} {} B: {} {}",
+        self.rows, self.columns, other.rows, other.columns
+      );
     }
 
     let result_id: usize;
@@ -112,7 +129,10 @@ impl Matrix {
 
   pub fn element_subtract(&self, other: &Matrix) -> Self {
     if !self.same_shape(other) {
-      panic!("Matrices not the same shape for element_subtract!");
+      panic!(
+        "Matrices not the same shape for element_subtract! A: {} {} B: {} {}",
+        self.rows, self.columns, other.rows, other.columns
+      );
     }
 
     let result_id: usize;
@@ -139,7 +159,10 @@ impl Matrix {
 
   pub fn element_multiply(&self, other: &Matrix) -> Self {
     if !self.same_shape(other) {
-      panic!("Matrices not the same shape for element_multiply!");
+      panic!(
+        "Matrices not the same shape for element_multiply! A: {} {} B: {} {}",
+        self.rows, self.columns, other.rows, other.columns
+      );
     }
 
     let result_id: usize;
@@ -181,7 +204,10 @@ impl Matrix {
   pub fn matrix_multiply(&self, other: &Matrix) -> Self {
     // Bound Check
     if self.columns != other.rows {
-      panic!("Matrices not compatible shape for mat mult!");
+      panic!(
+        "Matrices not compatible shape for mat mult! A: {} {} B: {} {}",
+        self.rows, self.columns, other.rows, other.columns
+      );
     }
 
     let result_id: usize;
@@ -210,7 +236,10 @@ impl Matrix {
     if !((self.rows == other.rows && other.columns == 1)
       || (self.columns == other.columns && other.rows == 1))
     {
-      panic!("Matrices not the correct shape for vector add!");
+      panic!(
+        "Matrices not the correct shape for vector add! A: {} {} B: {} {}",
+        self.rows, self.columns, other.rows, other.columns
+      );
     }
 
     let result_id: usize;
@@ -239,7 +268,10 @@ impl Matrix {
     if !((self.rows == other.rows && other.columns == 1)
       || (self.columns == other.columns && other.rows == 1))
     {
-      panic!("Matrices not the correct shape for division by vector!");
+      panic!(
+        "Matrices not the correct shape for division by vector! A: {} {} B: {} {}",
+        self.rows, self.columns, other.rows, other.columns
+      );
     }
 
     let result_id: usize;
@@ -359,14 +391,14 @@ impl Matrix {
     let result_id: usize;
 
     // Fast transpose, no memory operations
-    let is_vector = self.columns == 1 || self.rows == 1;
-    if is_vector {
-      return Matrix {
-        id: self.id,
-        rows: self.columns,
-        columns: self.rows,
-      };
-    }
+    // let is_vector = self.columns == 1 || self.rows == 1;
+    // if is_vector {
+    //   return Matrix {
+    //     id: self.id,
+    //     rows: self.columns,
+    //     columns: self.rows,
+    //   };
+    // }
 
     unsafe { result_id = cuda_transpose(self.id, self.rows, self.columns) }
 

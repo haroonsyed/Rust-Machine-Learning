@@ -3,7 +3,7 @@ mod basic_nn_tests {
 
   use itertools::izip;
   use matrix_lib::Matrix;
-  use Rust_Machine_Learning::basic_neural_network::BasicNeuralNetwork;
+  use Rust_Machine_Learning::basic_neural_network::BasicNeuralNetworkRust;
 
   #[test]
   fn feed_forward() {
@@ -37,7 +37,7 @@ mod basic_nn_tests {
       ]),
     ];
 
-    let network = BasicNeuralNetwork { weights, biases };
+    let network = BasicNeuralNetworkRust { weights, biases };
 
     // Create a matrix to hold the actual output
     // Remember each output is product of matmul between weights and observations/neuron_outputs[layer-1] + (bias to each column)
@@ -89,7 +89,7 @@ mod basic_nn_tests {
         vec![vec![0.374, 0.424, 0.474], vec![0.825, 0.938, 1.051]]),
     ];
 
-    let softmax_output = BasicNeuralNetwork::softmax(&neuron_outputs);
+    let softmax_output = BasicNeuralNetworkRust::softmax(&neuron_outputs);
 
     let expected_softmax_output = Matrix::new_2d(&
       // 2 neurons x 3 observations
@@ -134,7 +134,7 @@ mod basic_nn_tests {
       ]),
     ];
 
-    let mut network = BasicNeuralNetwork { weights, biases };
+    let mut network = BasicNeuralNetworkRust { weights, biases };
 
     // Create a matrix to hold the actual output
     // Remember each output is product of matmul between weights and observations/neuron_outputs[layer-1] + (bias to each column)
@@ -252,7 +252,7 @@ mod basic_nn_tests {
       ]),
     ];
 
-    let mut network = BasicNeuralNetwork { weights, biases };
+    let mut network = BasicNeuralNetworkRust { weights, biases };
 
     // Create a matrix to hold the actual output
     // Remember each output is product of matmul between weights and observations/neuron_outputs[layer-1] + (bias to each column)
@@ -332,6 +332,99 @@ mod basic_nn_tests {
       assert!(matrix_are_equal(&eb, &b, 8));
       assert!(matrix_are_equal(&ew, &w, 8));
     })
+  }
+
+  #[test]
+  fn full_classification_train() {
+    let observations = vec![vec![0.1, 0.4], vec![0.2, 0.5], vec![0.3, 0.6]]; // 3 observations with 2 features
+    let labels = vec![1.0, 0.0, 1.0];
+
+    let weights = vec![
+      Matrix::new_2d(&vec![
+        // Layer 1 has 3 neurons, with 2 inputs per neuron
+        vec![0.1, 0.2],
+        vec![0.3, 0.4],
+        vec![0.5, 0.6],
+      ]),
+      Matrix::new_2d(&vec![
+        // Layer 2 has 2 neurons, with 3 inputs per neuron
+        vec![0.1, 0.2, 0.3],
+        vec![0.4, 0.5, 0.6],
+      ]),
+    ];
+
+    let biases = vec![
+      Matrix::new_2d(&vec![
+        // Layer 1 biases, 3 neurons
+        vec![0.1],
+        vec![0.2],
+        vec![0.3],
+      ]),
+      Matrix::new_2d(&vec![
+        // Layer 2 biases, 2 neurons
+        vec![0.1],
+        vec![0.2],
+      ]),
+    ];
+
+    let mut neuron_outputs = vec![
+      Matrix::new_2d(&
+        // 3 neurons x 3 observations
+        vec![vec![0.0; 3]; 3]),
+      Matrix::new_2d(&
+        // 2 neurons x 3 observations
+        vec![vec![0.0; 3]; 2]),
+    ];
+
+    let mut network = BasicNeuralNetworkRust { weights, biases };
+    let learning_rate = 0.1;
+    network.train_classification(
+      observations,
+      &mut neuron_outputs,
+      labels,
+      learning_rate,
+      1,
+      0,
+    );
+
+    let expected_weights = vec![
+      Matrix::new_2d(&vec![
+        // Layer 1 has 3 neurons, with 2 inputs per neuron
+        vec![0.10022246731331112, 0.20060763193064446],
+        vec![0.3002255393082444, 0.4006180473335778],
+        vec![0.5002286113031778, 0.600628462736511],
+      ]),
+      Matrix::new_2d(&vec![
+        // Layer 2 has 2 neurons, with 3 inputs per neuron
+        vec![
+          0.09914026666666667,
+          0.19820906666666668,
+          0.29727786666666667,
+        ],
+        vec![0.40089233333333335, 0.5018579333333333, 0.6028235333333333],
+      ]),
+    ];
+
+    let expected_biases = vec![
+      Matrix::new_2d(&vec![
+        // Layer 1 biases, 3 neurons
+        vec![0.1012838820577777],
+        vec![0.20130836008444444],
+        vec![0.3013328381111111],
+      ]),
+      Matrix::new_2d(&vec![
+        // Layer 2 biases, 2 neurons
+        vec![0.09596666666666667],
+        vec![0.20420333333333335],
+      ]),
+    ];
+
+    for (a, b) in izip!(network.weights, expected_weights) {
+      assert!(matrix_are_equal(&a, &b, 3));
+    }
+    for (a, b) in izip!(network.biases, expected_biases) {
+      assert!(matrix_are_equal(&a, &b, 3));
+    }
   }
 
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {

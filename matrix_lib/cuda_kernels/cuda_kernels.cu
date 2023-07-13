@@ -89,6 +89,7 @@ void unregister_matrix(size_t mat_id) {
 }
 
 void get_matrix_data(size_t mat_id, int rows, int cols, double* data_buffer) {
+    cudaDeviceSynchronize();
     double* gpu_buffer = mat_map[mat_id];
     gpuErrchk(cudaMemcpy(data_buffer, gpu_buffer, sizeof(double) * rows * cols, cudaMemcpyDeviceToHost));
 }

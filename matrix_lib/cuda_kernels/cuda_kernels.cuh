@@ -4,7 +4,7 @@
 #include <iostream>
 #include <unordered_map>
 
-std::atomic<size_t> mat_generated_count = 0;
+std::atomic<size_t> mat_generated_count(0);
 std::unordered_map<size_t, double*> mat_map;
 
 // Experiment to make access to map thread safe.
