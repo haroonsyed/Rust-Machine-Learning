@@ -36,10 +36,15 @@ impl Matrix_CPU {
     };
   }
 
-  pub fn new_2d(data: Vec<Vec<f64>>) -> Self {
+  pub fn get_data(&self) -> Vec<Vec<f64>> {
+    return self.iter().map(|x| x.to_vec()).collect_vec();
+  }
+
+  pub fn new_2d(data: &Vec<Vec<f64>>) -> Self {
     let rows = data.len();
     let columns = data[0].len();
-    let flattened = concat(data);
+    let mut flattened = Vec::<f64>::with_capacity(rows * columns);
+    data.iter().for_each(|row| flattened.extend(row));
     return Matrix_CPU {
       data: flattened,
       rows,

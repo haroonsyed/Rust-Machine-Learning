@@ -1,9 +1,11 @@
 #[cfg(test)]
 mod basic_nn_tests {
 
-  use itertools::izip;
+  use itertools::{izip, Itertools};
   use matrix_lib::lib_cpu::Matrix_CPU;
   use matrix_lib::Matrix;
+  use rand::prelude::Distribution;
+  use statrs::distribution::Normal;
   use Rust_Machine_Learning::basic_neural_network::BasicNeuralNetworkRust;
   use Rust_Machine_Learning::cpu_basic_neural_network::{
     ActivationFunction, BasicNeuralNetworkCPURust, Relu,
@@ -437,7 +439,7 @@ mod basic_nn_tests {
       &vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
     );
     let observations_cpu = Matrix_CPU::new_2d(
-      vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
+      &vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
     );
     let labels = vec![1.0, 0.0, 1.0];
 
@@ -470,13 +472,13 @@ mod basic_nn_tests {
     ];
 
     let weights_cpu = vec![
-      Matrix_CPU::new_2d(vec![
+      Matrix_CPU::new_2d(&vec![
         // Layer 1 has 3 neurons, with 2 inputs per neuron
         vec![0.1, 0.2],
         vec![0.3, 0.4],
         vec![0.5, 0.6],
       ]),
-      Matrix_CPU::new_2d(vec![
+      Matrix_CPU::new_2d(&vec![
         // Layer 2 has 2 neurons, with 3 inputs per neuron
         vec![0.1, 0.2, 0.3],
         vec![0.4, 0.5, 0.6],
@@ -484,13 +486,13 @@ mod basic_nn_tests {
     ];
 
     let biases_cpu = vec![
-      Matrix_CPU::new_2d(vec![
+      Matrix_CPU::new_2d(&vec![
         // Layer 1 biases, 3 neurons
         vec![0.1],
         vec![0.2],
         vec![0.3],
       ]),
-      Matrix_CPU::new_2d(vec![
+      Matrix_CPU::new_2d(&vec![
         // Layer 2 biases, 2 neurons
         vec![0.1],
         vec![0.2],
@@ -507,14 +509,12 @@ mod basic_nn_tests {
     ];
 
     let mut neuron_outputs_cpu = vec![
-      Matrix_CPU::new_2d(
+      Matrix_CPU::new_2d(&
         // 3 neurons x 3 observations
-        vec![vec![0.0; 3]; 3],
-      ),
-      Matrix_CPU::new_2d(
+        vec![vec![0.0; 3]; 3]),
+      Matrix_CPU::new_2d(&
         // 2 neurons x 3 observations
-        vec![vec![0.0; 3]; 2],
-      ),
+        vec![vec![0.0; 3]; 2]),
     ];
 
     // Create the networks
@@ -530,8 +530,11 @@ mod basic_nn_tests {
 
     let activation_func: Box<dyn ActivationFunction> = Box::new(Relu {});
 
+    let mut rng = rand::thread_rng();
+    let range = Normal::new(0.0, 1.0).unwrap();
     // Run the networks, compare outputs at each stage
-    for _ in 0..1000 {
+    for i in 0..1000 {
+      println!("Iteration: {}", i);
       // FEED FORWARD
       println!("TESTING FEED FORWARD");
       gpu_network.feed_forward(&observations_gpu, &mut neuron_outputs_gpu);
@@ -594,6 +597,20 @@ mod basic_nn_tests {
         &cpu_network,
         &neuron_outputs_cpu,
       );
+
+      // Classification
+      println!("TESTING CLASSIFICATIONS");
+      let random_data = (0..100)
+        .map(|_| vec![range.sample(&mut rng), range.sample(&mut rng)])
+        .collect_vec();
+
+      let classifications_cpu = cpu_network.classify(&random_data);
+      classifications_cpu.iter().for_each(|x| print!("{} ", x));
+      println!();
+      let classifications_gpu = gpu_network.classify(&random_data);
+      classifications_gpu.iter().for_each(|x| print!("{} ", x));
+      println!();
+      izip!(classifications_gpu, classifications_cpu).for_each(|(a, b)| assert_eq!(a, b));
     }
 
     izip!(gpu_network.weights.iter(), cpu_network.weights.iter()).for_each(|(a, b)| {
@@ -605,47 +622,6 @@ mod basic_nn_tests {
       b.print();
     });
     izip!(neuron_outputs_gpu.iter(), neuron_outputs_cpu.iter()).for_each(|(a, b)| {
-      a.print();
-      b.print();
-    });
-    // assert_eq!(1, 2);
-  }
-
-  #[test]
-  fn cpu_gpu_agreement_e2e() {
-    let observations = vec![vec![0.1, 0.4], vec![0.2, 0.5], vec![0.3, 0.6]]; // 3 observations with 2 features
-    let labels = vec![1.0, 0.0, 1.0];
-    let hidden_layer_sizes = vec![10];
-    let num_classifications = 2;
-    let learning_rate = 1e-2;
-    let num_iterations = 1;
-    let batch_size = 0;
-
-    // Create the networks
-    let gpu_network = BasicNeuralNetworkRust::new(
-      observations.clone(),
-      labels.clone(),
-      hidden_layer_sizes.clone(),
-      num_classifications,
-      learning_rate,
-      num_iterations,
-      batch_size,
-    );
-    let cpu_network = BasicNeuralNetworkCPURust::new(
-      observations.clone(),
-      labels.clone(),
-      hidden_layer_sizes.clone(),
-      num_classifications,
-      learning_rate,
-      num_iterations,
-      batch_size,
-    );
-
-    izip!(gpu_network.weights.iter(), cpu_network.weights.iter()).for_each(|(a, b)| {
-      a.print();
-      b.print();
-    });
-    izip!(gpu_network.biases.iter(), cpu_network.biases.iter()).for_each(|(a, b)| {
       a.print();
       b.print();
     });

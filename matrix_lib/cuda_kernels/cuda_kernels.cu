@@ -419,7 +419,7 @@ __global__ void add_vector_to_rows_kernel(double* mat1_buffer, int mat1_rows, in
 
 size_t cuda_add_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols) {
     // Determine orientation
-    bool is_column_vector = mat2_cols == 1;
+    bool is_column_vector = (mat2_cols == 1 && mat2_rows == mat1_rows);
 
     // Create output buffer
     int out_rows = mat1_rows;
@@ -479,7 +479,7 @@ __global__ void divide_by_row_vector_kernel(double* mat1_buffer, int mat1_rows, 
 
 size_t cuda_divide_by_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols) {
     // Determine orientation
-    bool is_column_vector = mat2_cols == 1;
+    bool is_column_vector = (mat2_cols == 1 && mat2_rows == mat1_rows);
 
     // Create output buffer
     int out_rows = mat1_rows;

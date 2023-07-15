@@ -65,6 +65,26 @@ impl BasicNeuralNetwork {
 
     return Ok(predictions);
   }
+
+  fn get_weights(&self) -> PyResult<Vec<Vec<Vec<f64>>>> {
+    let mut weights = Vec::new();
+    self
+      .network
+      .weights
+      .iter()
+      .for_each(|a| weights.push(a.get_data()));
+    return Ok(weights);
+  }
+
+  fn get_biases(&self) -> PyResult<Vec<Vec<Vec<f64>>>> {
+    let mut biases = Vec::new();
+    self
+      .network
+      .biases
+      .iter()
+      .for_each(|a| biases.push(a.get_data()));
+    return Ok(biases);
+  }
 }
 
 pub struct BasicNeuralNetworkRust {
@@ -117,7 +137,7 @@ impl BasicNeuralNetworkRust {
 
     let mut neuron_outputs: Vec<Matrix> = non_input_layer_sizes
       .iter()
-      .map(|&layer_size| Matrix::no_fill(layer_size, num_observations))
+      .map(|&layer_size| Matrix::zeros(layer_size, num_observations))
       .collect();
 
     // Create network
@@ -148,7 +168,7 @@ impl BasicNeuralNetworkRust {
     return network;
   }
 
-  fn classify(&self, features_test: &Vec<Vec<f64>>) -> Vec<f64> {
+  pub fn regression(&self, features_test: &Vec<Vec<f64>>) -> Vec<f64> {
     let num_observations = features_test.len();
 
     // Feed forward through network
@@ -157,7 +177,24 @@ impl BasicNeuralNetworkRust {
     let mut neuron_outputs: Vec<Matrix> = self
       .weights
       .iter()
-      .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
+      .map(|layer| Matrix::zeros(layer.get_data_length(), num_observations))
+      .collect_vec();
+
+    self.feed_forward(&observations, &mut neuron_outputs);
+
+    return neuron_outputs[neuron_outputs.len() - 1].get_data()[0].to_vec();
+  }
+
+  pub fn classify(&self, features_test: &Vec<Vec<f64>>) -> Vec<f64> {
+    let num_observations = features_test.len();
+
+    // Feed forward through network
+    let observations = Matrix::new_2d(&features_test).transpose();
+
+    let mut neuron_outputs: Vec<Matrix> = self
+      .weights
+      .iter()
+      .map(|layer| Matrix::zeros(layer.get_data_length(), num_observations))
       .collect_vec();
 
     self.feed_forward(&observations, &mut neuron_outputs);
@@ -167,27 +204,7 @@ impl BasicNeuralNetworkRust {
     return classifications;
   }
 
-  fn regression(&self, features_test: &Vec<Vec<f64>>) -> Vec<f64> {
-    let num_observations = features_test.len();
-
-    // Feed forward through network
-    let observations = Matrix::new_2d(&features_test).transpose();
-
-    let mut neuron_outputs: Vec<Matrix> = self
-      .weights
-      .iter()
-      .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
-      .collect_vec();
-
-    self.feed_forward(&observations, &mut neuron_outputs);
-
-    return neuron_outputs[neuron_outputs.len() - 1].get_data()[0].to_vec();
-  }
-
   pub fn get_classification(predicted_probabilities: &Matrix) -> Vec<f64> {
-    if predicted_probabilities.columns == 1 {
-      predicted_probabilities.print();
-    }
     let pred_data = predicted_probabilities.transpose().get_data();
     return pred_data
       .iter()
@@ -300,7 +317,7 @@ impl BasicNeuralNetworkRust {
         &batch_data.1
       };
 
-      // // Feed forward
+      // Feed forward
       self.feed_forward(batch, neuron_outputs);
 
       // Calculate error from feed forward step
@@ -344,10 +361,18 @@ impl BasicNeuralNetworkRust {
 
   pub fn softmax(neuron_outputs: &Vec<Matrix>) -> Matrix {
     let outputs_exp = neuron_outputs[neuron_outputs.len() - 1].element_exp();
+
     let exp_final_layer_outputs_summed = outputs_exp.sum_columns_matrix();
 
     // Divide all data by col sum
     let predictions = outputs_exp.divide_by_vector(&exp_final_layer_outputs_summed);
+    if predictions.columns == 1 {
+      println!("LETS GET THIS FIGURED OUT!");
+      neuron_outputs[neuron_outputs.len() - 1].print();
+      outputs_exp.print();
+      exp_final_layer_outputs_summed.print();
+      predictions.print();
+    }
 
     return predictions;
   }
@@ -494,7 +519,7 @@ impl BasicNeuralNetworkRust {
     let mut neuron_outputs: Vec<Matrix> = self
       .weights
       .iter()
-      .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
+      .map(|layer| Matrix::zeros(layer.get_data_length(), num_observations))
       .collect_vec();
 
     self.feed_forward(&observations, &mut neuron_outputs);
@@ -510,7 +535,7 @@ impl BasicNeuralNetworkRust {
     let mut neuron_outputs: Vec<Matrix> = self
       .weights
       .iter()
-      .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
+      .map(|layer| Matrix::zeros(layer.get_data_length(), num_observations))
       .collect_vec();
 
     self.feed_forward(&observations, &mut neuron_outputs);

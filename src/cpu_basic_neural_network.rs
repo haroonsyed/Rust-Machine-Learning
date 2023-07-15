@@ -35,13 +35,31 @@ impl BasicNeuralNetworkCPU {
   }
 
   fn classify(&self, features_test: Vec<Vec<f64>>) -> PyResult<Vec<f64>> {
-    let classifications = self.network.classify(features_test);
+    let classifications = self.network.classify(&features_test);
     return Ok(classifications);
   }
 
   fn regression(&self, features_test: Vec<Vec<f64>>) -> PyResult<Vec<f64>> {
     let predictions = self.network.regression(features_test);
     return Ok(predictions);
+  }
+  fn get_weights(&self) -> PyResult<Vec<Vec<Vec<f64>>>> {
+    let mut weights = Vec::new();
+    self
+      .network
+      .weights
+      .iter()
+      .for_each(|a| weights.push(a.iter().map(|row| row.to_vec()).collect_vec()));
+    return Ok(weights);
+  }
+  fn get_biases(&self) -> PyResult<Vec<Vec<Vec<f64>>>> {
+    let mut biases = Vec::new();
+    self
+      .network
+      .biases
+      .iter()
+      .for_each(|a| biases.push(a.iter().map(|row| row.to_vec()).collect_vec()));
+    return Ok(biases);
   }
 }
 
@@ -91,7 +109,7 @@ impl BasicNeuralNetworkCPURust {
     non_input_layer_sizes.push(num_classifications);
 
     // Init the matrices
-    let observations = Matrix_CPU::new_2d(features_train).transpose();
+    let observations = Matrix_CPU::new_2d(&features_train).transpose();
 
     // Random seed for weights
     let mut rng = rand::thread_rng();
@@ -100,7 +118,7 @@ impl BasicNeuralNetworkCPURust {
     let weights = (0..non_input_layer_sizes.len())
       .map(|layer| {
         Matrix_CPU::new_2d(
-          (0..non_input_layer_sizes[layer])
+          &(0..non_input_layer_sizes[layer])
             .map(|_| {
               (0..if layer == 0 {
                 num_features
@@ -154,11 +172,28 @@ impl BasicNeuralNetworkCPURust {
     return network;
   }
 
-  fn classify(&self, features_test: Vec<Vec<f64>>) -> Vec<f64> {
+  pub fn regression(&self, features_test: Vec<Vec<f64>>) -> Vec<f64> {
     let num_observations = features_test.len();
 
     // Feed forward through network
-    let observations = Matrix_CPU::new_2d(features_test).transpose();
+    let observations = Matrix_CPU::new_2d(&features_test).transpose();
+
+    let mut neuron_outputs: Vec<Matrix_CPU> = self
+      .weights
+      .iter()
+      .map(|layer| Matrix_CPU::zeros(layer.data.len(), num_observations))
+      .collect_vec();
+
+    let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
+    self.feed_forward(&observations, &mut neuron_outputs, &activation_function);
+    return neuron_outputs[neuron_outputs.len() - 1][0].to_vec();
+  }
+
+  pub fn classify(&self, features_test: &Vec<Vec<f64>>) -> Vec<f64> {
+    let num_observations = features_test.len();
+
+    // Feed forward through network
+    let observations = Matrix_CPU::new_2d(&features_test).transpose();
 
     let mut neuron_outputs: Vec<Matrix_CPU> = self
       .weights
@@ -172,23 +207,6 @@ impl BasicNeuralNetworkCPURust {
     let classifications = Self::get_classification(&predicted_probabilities);
 
     return classifications;
-  }
-
-  fn regression(&self, features_test: Vec<Vec<f64>>) -> Vec<f64> {
-    let num_observations = features_test.len();
-
-    // Feed forward through network
-    let observations = Matrix_CPU::new_2d(features_test).transpose();
-
-    let mut neuron_outputs: Vec<Matrix_CPU> = self
-      .weights
-      .iter()
-      .map(|layer| Matrix_CPU::zeros(layer.data.len(), num_observations))
-      .collect_vec();
-
-    let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
-    self.feed_forward(&observations, &mut neuron_outputs, &activation_function);
-    return neuron_outputs[neuron_outputs.len() - 1][0].to_vec();
   }
 
   fn rust_classify(&self, observations: &Matrix_CPU) -> Vec<f64> {
@@ -370,12 +388,26 @@ impl BasicNeuralNetworkCPURust {
     let mut predictions = neuron_outputs[neuron_outputs.len() - 1].element_apply(&|x| f64::exp(x));
     let exp_final_layer_outputs_summed: Vec<f64> = predictions.sum_columns();
 
+    if predictions.columns == 1 {
+      println!("LETS GET THIS FIGURED OUT!");
+      neuron_outputs[neuron_outputs.len() - 1].print();
+      predictions.print();
+      exp_final_layer_outputs_summed
+        .iter()
+        .for_each(|x| print!("{} ", x));
+      println!()
+    }
+
     // Divide all data by col sum
     for output_neuron in 0..predictions.rows {
       for observation_number in 0..predictions.columns {
         predictions[output_neuron][observation_number] /=
           exp_final_layer_outputs_summed[observation_number];
       }
+    }
+
+    if predictions.columns == 1 {
+      predictions.print();
     }
 
     return predictions;
@@ -395,7 +427,7 @@ impl BasicNeuralNetworkCPURust {
 
     // Shared error calculations (dSSR)
     // neuron_output[output_layer_index][0] because there is only one output neuron
-    let error = Matrix_CPU::new_2d(vec![(0..labels.len())
+    let error = Matrix_CPU::new_2d(&vec![(0..labels.len())
       .map(|index| -2.0 * (labels[index] - neuron_outputs[output_layer_index][0][index]))
       .collect_vec()]);
 
@@ -430,7 +462,7 @@ impl BasicNeuralNetworkCPURust {
 
     // Shared error calculations (dCE * dSoftmax)
     let error = Matrix_CPU::new_2d(
-      (0..output_biases.rows)
+      &(0..output_biases.rows)
         .map(|index| {
           izip!(labels.iter(), predicted_probabilities[index].iter())
             .map(|(label, predicted_probability)| {

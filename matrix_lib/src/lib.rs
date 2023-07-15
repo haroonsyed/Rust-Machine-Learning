@@ -33,7 +33,7 @@ impl Matrix {
     let mut index = 0;
     let mut result = Vec::new();
     for _ in 0..self.rows {
-      let row_slice = data[index..index + self.columns as usize].to_owned();
+      let row_slice = data[index..index + self.columns as usize].to_vec();
       result.push(row_slice);
       index += self.columns as usize;
     }
