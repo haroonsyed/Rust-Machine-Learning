@@ -2,14 +2,14 @@
 mod basic_nn_tests {
 
   use itertools::{izip, Itertools};
-  use matrix_lib::lib_cpu::Matrix_CPU;
+  use matrix_lib::lib_cpu::MatrixCpu;
   use matrix_lib::Matrix;
   use rand::prelude::Distribution;
-  use statrs::distribution::Normal;
-  use Rust_Machine_Learning::basic_neural_network::BasicNeuralNetworkRust;
-  use Rust_Machine_Learning::cpu_basic_neural_network::{
+  use rust_machine_learning::basic_neural_network::BasicNeuralNetworkRust;
+  use rust_machine_learning::cpu_basic_neural_network::{
     ActivationFunction, BasicNeuralNetworkCPURust, Relu,
   };
+  use statrs::distribution::Normal;
 
   #[test]
   fn feed_forward() {
@@ -438,7 +438,7 @@ mod basic_nn_tests {
     let observations_gpu = Matrix::new_2d(
       &vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
     );
-    let observations_cpu = Matrix_CPU::new_2d(
+    let observations_cpu = MatrixCpu::new_2d(
       &vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
     );
     let labels = vec![1.0, 0.0, 1.0];
@@ -472,13 +472,13 @@ mod basic_nn_tests {
     ];
 
     let weights_cpu = vec![
-      Matrix_CPU::new_2d(&vec![
+      MatrixCpu::new_2d(&vec![
         // Layer 1 has 3 neurons, with 2 inputs per neuron
         vec![0.1, 0.2],
         vec![0.3, 0.4],
         vec![0.5, 0.6],
       ]),
-      Matrix_CPU::new_2d(&vec![
+      MatrixCpu::new_2d(&vec![
         // Layer 2 has 2 neurons, with 3 inputs per neuron
         vec![0.1, 0.2, 0.3],
         vec![0.4, 0.5, 0.6],
@@ -486,13 +486,13 @@ mod basic_nn_tests {
     ];
 
     let biases_cpu = vec![
-      Matrix_CPU::new_2d(&vec![
+      MatrixCpu::new_2d(&vec![
         // Layer 1 biases, 3 neurons
         vec![0.1],
         vec![0.2],
         vec![0.3],
       ]),
-      Matrix_CPU::new_2d(&vec![
+      MatrixCpu::new_2d(&vec![
         // Layer 2 biases, 2 neurons
         vec![0.1],
         vec![0.2],
@@ -509,10 +509,10 @@ mod basic_nn_tests {
     ];
 
     let mut neuron_outputs_cpu = vec![
-      Matrix_CPU::new_2d(&
+      MatrixCpu::new_2d(&
         // 3 neurons x 3 observations
         vec![vec![0.0; 3]; 3]),
-      Matrix_CPU::new_2d(&
+      MatrixCpu::new_2d(&
         // 2 neurons x 3 observations
         vec![vec![0.0; 3]; 2]),
     ];
@@ -649,7 +649,7 @@ mod basic_nn_tests {
     return true;
   }
 
-  fn matrix_are_equal_gpu_cpu(a: &Matrix, b: &Matrix_CPU, precision: usize) -> bool {
+  fn matrix_are_equal_gpu_cpu(a: &Matrix, b: &MatrixCpu, precision: usize) -> bool {
     a.print();
     b.print();
 
@@ -675,7 +675,7 @@ mod basic_nn_tests {
     gpu_net: &BasicNeuralNetworkRust,
     gpu_outputs: &Vec<Matrix>,
     cpu_net: &BasicNeuralNetworkCPURust,
-    cpu_outputs: &Vec<Matrix_CPU>,
+    cpu_outputs: &Vec<MatrixCpu>,
   ) {
     // Check weights
     izip!(gpu_net.weights.iter(), cpu_net.weights.iter()).for_each(|(a, b)| {

@@ -1,6 +1,6 @@
 // use crate::py_util::py_print;
 use itertools::{izip, Itertools};
-use matrix_lib::lib_cpu::Matrix_CPU;
+use matrix_lib::lib_cpu::MatrixCpu;
 use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
 use statrs::distribution::Normal;
@@ -88,8 +88,8 @@ impl ActivationFunction for Relu {
 }
 
 pub struct BasicNeuralNetworkCPURust {
-  pub weights: Vec<Matrix_CPU>,
-  pub biases: Vec<Matrix_CPU>,
+  pub weights: Vec<MatrixCpu>,
+  pub biases: Vec<MatrixCpu>,
 }
 
 impl BasicNeuralNetworkCPURust {
@@ -109,7 +109,7 @@ impl BasicNeuralNetworkCPURust {
     non_input_layer_sizes.push(num_classifications);
 
     // Init the matrices
-    let observations = Matrix_CPU::new_2d(&features_train).transpose();
+    let observations = MatrixCpu::new_2d(&features_train).transpose();
 
     // Random seed for weights
     let mut rng = rand::thread_rng();
@@ -117,7 +117,7 @@ impl BasicNeuralNetworkCPURust {
 
     let weights = (0..non_input_layer_sizes.len())
       .map(|layer| {
-        Matrix_CPU::new_2d(
+        MatrixCpu::new_2d(
           &(0..non_input_layer_sizes[layer])
             .map(|_| {
               (0..if layer == 0 {
@@ -134,12 +134,12 @@ impl BasicNeuralNetworkCPURust {
       .collect_vec();
 
     let biases = (0..non_input_layer_sizes.len())
-      .map(|layer| Matrix_CPU::zeros(non_input_layer_sizes[layer], 1))
+      .map(|layer| MatrixCpu::zeros(non_input_layer_sizes[layer], 1))
       .collect_vec();
 
-    let mut neuron_outputs: Vec<Matrix_CPU> = non_input_layer_sizes
+    let mut neuron_outputs: Vec<MatrixCpu> = non_input_layer_sizes
       .iter()
-      .map(|&layer_size| Matrix_CPU::zeros(layer_size, num_observations))
+      .map(|&layer_size| MatrixCpu::zeros(layer_size, num_observations))
       .collect();
 
     // Create network
@@ -176,12 +176,12 @@ impl BasicNeuralNetworkCPURust {
     let num_observations = features_test.len();
 
     // Feed forward through network
-    let observations = Matrix_CPU::new_2d(&features_test).transpose();
+    let observations = MatrixCpu::new_2d(&features_test).transpose();
 
-    let mut neuron_outputs: Vec<Matrix_CPU> = self
+    let mut neuron_outputs: Vec<MatrixCpu> = self
       .weights
       .iter()
-      .map(|layer| Matrix_CPU::zeros(layer.data.len(), num_observations))
+      .map(|layer| MatrixCpu::zeros(layer.data.len(), num_observations))
       .collect_vec();
 
     let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
@@ -193,12 +193,12 @@ impl BasicNeuralNetworkCPURust {
     let num_observations = features_test.len();
 
     // Feed forward through network
-    let observations = Matrix_CPU::new_2d(&features_test).transpose();
+    let observations = MatrixCpu::new_2d(&features_test).transpose();
 
-    let mut neuron_outputs: Vec<Matrix_CPU> = self
+    let mut neuron_outputs: Vec<MatrixCpu> = self
       .weights
       .iter()
-      .map(|layer| Matrix_CPU::zeros(layer.data.len(), num_observations))
+      .map(|layer| MatrixCpu::zeros(layer.data.len(), num_observations))
       .collect_vec();
 
     let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
@@ -209,13 +209,13 @@ impl BasicNeuralNetworkCPURust {
     return classifications;
   }
 
-  fn rust_classify(&self, observations: &Matrix_CPU) -> Vec<f64> {
+  fn rust_classify(&self, observations: &MatrixCpu) -> Vec<f64> {
     let num_observations = observations.columns;
 
-    let mut neuron_outputs: Vec<Matrix_CPU> = self
+    let mut neuron_outputs: Vec<MatrixCpu> = self
       .weights
       .iter()
-      .map(|layer| Matrix_CPU::zeros(layer.data.len(), num_observations))
+      .map(|layer| MatrixCpu::zeros(layer.data.len(), num_observations))
       .collect_vec();
 
     let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
@@ -226,7 +226,7 @@ impl BasicNeuralNetworkCPURust {
     return classifications;
   }
 
-  pub fn get_classification(predicted_probabilities: &Matrix_CPU) -> Vec<f64> {
+  pub fn get_classification(predicted_probabilities: &MatrixCpu) -> Vec<f64> {
     return predicted_probabilities
       .transpose()
       .iter()
@@ -242,14 +242,14 @@ impl BasicNeuralNetworkCPURust {
   }
 
   pub fn mini_batch(
-    observations: &Matrix_CPU,
+    observations: &MatrixCpu,
     labels: &Vec<f64>,
     batch_size: usize,
-  ) -> (Matrix_CPU, Vec<f64>) {
+  ) -> (MatrixCpu, Vec<f64>) {
     let mut rng = rand::thread_rng();
     let column_dist = Uniform::new(0, observations.columns);
 
-    let mut mini_batch = Matrix_CPU::zeros(observations.rows, batch_size);
+    let mut mini_batch = MatrixCpu::zeros(observations.rows, batch_size);
     let mut mini_batch_labels = vec![0.0; batch_size];
     for i in 0..batch_size {
       let column_index = column_dist.sample(&mut rng);
@@ -264,8 +264,8 @@ impl BasicNeuralNetworkCPURust {
 
   pub fn train_regression(
     &mut self,
-    observations: &Matrix_CPU,
-    neuron_outputs: &mut Vec<Matrix_CPU>,
+    observations: &MatrixCpu,
+    neuron_outputs: &mut Vec<MatrixCpu>,
     labels: &Vec<f64>,
     learning_rate: f64,
     activation_function: Box<dyn ActivationFunction>,
@@ -305,16 +305,16 @@ impl BasicNeuralNetworkCPURust {
       );
 
       // Print progress
-      //   if i % 50 == 0 {
-      //     self.test_train_performance_regression(observations, labels);
-      //   }
+      if i % 50 == 0 {
+        self.test_train_performance_regression(observations, labels);
+      }
     }
   }
 
   pub fn train_classification(
     &mut self,
-    observations: &Matrix_CPU,
-    neuron_outputs: &mut Vec<Matrix_CPU>,
+    observations: &MatrixCpu,
+    neuron_outputs: &mut Vec<MatrixCpu>,
     labels: &Vec<f64>,
     learning_rate: f64,
     activation_function: Box<dyn ActivationFunction>,
@@ -367,8 +367,8 @@ impl BasicNeuralNetworkCPURust {
 
   pub fn feed_forward(
     &self,
-    observations: &Matrix_CPU,
-    neuron_outputs: &mut Vec<Matrix_CPU>,
+    observations: &MatrixCpu,
+    neuron_outputs: &mut Vec<MatrixCpu>,
     activation_function: &Box<dyn ActivationFunction>,
   ) {
     let num_layers = self.weights.len();
@@ -384,7 +384,7 @@ impl BasicNeuralNetworkCPURust {
     }
   }
 
-  pub fn softmax(neuron_outputs: &Vec<Matrix_CPU>) -> Matrix_CPU {
+  pub fn softmax(neuron_outputs: &Vec<MatrixCpu>) -> MatrixCpu {
     let mut predictions = neuron_outputs[neuron_outputs.len() - 1].element_apply(&|x| f64::exp(x));
     let exp_final_layer_outputs_summed: Vec<f64> = predictions.sum_columns();
 
@@ -416,9 +416,9 @@ impl BasicNeuralNetworkCPURust {
   pub fn backpropogation_output_layer_regression(
     &mut self,
     labels: &Vec<f64>,
-    neuron_outputs: &Vec<Matrix_CPU>,
+    neuron_outputs: &Vec<MatrixCpu>,
     learning_rate: f64,
-  ) -> Matrix_CPU {
+  ) -> MatrixCpu {
     let output_layer_index = self.biases.len() - 1;
     let prev_layer_outputs = &neuron_outputs[output_layer_index - 1];
     let output_biases = &self.biases[output_layer_index];
@@ -427,7 +427,7 @@ impl BasicNeuralNetworkCPURust {
 
     // Shared error calculations (dSSR)
     // neuron_output[output_layer_index][0] because there is only one output neuron
-    let error = Matrix_CPU::new_2d(&vec![(0..labels.len())
+    let error = MatrixCpu::new_2d(&vec![(0..labels.len())
       .map(|index| -2.0 * (labels[index] - neuron_outputs[output_layer_index][0][index]))
       .collect_vec()]);
 
@@ -449,11 +449,11 @@ impl BasicNeuralNetworkCPURust {
 
   pub fn backpropogation_output_layer_classification(
     &mut self,
-    predicted_probabilities: &Matrix_CPU,
+    predicted_probabilities: &MatrixCpu,
     labels: &Vec<f64>,
-    neuron_outputs: &Vec<Matrix_CPU>,
+    neuron_outputs: &Vec<MatrixCpu>,
     learning_rate: f64,
-  ) -> Matrix_CPU {
+  ) -> MatrixCpu {
     let output_layer_index = self.biases.len() - 1;
     let prev_layer_outputs = &neuron_outputs[output_layer_index - 1];
     let output_biases = &self.biases[output_layer_index];
@@ -461,7 +461,7 @@ impl BasicNeuralNetworkCPURust {
     let normalization_factor = 1.0 / prev_layer_outputs.columns as f64;
 
     // Shared error calculations (dCE * dSoftmax)
-    let error = Matrix_CPU::new_2d(
+    let error = MatrixCpu::new_2d(
       &(0..output_biases.rows)
         .map(|index| {
           izip!(labels.iter(), predicted_probabilities[index].iter())
@@ -495,9 +495,9 @@ impl BasicNeuralNetworkCPURust {
 
   pub fn backpropogation_hidden_layer(
     &mut self,
-    observations: &Matrix_CPU,
-    neuron_outputs: &Vec<Matrix_CPU>,
-    next_layer_error: &Matrix_CPU,
+    observations: &MatrixCpu,
+    neuron_outputs: &Vec<MatrixCpu>,
+    next_layer_error: &MatrixCpu,
     learning_rate: f64,
     activation_function: &Box<dyn ActivationFunction>,
     layer: usize,
@@ -550,13 +550,13 @@ impl BasicNeuralNetworkCPURust {
     }
   }
 
-  fn rust_regression(&self, observations: &Matrix_CPU) -> Vec<f64> {
+  fn rust_regression(&self, observations: &MatrixCpu) -> Vec<f64> {
     let num_observations = observations.columns;
 
-    let mut neuron_outputs: Vec<Matrix_CPU> = self
+    let mut neuron_outputs: Vec<MatrixCpu> = self
       .weights
       .iter()
-      .map(|layer| Matrix_CPU::zeros(layer.data.len(), num_observations))
+      .map(|layer| MatrixCpu::zeros(layer.data.len(), num_observations))
       .collect_vec();
 
     let activation_function: Box<dyn ActivationFunction> = Box::new(Relu {});
@@ -566,7 +566,7 @@ impl BasicNeuralNetworkCPURust {
     return classifications;
   }
 
-  fn test_train_performance_regression(&self, observations: &Matrix_CPU, labels: &Vec<f64>) {
+  fn test_train_performance_regression(&self, observations: &MatrixCpu, labels: &Vec<f64>) {
     let classifications = self.rust_regression(&observations);
     let tolerance = 0.05;
     let num_correct =
@@ -581,10 +581,10 @@ impl BasicNeuralNetworkCPURust {
 
     let percent_correct = 100.0 * num_correct / labels.len() as f64;
 
-    // py_print(&format!("% Correct: {}", percent_correct));
+    println!("{}", &format!("% Correct: {}", percent_correct));
   }
 
-  fn test_train_performance_classification(&self, observations: &Matrix_CPU, labels: &Vec<f64>) {
+  fn test_train_performance_classification(&self, observations: &MatrixCpu, labels: &Vec<f64>) {
     let classifications = self.rust_classify(&observations);
     let num_correct = izip!(classifications.iter(), labels.iter())
       .fold(0.0, |acc, (classification, label)| {
@@ -593,6 +593,6 @@ impl BasicNeuralNetworkCPURust {
 
     let percent_correct = 100.0 * num_correct / labels.len() as f64;
 
-    // py_print(&format!("% Correct: {}", percent_correct));
+    println!("{}", &format!("% Correct: {}", percent_correct));
   }
 }

@@ -1,4 +1,4 @@
-import Rust_Machine_Learning
+import rust_machine_learning
 import plotly.express as px
 import pandas as pd
 from plotly.subplots import make_subplots

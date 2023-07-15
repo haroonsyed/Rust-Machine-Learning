@@ -25,6 +25,8 @@ void test() {
     int result;
     int* d_result;
     test_kernel<<<1, 1>>>();
+    gpuErrchk(cudaPeekAtLastError());
+    cudaDeviceSynchronize();
     if (cudaPeekAtLastError() != cudaSuccess) {
         printf("The error is %s", cudaGetErrorString(cudaGetLastError()));
     }
@@ -89,7 +91,6 @@ void unregister_matrix(size_t mat_id) {
 }
 
 void get_matrix_data(size_t mat_id, int rows, int cols, double* data_buffer) {
-    cudaDeviceSynchronize();
     double* gpu_buffer = mat_map[mat_id];
     gpuErrchk(cudaMemcpy(data_buffer, gpu_buffer, sizeof(double) * rows * cols, cudaMemcpyDeviceToHost));
 }
@@ -129,7 +130,8 @@ size_t cuda_element_add(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size
     dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
 
     // Run the kernels
-    element_add_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    element_add_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;
@@ -164,7 +166,8 @@ size_t cuda_element_subtract(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
 
     // Run the kernels
-    element_subtract_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    element_subtract_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;
@@ -199,7 +202,8 @@ size_t cuda_element_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
 
     // Run the kernels
-    element_multiply_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    element_multiply_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;
@@ -233,7 +237,8 @@ size_t cuda_element_exp(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
 
     // Run the kernels
-    element_exp_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    element_exp_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;
@@ -267,7 +272,8 @@ size_t cuda_element_ReLU(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
 
     // Run the kernels
-    element_ReLU_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    element_ReLU_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;
@@ -301,7 +307,8 @@ size_t cuda_element_ReLU_prime(size_t mat1_id, size_t mat1_rows, size_t mat1_col
     dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
 
     // Run the kernels
-    element_ReLU_prime_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    element_ReLU_prime_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;
@@ -335,7 +342,8 @@ size_t cuda_scalar_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, 
     dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
 
     // Run the kernels
-    scalar_multiply_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, scalar, gpu_out_buffer, out_rows, out_cols);
+    scalar_multiply_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, scalar, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;
@@ -381,7 +389,8 @@ size_t cuda_matrix_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, 
     dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
 
     // Run the kernels
-    matrix_multiply_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    matrix_multiply_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;
@@ -438,10 +447,11 @@ size_t cuda_add_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_
 
     // Run the kernels
     if (is_column_vector) {
-        add_vector_to_columns_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+        add_vector_to_columns_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
     } else {
-        add_vector_to_rows_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+        add_vector_to_rows_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
     }
+    gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;
@@ -498,10 +508,11 @@ size_t cuda_divide_by_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
 
     // Run the kernels
     if (is_column_vector) {
-        divide_by_column_vector_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+        divide_by_column_vector_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
     } else {
-        divide_by_row_vector_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+        divide_by_row_vector_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
     }
+    gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;
@@ -537,7 +548,8 @@ size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
 
     // Run the kernels
-    transpose_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    transpose_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;
@@ -578,7 +590,8 @@ size_t cuda_sum_rows(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
 
     // Run the kernels
-    sum_rows_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    sum_rows_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;
@@ -618,7 +631,8 @@ size_t cuda_sum_columns(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
 
     // Run the kernels
-    sum_columns_kernel<<<block_dim, grid_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    sum_columns_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;

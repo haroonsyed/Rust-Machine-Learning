@@ -1,15 +1,15 @@
 use std::ops::{Index, IndexMut};
 
-use itertools::{concat, Itertools};
+use itertools::Itertools;
 use rayon::prelude::*;
 
-pub struct Matrix_CPU {
+pub struct MatrixCpu {
   pub data: Vec<f64>,
   pub rows: usize,
   pub columns: usize,
 }
 
-impl Index<usize> for Matrix_CPU {
+impl Index<usize> for MatrixCpu {
   type Output = [f64];
 
   fn index(&self, row: usize) -> &Self::Output {
@@ -19,7 +19,7 @@ impl Index<usize> for Matrix_CPU {
   }
 }
 
-impl IndexMut<usize> for Matrix_CPU {
+impl IndexMut<usize> for MatrixCpu {
   fn index_mut(&mut self, row: usize) -> &mut Self::Output {
     let start = row * self.columns;
     let end = start + self.columns;
@@ -27,9 +27,9 @@ impl IndexMut<usize> for Matrix_CPU {
   }
 }
 
-impl Matrix_CPU {
+impl MatrixCpu {
   pub fn zeros(rows: usize, columns: usize) -> Self {
-    return Matrix_CPU {
+    return MatrixCpu {
       data: vec![0.0; rows * columns],
       rows,
       columns,
@@ -45,7 +45,7 @@ impl Matrix_CPU {
     let columns = data[0].len();
     let mut flattened = Vec::<f64>::with_capacity(rows * columns);
     data.iter().for_each(|row| flattened.extend(row));
-    return Matrix_CPU {
+    return MatrixCpu {
       data: flattened,
       rows,
       columns,
@@ -69,10 +69,10 @@ impl Matrix_CPU {
     println!("");
     println!("");
   }
-  pub fn same_shape(&self, other: &Matrix_CPU) -> bool {
+  pub fn same_shape(&self, other: &MatrixCpu) -> bool {
     return self.rows == other.rows && self.columns == other.columns;
   }
-  pub fn element_add(&self, other: &Matrix_CPU) -> Self {
+  pub fn element_add(&self, other: &MatrixCpu) -> Self {
     if !self.same_shape(other) {
       panic!("Matrices not the same shape for addition!");
     }
@@ -88,7 +88,7 @@ impl Matrix_CPU {
     return result;
   }
 
-  pub fn element_multiply(&self, other: &Matrix_CPU) -> Self {
+  pub fn element_multiply(&self, other: &MatrixCpu) -> Self {
     if !self.same_shape(other) {
       panic!("Matrices not the same shape for element_multiply!");
     }
@@ -104,7 +104,7 @@ impl Matrix_CPU {
     return result;
   }
 
-  pub fn element_subtract(&self, other: &Matrix_CPU) -> Self {
+  pub fn element_subtract(&self, other: &MatrixCpu) -> Self {
     if !self.same_shape(other) {
       panic!("Matrices not the same shape for element_subtract!");
     }
@@ -120,7 +120,7 @@ impl Matrix_CPU {
     return result;
   }
 
-  pub fn add_vector_to_columns(&self, other: &Matrix_CPU) -> Self {
+  pub fn add_vector_to_columns(&self, other: &MatrixCpu) -> Self {
     if self.rows != other.rows {
       panic!("Matrices not the correct shape for add_vector_to_columns!");
     }
@@ -136,7 +136,7 @@ impl Matrix_CPU {
     return result;
   }
 
-  pub fn matrix_multiply(&self, other: &Matrix_CPU) -> Self {
+  pub fn matrix_multiply(&self, other: &MatrixCpu) -> Self {
     // Bound Check
     if self.columns != other.rows {
       panic!("Matrices not compatible shape for mat mult!");
@@ -205,7 +205,7 @@ impl Matrix_CPU {
     return self.iter().map(|row| row.iter().sum()).collect_vec();
   }
 
-  pub fn sum_rows_matrix(&self) -> Matrix_CPU {
+  pub fn sum_rows_matrix(&self) -> MatrixCpu {
     let mut result = Self::zeros(self.rows, 1);
 
     for i in 0..self.rows {

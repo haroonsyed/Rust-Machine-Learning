@@ -399,7 +399,6 @@ impl Matrix {
     //     columns: self.rows,
     //   };
     // }
-
     unsafe { result_id = cuda_transpose(self.id, self.rows, self.columns) }
 
     let output_rows = self.columns;
@@ -416,8 +415,11 @@ impl Matrix {
 #[cfg(test)]
 mod tests {
   use itertools::Itertools;
+  use rand::prelude::Distribution;
+  use statrs::distribution::Normal;
 
   use crate::bindings::*;
+  use crate::lib_cpu::MatrixCpu;
   use crate::Matrix;
   use std::ffi::c_double;
 
@@ -663,6 +665,23 @@ mod tests {
     });
   }
 
+  #[test]
+  fn large_tranpose_cpu_gpu_agreement() {
+    let mut rng = rand::thread_rng();
+    let range = Normal::new(0.0, 1.0).unwrap();
+
+    let rows = 5000;
+    let cols = 784;
+    let data = (0..rows)
+      .map(|_| (0..cols).map(|_| range.sample(&mut rng)).collect_vec())
+      .collect_vec();
+
+    let mat_gpu = Matrix::new_2d(&data).transpose();
+    let mat_cpu = MatrixCpu::new_2d(&data).transpose();
+
+    matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 12);
+  }
+
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
     if a.rows != b.rows || a.columns != b.columns {
       return false;
@@ -676,6 +695,28 @@ mod tests {
     for i in 0..a.rows {
       for j in 0..a.columns {
         if !approx_equal(a_data[i][j], b_data[i][j], precision) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  fn matrix_are_equal_gpu_cpu(a: &Matrix, b: &MatrixCpu, precision: usize) -> bool {
+    a.print();
+    b.print();
+
+    if a.rows != b.rows || a.columns != b.columns {
+      println!("Matrices do not even share dimensions");
+      return false;
+    }
+
+    let a_data = a.get_data();
+    for i in 0..a.rows {
+      for j in 0..a.columns {
+        if !approx_equal(a_data[i][j], b[i][j], precision) {
+          println!("Matrices not equal at {} {}", a_data[i][j], b[i][j]);
           return false;
         }
       }

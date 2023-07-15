@@ -5,24 +5,6 @@ use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
 use statrs::distribution::Normal;
 
-// So I was initially gonna use a class representation for each neuron
-// But I think I can make things simpler and more efficient with matrices
-/*
-Neural Network Representation:
-Matrix 1: The observations
-Matrix 2: The weights
-Matrix 3: The bias (conserved a bit of memory)
-vector<Matrix 4>: The outputs of each neuron
-
-Matrix 4 dimensions will be large enough to store
-#neurons * #observations
-where dimensions = [#layers, Matrix[#neurons_largest_hidden, #observations]]
-
-Where
-weights.matmult(observations).elem_add(bias) = raw_neuron_outputs
-activation_function(raw_neuron_outputs) = neuron_outputs
- */
-
 #[pyclass]
 pub struct BasicNeuralNetwork {
   pub network: BasicNeuralNetworkRust,
@@ -216,7 +198,7 @@ impl BasicNeuralNetworkRust {
           .map(|a| a.0 as f64)
           .unwrap()
       })
-      .collect();
+      .collect_vec();
   }
 
   pub fn mini_batch(
@@ -339,9 +321,9 @@ impl BasicNeuralNetworkRust {
       );
 
       // Comment out for tests (pyo3 doesn't like test mode idk why)
-      // if i % 50 == 0 {
-      //   self.test_train_performance_classification(&observations_matrix, &labels);
-      // }
+      if i % 50 == 0 {
+        self.test_train_performance_classification(&observations_matrix, &labels);
+      }
     }
   }
 
@@ -366,14 +348,6 @@ impl BasicNeuralNetworkRust {
 
     // Divide all data by col sum
     let predictions = outputs_exp.divide_by_vector(&exp_final_layer_outputs_summed);
-    if predictions.columns == 1 {
-      println!("LETS GET THIS FIGURED OUT!");
-      neuron_outputs[neuron_outputs.len() - 1].print();
-      outputs_exp.print();
-      exp_final_layer_outputs_summed.print();
-      predictions.print();
-    }
-
     return predictions;
   }
 
@@ -559,7 +533,7 @@ impl BasicNeuralNetworkRust {
 
     let percent_correct = 100.0 * num_correct / labels.len() as f64;
 
-    // py_print(&format!("% Correct: {}", percent_correct));
+    println!("{}", &format!("% Correct: {}", percent_correct));
   }
 
   fn test_train_performance_classification(&self, observations: &Matrix, labels: &Vec<f64>) {
@@ -571,6 +545,6 @@ impl BasicNeuralNetworkRust {
 
     let percent_correct = 100.0 * num_correct / labels.len() as f64;
 
-    // py_print(&format!("% Correct: {}", percent_correct));
+    println!("{}", &format!("% Correct: {}", percent_correct));
   }
 }
