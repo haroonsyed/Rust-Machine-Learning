@@ -119,7 +119,7 @@ impl BasicNeuralNetworkRust {
 
     let mut neuron_outputs: Vec<Matrix> = non_input_layer_sizes
       .iter()
-      .map(|&layer_size| Matrix::zeros(layer_size, num_observations))
+      .map(|&layer_size| Matrix::no_fill(layer_size, num_observations))
       .collect();
 
     // Create network
@@ -159,7 +159,7 @@ impl BasicNeuralNetworkRust {
     let mut neuron_outputs: Vec<Matrix> = self
       .weights
       .iter()
-      .map(|layer| Matrix::zeros(layer.get_data_length(), num_observations))
+      .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
       .collect_vec();
 
     self.feed_forward(&observations, &mut neuron_outputs);
@@ -176,7 +176,7 @@ impl BasicNeuralNetworkRust {
     let mut neuron_outputs: Vec<Matrix> = self
       .weights
       .iter()
-      .map(|layer| Matrix::zeros(layer.get_data_length(), num_observations))
+      .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
       .collect_vec();
 
     self.feed_forward(&observations, &mut neuron_outputs);

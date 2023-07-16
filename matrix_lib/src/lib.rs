@@ -97,7 +97,8 @@ impl Matrix {
   pub fn same_shape(&self, other: &Matrix) -> bool {
     return self.rows == other.rows && self.columns == other.columns;
   }
-  pub fn element_add(&self, other: &Matrix) -> Self {
+
+  fn element_add_impl(&self, other: &Matrix, inplace: bool) -> usize {
     if !self.same_shape(other) {
       panic!(
         "Matrices not the same shape for addition! A: {} {} B: {} {}",
@@ -114,9 +115,15 @@ impl Matrix {
         other.id,
         other.rows,
         other.columns,
+        inplace,
       )
     }
 
+    return result_id;
+  }
+
+  pub fn element_add(&self, other: &Matrix) -> Self {
+    let result_id = self.element_add_impl(other, false);
     let output_rows = self.rows;
     let output_columns = self.columns;
 
@@ -127,7 +134,12 @@ impl Matrix {
     };
   }
 
-  pub fn element_subtract(&self, other: &Matrix) -> Self {
+  pub fn element_add_inplace(&self, other: &Matrix) -> &Self {
+    self.element_add_impl(other, true);
+    return self;
+  }
+
+  fn element_subtract_impl(&self, other: &Matrix, inplace: bool) -> usize {
     if !self.same_shape(other) {
       panic!(
         "Matrices not the same shape for element_subtract! A: {} {} B: {} {}",
@@ -144,9 +156,15 @@ impl Matrix {
         other.id,
         other.rows,
         other.columns,
+        inplace,
       )
     }
 
+    return result_id;
+  }
+
+  pub fn element_subtract(&self, other: &Matrix) -> Self {
+    let result_id = self.element_subtract_impl(other, false);
     let output_rows = self.rows;
     let output_columns = self.columns;
 
@@ -157,7 +175,12 @@ impl Matrix {
     };
   }
 
-  pub fn element_multiply(&self, other: &Matrix) -> Self {
+  pub fn element_subtract_inplace(&self, other: &Matrix) -> &Self {
+    self.element_subtract_impl(other, false);
+    return self;
+  }
+
+  fn element_multiply_impl(&self, other: &Matrix, inplace: bool) -> usize {
     if !self.same_shape(other) {
       panic!(
         "Matrices not the same shape for element_multiply! A: {} {} B: {} {}",
@@ -174,9 +197,15 @@ impl Matrix {
         other.id,
         other.rows,
         other.columns,
+        inplace,
       )
     }
 
+    return result_id;
+  }
+
+  pub fn element_multiply(&self, other: &Matrix) -> Self {
+    let result_id = self.element_multiply_impl(other, false);
     let output_rows = self.rows;
     let output_columns = self.columns;
 
@@ -187,10 +216,20 @@ impl Matrix {
     };
   }
 
-  pub fn scalar_multiply(&self, scalar: f64) -> Self {
-    let result_id: usize;
-    unsafe { result_id = cuda_scalar_multiply(self.id, self.rows, self.columns, scalar) }
+  pub fn element_multiply_inplace(&self, other: &Matrix) -> &Self {
+    self.element_multiply_impl(other, true);
+    return self;
+  }
 
+  fn scalar_multiply_impl(&self, scalar: f64, inplace: bool) -> usize {
+    let result_id: usize;
+    unsafe { result_id = cuda_scalar_multiply(self.id, self.rows, self.columns, scalar, inplace) }
+
+    return result_id;
+  }
+
+  pub fn scalar_multiply(&self, scalar: f64) -> Self {
+    let result_id = self.scalar_multiply_impl(scalar, false);
     let output_rows = self.rows;
     let output_columns = self.columns;
 
@@ -199,6 +238,11 @@ impl Matrix {
       rows: output_rows,
       columns: output_columns,
     };
+  }
+
+  pub fn scalar_multiply_inplace(&self, scalar: f64) -> &Self {
+    self.scalar_multiply_impl(scalar, false);
+    return self;
   }
 
   pub fn matrix_multiply(&self, other: &Matrix) -> Self {
@@ -232,7 +276,7 @@ impl Matrix {
     };
   }
 
-  pub fn add_vector(&self, other: &Matrix) -> Self {
+  fn add_vector_impl(&self, other: &Matrix, inplace: bool) -> usize {
     if !((self.rows == other.rows && other.columns == 1)
       || (self.columns == other.columns && other.rows == 1))
     {
@@ -251,9 +295,15 @@ impl Matrix {
         other.id,
         other.rows,
         other.columns,
+        inplace,
       )
     }
 
+    return result_id;
+  }
+
+  pub fn add_vector(&self, other: &Matrix) -> Self {
+    let result_id = self.add_vector_impl(other, false);
     let output_rows = self.rows;
     let output_columns = self.columns;
 
@@ -264,7 +314,13 @@ impl Matrix {
     };
   }
 
-  pub fn divide_by_vector(&self, other: &Matrix) -> Self {
+  pub fn add_vector_inplace(&self, other: &Matrix) -> &Self {
+    self.add_vector_impl(other, true);
+
+    return self;
+  }
+
+  fn divide_by_vector_impl(&self, other: &Matrix, inplace: bool) -> usize {
     if !((self.rows == other.rows && other.columns == 1)
       || (self.columns == other.columns && other.rows == 1))
     {
@@ -283,9 +339,15 @@ impl Matrix {
         other.id,
         other.rows,
         other.columns,
+        inplace,
       )
     }
 
+    return result_id;
+  }
+
+  pub fn divide_by_vector(&self, other: &Matrix) -> Self {
+    let result_id = self.divide_by_vector_impl(other, false);
     let output_rows = self.rows;
     let output_columns = self.columns;
 
@@ -296,10 +358,20 @@ impl Matrix {
     };
   }
 
-  pub fn element_exp(&self) -> Self {
-    let result_id: usize;
-    unsafe { result_id = cuda_element_exp(self.id, self.rows, self.columns) }
+  pub fn divide_by_vector_inplace(&self, other: &Matrix) -> &Self {
+    self.divide_by_vector_impl(other, true);
 
+    return self;
+  }
+
+  fn element_exp_impl(&self, inplace: bool) -> usize {
+    let result_id: usize;
+    unsafe { result_id = cuda_element_exp(self.id, self.rows, self.columns, inplace) }
+    return result_id;
+  }
+
+  pub fn element_exp(&self) -> Self {
+    let result_id = self.element_exp_impl(false);
     let output_rows = self.rows;
     let output_columns = self.columns;
 
@@ -308,13 +380,25 @@ impl Matrix {
       rows: output_rows,
       columns: output_columns,
     };
+  }
+
+  pub fn element_exp_inplace(&self) -> &Self {
+    self.element_exp_impl(false);
+
+    return self;
+  }
+
+  #[allow(non_snake_case)]
+  fn element_ReLU_impl(&self, inplace: bool) -> usize {
+    let result_id: usize;
+    unsafe { result_id = cuda_element_ReLU(self.id, self.rows, self.columns, inplace) }
+
+    return result_id;
   }
 
   #[allow(non_snake_case)]
   pub fn element_ReLU(&self) -> Self {
-    let result_id: usize;
-    unsafe { result_id = cuda_element_ReLU(self.id, self.rows, self.columns) }
-
+    let result_id = self.element_ReLU_impl(false);
     let output_rows = self.rows;
     let output_columns = self.columns;
 
@@ -326,10 +410,23 @@ impl Matrix {
   }
 
   #[allow(non_snake_case)]
-  pub fn element_ReLU_prime(&self) -> Self {
-    let result_id: usize;
-    unsafe { result_id = cuda_element_ReLU_prime(self.id, self.rows, self.columns) }
+  pub fn element_ReLU_inplace(&self) -> &Self {
+    self.element_ReLU_impl(true);
 
+    return self;
+  }
+
+  #[allow(non_snake_case)]
+  fn element_ReLU_prime_impl(&self, inplace: bool) -> usize {
+    let result_id: usize;
+    unsafe { result_id = cuda_element_ReLU_prime(self.id, self.rows, self.columns, inplace) }
+
+    return result_id;
+  }
+
+  #[allow(non_snake_case)]
+  pub fn element_ReLU_prime(&self) -> Self {
+    let result_id = self.element_ReLU_prime_impl(false);
     let output_rows = self.rows;
     let output_columns = self.columns;
 
@@ -338,6 +435,11 @@ impl Matrix {
       rows: output_rows,
       columns: output_columns,
     };
+  }
+
+  #[allow(non_snake_case)]
+  pub fn element_ReLU_prime_inplace(&self) {
+    self.element_ReLU_prime_impl(true);
   }
 
   pub fn sum_rows_matrix(&self) -> Self {
@@ -390,15 +492,6 @@ impl Matrix {
   pub fn transpose(&self) -> Self {
     let result_id: usize;
 
-    // Fast transpose, no memory operations
-    // let is_vector = self.columns == 1 || self.rows == 1;
-    // if is_vector {
-    //   return Matrix {
-    //     id: self.id,
-    //     rows: self.columns,
-    //     columns: self.rows,
-    //   };
-    // }
     unsafe { result_id = cuda_transpose(self.id, self.rows, self.columns) }
 
     let output_rows = self.columns;

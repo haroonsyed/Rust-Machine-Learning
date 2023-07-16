@@ -11,7 +11,7 @@ pub fn matrix_multiply_benchmark(criterion: &mut Criterion) {
   let mut rng = rand::thread_rng();
   let range = Normal::new(0.0, 0.68).unwrap();
 
-  let mat_dim = 2000;
+  let mat_dim = 200;
 
   let matrix1 = Matrix::new_2d(
     &(0..mat_dim)
