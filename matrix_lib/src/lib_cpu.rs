@@ -4,13 +4,13 @@ use itertools::Itertools;
 use rayon::prelude::*;
 
 pub struct MatrixCpu {
-  pub data: Vec<f64>,
+  pub data: Vec<f32>,
   pub rows: usize,
   pub columns: usize,
 }
 
 impl Index<usize> for MatrixCpu {
-  type Output = [f64];
+  type Output = [f32];
 
   fn index(&self, row: usize) -> &Self::Output {
     let start = row * self.columns;
@@ -36,14 +36,14 @@ impl MatrixCpu {
     };
   }
 
-  pub fn get_data(&self) -> Vec<Vec<f64>> {
+  pub fn get_data(&self) -> Vec<Vec<f32>> {
     return self.iter().map(|x| x.to_vec()).collect_vec();
   }
 
-  pub fn new_2d(data: &Vec<Vec<f64>>) -> Self {
+  pub fn new_2d(data: &Vec<Vec<f32>>) -> Self {
     let rows = data.len();
     let columns = data[0].len();
-    let mut flattened = Vec::<f64>::with_capacity(rows * columns);
+    let mut flattened = Vec::<f32>::with_capacity(rows * columns);
     data.iter().for_each(|row| flattened.extend(row));
     return MatrixCpu {
       data: flattened,
@@ -52,7 +52,7 @@ impl MatrixCpu {
     };
   }
 
-  pub fn iter(&self) -> impl Iterator<Item = &[f64]> {
+  pub fn iter(&self) -> impl Iterator<Item = &[f32]> {
     self.data.chunks(self.columns)
   }
 
@@ -164,7 +164,7 @@ impl MatrixCpu {
     return result;
   }
 
-  pub fn scalar_multiply(&self, scalar: f64) -> Self {
+  pub fn scalar_multiply(&self, scalar: f32) -> Self {
     let mut result = Self::zeros(self.rows, self.columns);
 
     for i in 0..result.rows {
@@ -189,7 +189,7 @@ impl MatrixCpu {
 
     return result;
   }
-  pub fn element_apply(&self, func: &dyn Fn(f64) -> f64) -> Self {
+  pub fn element_apply(&self, func: &dyn Fn(f32) -> f32) -> Self {
     let mut result = Self::zeros(self.rows, self.columns);
 
     for i in 0..result.rows {
@@ -201,7 +201,7 @@ impl MatrixCpu {
     return result;
   }
 
-  pub fn sum_rows(&self) -> Vec<f64> {
+  pub fn sum_rows(&self) -> Vec<f32> {
     return self.iter().map(|row| row.iter().sum()).collect_vec();
   }
 
@@ -217,7 +217,7 @@ impl MatrixCpu {
     return result;
   }
 
-  pub fn sum_columns(&self) -> Vec<f64> {
+  pub fn sum_columns(&self) -> Vec<f32> {
     let mut result = vec![0.0; self.columns];
 
     for i in 0..self.rows {

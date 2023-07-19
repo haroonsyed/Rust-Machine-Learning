@@ -14,11 +14,11 @@ pub struct BasicNeuralNetwork {
 impl BasicNeuralNetwork {
   #[new]
   fn new(
-    features_train: Vec<Vec<f64>>,
-    input_labels: Vec<f64>,
+    features_train: Vec<Vec<f32>>,
+    input_labels: Vec<f32>,
     hidden_layer_sizes: Vec<usize>,
     num_classifications: usize, // Set to anything 1 to perform regression
-    learning_rate: f64,
+    learning_rate: f32,
     num_iterations: usize,
     batch_size: usize, // Set to 0 to use stochastic GD
   ) -> Self {
@@ -36,19 +36,19 @@ impl BasicNeuralNetwork {
     return Self { network };
   }
 
-  fn classify(&self, features_test: Vec<Vec<f64>>) -> PyResult<Vec<f64>> {
+  fn classify(&self, features_test: Vec<Vec<f32>>) -> PyResult<Vec<f32>> {
     let classifications = self.network.classify(&features_test);
 
     return Ok(classifications);
   }
 
-  fn regression(&self, features_test: Vec<Vec<f64>>) -> PyResult<Vec<f64>> {
+  fn regression(&self, features_test: Vec<Vec<f32>>) -> PyResult<Vec<f32>> {
     let predictions = self.network.regression(&features_test);
 
     return Ok(predictions);
   }
 
-  fn get_weights(&self) -> PyResult<Vec<Vec<Vec<f64>>>> {
+  fn get_weights(&self) -> PyResult<Vec<Vec<Vec<f32>>>> {
     let mut weights = Vec::new();
     self
       .network
@@ -58,7 +58,7 @@ impl BasicNeuralNetwork {
     return Ok(weights);
   }
 
-  fn get_biases(&self) -> PyResult<Vec<Vec<Vec<f64>>>> {
+  fn get_biases(&self) -> PyResult<Vec<Vec<Vec<f32>>>> {
     let mut biases = Vec::new();
     self
       .network
@@ -76,11 +76,11 @@ pub struct BasicNeuralNetworkRust {
 
 impl BasicNeuralNetworkRust {
   pub fn new(
-    features_train: Vec<Vec<f64>>,
-    input_labels: Vec<f64>,
+    features_train: Vec<Vec<f32>>,
+    input_labels: Vec<f32>,
     hidden_layer_sizes: Vec<usize>,
     num_classifications: usize, // Set to anything 1 to perform regression
-    learning_rate: f64,
+    learning_rate: f32,
     num_iterations: usize,
     batch_size: usize, // Set to 0 to use stochastic GD
   ) -> Self {
@@ -105,7 +105,7 @@ impl BasicNeuralNetworkRust {
               } else {
                 non_input_layer_sizes[layer - 1]
               })
-                .map(|_| range.sample(&mut rng))
+                .map(|_| range.sample(&mut rng) as f32)
                 .collect_vec()
             })
             .collect_vec(),
@@ -150,7 +150,7 @@ impl BasicNeuralNetworkRust {
     return network;
   }
 
-  pub fn regression(&self, features_test: &Vec<Vec<f64>>) -> Vec<f64> {
+  pub fn regression(&self, features_test: &Vec<Vec<f32>>) -> Vec<f32> {
     let num_observations = features_test.len();
 
     // Feed forward through network
@@ -167,7 +167,7 @@ impl BasicNeuralNetworkRust {
     return neuron_outputs[neuron_outputs.len() - 1].get_data()[0].to_vec();
   }
 
-  pub fn classify(&self, features_test: &Vec<Vec<f64>>) -> Vec<f64> {
+  pub fn classify(&self, features_test: &Vec<Vec<f32>>) -> Vec<f32> {
     let num_observations = features_test.len();
 
     // Feed forward through network
@@ -186,7 +186,7 @@ impl BasicNeuralNetworkRust {
     return classifications;
   }
 
-  pub fn get_classification(predicted_probabilities: &Matrix) -> Vec<f64> {
+  pub fn get_classification(predicted_probabilities: &Matrix) -> Vec<f32> {
     let pred_data = predicted_probabilities.transpose().get_data();
     return pred_data
       .iter()
@@ -195,17 +195,17 @@ impl BasicNeuralNetworkRust {
           .iter()
           .enumerate()
           .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-          .map(|a| a.0 as f64)
+          .map(|a| a.0 as f32)
           .unwrap()
       })
       .collect_vec();
   }
 
   pub fn mini_batch(
-    row_based_observations: &Vec<Vec<f64>>,
-    labels: &Vec<f64>,
+    row_based_observations: &Vec<Vec<f32>>,
+    labels: &Vec<f32>,
     batch_size: usize,
-  ) -> (Matrix, Vec<f64>) {
+  ) -> (Matrix, Vec<f32>) {
     let mut rng = rand::thread_rng();
     let row_dist = Uniform::new(0, row_based_observations.len());
 
@@ -224,10 +224,10 @@ impl BasicNeuralNetworkRust {
 
   pub fn train_regression(
     &mut self,
-    observations: Vec<Vec<f64>>,
+    observations: Vec<Vec<f32>>,
     neuron_outputs: &mut Vec<Matrix>,
-    labels: Vec<f64>,
-    learning_rate: f64,
+    labels: Vec<f32>,
+    learning_rate: f32,
     num_iterations: usize,
     batch_size: usize,
   ) {
@@ -273,10 +273,10 @@ impl BasicNeuralNetworkRust {
 
   pub fn train_classification(
     &mut self,
-    observations: Vec<Vec<f64>>,
+    observations: Vec<Vec<f32>>,
     neuron_outputs: &mut Vec<Matrix>,
-    labels: Vec<f64>,
-    learning_rate: f64,
+    labels: Vec<f32>,
+    learning_rate: f32,
     num_iterations: usize,
     batch_size: usize,
   ) {
@@ -285,7 +285,7 @@ impl BasicNeuralNetworkRust {
     // For now we will make the number of iterations a constant
     for i in 0..num_iterations {
       // Batch
-      let batch_data: (Matrix, Vec<f64>) =
+      let batch_data: (Matrix, Vec<f32>) =
         BasicNeuralNetworkRust::mini_batch(&observations, &labels, batch_size);
 
       let batch = if batch_size == 0 {
@@ -353,15 +353,15 @@ impl BasicNeuralNetworkRust {
 
   pub fn backpropogation_output_layer_regression(
     &mut self,
-    labels: &Vec<f64>,
+    labels: &Vec<f32>,
     neuron_outputs: &Vec<Matrix>,
-    learning_rate: f64,
+    learning_rate: f32,
   ) -> Matrix {
     let output_layer_index = self.biases.len() - 1;
     let prev_layer_outputs = &neuron_outputs[output_layer_index - 1];
     let output_biases = &self.biases[output_layer_index];
     let output_weights = &self.weights[output_layer_index];
-    let normalization_factor = 1.0 / prev_layer_outputs.columns as f64;
+    let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
 
     // Shared error calculations (dSSR)
     // neuron_output[output_layer_index][0] because there is only one output neuron
@@ -389,15 +389,15 @@ impl BasicNeuralNetworkRust {
   pub fn backpropogation_output_layer_classification(
     &mut self,
     predicted_probabilities: &Matrix,
-    labels: &Vec<f64>,
+    labels: &Vec<f32>,
     neuron_outputs: &Vec<Matrix>,
-    learning_rate: f64,
+    learning_rate: f32,
   ) -> Matrix {
     let output_layer_index = self.biases.len() - 1;
     let prev_layer_outputs = &neuron_outputs[output_layer_index - 1];
     let output_biases = &self.biases[output_layer_index];
     let output_weights = &self.weights[output_layer_index];
-    let normalization_factor = 1.0 / prev_layer_outputs.columns as f64;
+    let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
 
     // Shared error calculations (dCE * dSoftmax)
     let predicted_probabilities_data = predicted_probabilities.get_data(); // TODO: Measure performance impact of copying to host
@@ -406,7 +406,7 @@ impl BasicNeuralNetworkRust {
         .map(|index| {
           izip!(labels.iter(), predicted_probabilities_data[index].iter())
             .map(|(label, predicted_probability)| {
-              if *label == index as f64 {
+              if *label == index as f32 {
                 *predicted_probability - 1.0
               } else {
                 *predicted_probability
@@ -438,7 +438,7 @@ impl BasicNeuralNetworkRust {
     observations: &Matrix,
     neuron_outputs: &Vec<Matrix>,
     next_layer_error: &Matrix,
-    learning_rate: f64,
+    learning_rate: f32,
     layer: usize,
   ) {
     // Used for yin
@@ -448,7 +448,7 @@ impl BasicNeuralNetworkRust {
       &neuron_outputs[layer - 1]
     };
 
-    let normalization_factor = 1.0 / prev_layer_outputs.columns as f64;
+    let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
 
     // Used for wout
     let wout = &self.weights[layer + 1];
@@ -487,7 +487,7 @@ impl BasicNeuralNetworkRust {
     }
   }
 
-  fn matrix_classify(&self, observations: &Matrix) -> Vec<f64> {
+  fn matrix_classify(&self, observations: &Matrix) -> Vec<f32> {
     let num_observations = observations.columns;
 
     let mut neuron_outputs: Vec<Matrix> = self
@@ -503,7 +503,7 @@ impl BasicNeuralNetworkRust {
     return classifications;
   }
 
-  fn matrix_regression(&self, observations: &Matrix) -> Vec<f64> {
+  fn matrix_regression(&self, observations: &Matrix) -> Vec<f32> {
     let num_observations = observations.columns;
 
     let mut neuron_outputs: Vec<Matrix> = self
@@ -518,7 +518,7 @@ impl BasicNeuralNetworkRust {
     return classifications;
   }
 
-  fn test_train_performance_regression(&self, observations: &Matrix, labels: &Vec<f64>) {
+  fn test_train_performance_regression(&self, observations: &Matrix, labels: &Vec<f32>) {
     let classifications = self.matrix_regression(&observations);
     let tolerance = 0.05;
     let num_correct =
@@ -531,19 +531,19 @@ impl BasicNeuralNetworkRust {
           }
       });
 
-    let percent_correct = 100.0 * num_correct / labels.len() as f64;
+    let percent_correct = 100.0 * num_correct / labels.len() as f32;
 
     println!("{}", &format!("% Correct: {}", percent_correct));
   }
 
-  fn test_train_performance_classification(&self, observations: &Matrix, labels: &Vec<f64>) {
+  fn test_train_performance_classification(&self, observations: &Matrix, labels: &Vec<f32>) {
     let classifications = self.matrix_classify(&observations);
     let num_correct = izip!(classifications.iter(), labels.iter())
       .fold(0.0, |acc, (classification, label)| {
         acc + if classification == label { 1.0 } else { 0.0 }
       });
 
-    let percent_correct = 100.0 * num_correct / labels.len() as f64;
+    let percent_correct = 100.0 * num_correct / labels.len() as f32;
 
     println!("{}", &format!("% Correct: {}", percent_correct));
   }

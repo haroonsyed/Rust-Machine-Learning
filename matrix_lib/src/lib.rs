@@ -2,7 +2,7 @@ pub mod bindings;
 pub mod lib_cpu;
 
 use bindings::*;
-use std::ffi::c_double;
+use std::ffi::c_float;
 
 pub struct Matrix {
   id: usize,
@@ -23,8 +23,8 @@ impl Matrix {
     return self.rows * self.columns;
   }
 
-  pub fn get_data(&self) -> Vec<Vec<f64>> {
-    let mut data = Vec::<c_double>::with_capacity(self.get_data_length());
+  pub fn get_data(&self) -> Vec<Vec<f32>> {
+    let mut data = Vec::<c_float>::with_capacity(self.get_data_length());
     unsafe {
       get_matrix_data(self.id, self.rows, self.columns, data.as_mut_ptr());
       data.set_len(self.get_data_length());
@@ -42,7 +42,7 @@ impl Matrix {
   }
 
   pub fn no_fill(rows: usize, columns: usize) -> Self {
-    let data = Vec::<c_double>::with_capacity(rows * columns);
+    let data = Vec::<c_float>::with_capacity(rows * columns);
     let id;
     unsafe {
       id = register_matrix(data.as_ptr(), rows, columns);
@@ -59,14 +59,14 @@ impl Matrix {
     return Matrix { id, rows, columns };
   }
 
-  pub fn new_2d(data: &Vec<Vec<f64>>) -> Self {
+  pub fn new_2d(data: &Vec<Vec<f32>>) -> Self {
     if data.len() == 0 {
       return Self::no_fill(0, 0);
     }
 
     let rows = data.len();
     let columns = data[0].len();
-    let mut flattened = Vec::<f64>::with_capacity(rows * columns);
+    let mut flattened = Vec::<f32>::with_capacity(rows * columns);
     data.iter().for_each(|row| flattened.extend(row));
 
     let id;
@@ -176,7 +176,7 @@ impl Matrix {
   }
 
   pub fn element_subtract_inplace(&self, other: &Matrix) -> &Self {
-    self.element_subtract_impl(other, false);
+    self.element_subtract_impl(other, true);
     return self;
   }
 
@@ -221,14 +221,14 @@ impl Matrix {
     return self;
   }
 
-  fn scalar_multiply_impl(&self, scalar: f64, inplace: bool) -> usize {
+  fn scalar_multiply_impl(&self, scalar: f32, inplace: bool) -> usize {
     let result_id: usize;
     unsafe { result_id = cuda_scalar_multiply(self.id, self.rows, self.columns, scalar, inplace) }
 
     return result_id;
   }
 
-  pub fn scalar_multiply(&self, scalar: f64) -> Self {
+  pub fn scalar_multiply(&self, scalar: f32) -> Self {
     let result_id = self.scalar_multiply_impl(scalar, false);
     let output_rows = self.rows;
     let output_columns = self.columns;
@@ -240,8 +240,8 @@ impl Matrix {
     };
   }
 
-  pub fn scalar_multiply_inplace(&self, scalar: f64) -> &Self {
-    self.scalar_multiply_impl(scalar, false);
+  pub fn scalar_multiply_inplace(&self, scalar: f32) -> &Self {
+    self.scalar_multiply_impl(scalar, true);
     return self;
   }
 
@@ -383,7 +383,7 @@ impl Matrix {
   }
 
   pub fn element_exp_inplace(&self) -> &Self {
-    self.element_exp_impl(false);
+    self.element_exp_impl(true);
 
     return self;
   }
@@ -472,7 +472,7 @@ impl Matrix {
     return result_matrix;
   }
 
-  pub fn sum_columns(&self) -> Vec<f64> {
+  pub fn sum_columns(&self) -> Vec<f32> {
     let result_id: usize;
     unsafe { result_id = cuda_sum_columns(self.id, self.rows, self.columns) }
 
@@ -514,7 +514,6 @@ mod tests {
   use crate::bindings::*;
   use crate::lib_cpu::MatrixCpu;
   use crate::Matrix;
-  use std::ffi::c_double;
 
   #[test]
   fn element_add() {
@@ -538,9 +537,8 @@ mod tests {
     let expected_result = Matrix::new_2d(&vec![vec![-4.0, 1.0, -0.3], vec![4.0, 6.0, -994.0]]);
 
     let observed_result = test_data.element_subtract(&test_data_2);
-    observed_result.print();
 
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+    assert!(matrix_are_equal(&observed_result, &expected_result, 5));
   }
 
   #[test]
@@ -579,6 +577,39 @@ mod tests {
     let observed_result = test_data.matrix_multiply(&test_data_2);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn large_matmult_cpu_gpu_agreement() {
+    let mut rng = rand::thread_rng();
+    let range = Normal::new(0.0, 1.0).unwrap();
+
+    let rows = 1024;
+    let cols = 1024;
+    let data_1 = (0..rows)
+      .map(|_| {
+        (0..cols)
+          .map(|_| range.sample(&mut rng) as f32)
+          .collect_vec()
+      })
+      .collect_vec();
+    let data_2 = (0..cols)
+      .map(|_| {
+        (0..rows)
+          .map(|_| range.sample(&mut rng) as f32)
+          .collect_vec()
+      })
+      .collect_vec();
+
+    let mat_gpu_1 = Matrix::new_2d(&data_1);
+    let mat_gpu_2 = Matrix::new_2d(&data_2);
+    let mat_cpu_1 = MatrixCpu::new_2d(&data_1);
+    let mat_cpu_2 = MatrixCpu::new_2d(&data_2);
+
+    let result_gpu = mat_gpu_1.matrix_multiply(&mat_gpu_2);
+    let result_cpu = mat_cpu_1.matrix_multiply(&mat_cpu_2);
+
+    assert!(matrix_are_equal_gpu_cpu(&result_gpu, &result_cpu, 2));
   }
 
   #[test]
@@ -766,13 +797,17 @@ mod tests {
     let rows = 5000;
     let cols = 784;
     let data = (0..rows)
-      .map(|_| (0..cols).map(|_| range.sample(&mut rng)).collect_vec())
+      .map(|_| {
+        (0..cols)
+          .map(|_| range.sample(&mut rng) as f32)
+          .collect_vec()
+      })
       .collect_vec();
 
     let mat_gpu = Matrix::new_2d(&data).transpose();
     let mat_cpu = MatrixCpu::new_2d(&data).transpose();
 
-    matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 12);
+    assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 8));
   }
 
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
@@ -797,8 +832,10 @@ mod tests {
   }
 
   fn matrix_are_equal_gpu_cpu(a: &Matrix, b: &MatrixCpu, precision: usize) -> bool {
-    a.print();
-    b.print();
+    if a.get_data_length() < 100 && b.rows * b.columns < 100 {
+      a.print();
+      b.print();
+    }
 
     if a.rows != b.rows || a.columns != b.columns {
       println!("Matrices do not even share dimensions");
@@ -818,8 +855,8 @@ mod tests {
     return true;
   }
 
-  fn approx_equal(a: f64, b: f64, precision: usize) -> bool {
-    let tolerance = f64::powf(10.0, -1.0 * precision as f64);
+  fn approx_equal(a: f32, b: f32, precision: usize) -> bool {
+    let tolerance = f32::powf(10.0, -1.0 * precision as f32);
     return (a - b).abs() < tolerance;
   }
 
@@ -834,13 +871,13 @@ mod tests {
   fn cuda_data_passing() {
     // Create vector to fill
     let len: usize = 1000;
-    let mut out = Vec::<c_double>::with_capacity(len);
+    let mut out = Vec::<f32>::with_capacity(len);
     unsafe {
       test_array_fill(out.as_mut_ptr(), len);
       out.set_len(len);
     }
 
     // Ensure output is correct
-    (0..len).for_each(|i| assert_eq!(out[i], i as f64));
+    (0..len).for_each(|i| assert_eq!(out[i], i as f32));
   }
 }

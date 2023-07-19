@@ -74,7 +74,7 @@ mod basic_nn_tests {
     for (a, b) in izip!(expected_neuron_outputs, neuron_outputs) {
       a.print();
       b.print();
-      assert!(matrix_are_equal(&a, &b, 12));
+      assert!(matrix_are_equal(&a, &b, 5));
     }
   }
 
@@ -215,8 +215,8 @@ mod basic_nn_tests {
       ew.print();
       w.print();
 
-      assert!(matrix_are_equal(&eb, &b, 8));
-      assert!(matrix_are_equal(&ew, &w, 8));
+      assert!(matrix_are_equal(&eb, &b, 5));
+      assert!(matrix_are_equal(&ew, &w, 5));
     })
   }
 
@@ -335,8 +335,8 @@ mod basic_nn_tests {
       ew.print();
       w.print();
 
-      assert!(matrix_are_equal(&eb, &b, 8));
-      assert!(matrix_are_equal(&ew, &w, 8));
+      assert!(matrix_are_equal(&eb, &b, 5));
+      assert!(matrix_are_equal(&ew, &w, 5));
     })
   }
 
@@ -550,7 +550,7 @@ mod basic_nn_tests {
       println!("TESTING SOFTMAX");
       let predicted_gpu = BasicNeuralNetworkRust::softmax(&neuron_outputs_gpu);
       let predicted_cpu = BasicNeuralNetworkCPURust::softmax(&neuron_outputs_cpu);
-      assert!(matrix_are_equal_gpu_cpu(&predicted_gpu, &predicted_cpu, 8));
+      assert!(matrix_are_equal_gpu_cpu(&predicted_gpu, &predicted_cpu, 5));
 
       // Backprop output
       println!("TESTING BACKPROP");
@@ -566,7 +566,7 @@ mod basic_nn_tests {
         &neuron_outputs_cpu,
         learning_rate,
       );
-      matrix_are_equal_gpu_cpu(&next_layer_error_gpu, &next_layer_error_cpu, 8);
+      matrix_are_equal_gpu_cpu(&next_layer_error_gpu, &next_layer_error_cpu, 5);
       networks_are_equal(
         &gpu_network,
         &neuron_outputs_gpu,
@@ -601,7 +601,7 @@ mod basic_nn_tests {
       // Classification
       println!("TESTING CLASSIFICATIONS");
       let random_data = (0..100)
-        .map(|_| vec![range.sample(&mut rng), range.sample(&mut rng)])
+        .map(|_| vec![range.sample(&mut rng) as f32, range.sample(&mut rng) as f32])
         .collect_vec();
 
       let classifications_cpu = cpu_network.classify(&random_data);
@@ -679,22 +679,22 @@ mod basic_nn_tests {
   ) {
     // Check weights
     izip!(gpu_net.weights.iter(), cpu_net.weights.iter()).for_each(|(a, b)| {
-      assert!(matrix_are_equal_gpu_cpu(&a, &b, 8));
+      assert!(matrix_are_equal_gpu_cpu(&a, &b, 5));
     });
 
     // Check biases
     izip!(gpu_net.biases.iter(), cpu_net.biases.iter()).for_each(|(a, b)| {
-      assert!(matrix_are_equal_gpu_cpu(&a, &b, 8));
+      assert!(matrix_are_equal_gpu_cpu(&a, &b, 5));
     });
 
     // Check neuron outputs
     izip!(gpu_outputs, cpu_outputs).for_each(|(a, b)| {
-      assert!(matrix_are_equal_gpu_cpu(&a, &b, 8));
+      assert!(matrix_are_equal_gpu_cpu(&a, &b, 5));
     });
   }
 
-  fn approx_equal(a: f64, b: f64, precision: usize) -> bool {
-    let tolerance = f64::powf(10.0, -1.0 * precision as f64);
+  fn approx_equal(a: f32, b: f32, precision: usize) -> bool {
+    let tolerance = f32::powf(10.0, -1.0 * precision as f32);
     return (a - b).abs() < tolerance;
   }
 }
