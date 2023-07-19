@@ -4,7 +4,7 @@ use std::{env, path::Path};
 fn main() {
   println!("cargo:rerun-if-changed=cuda_kernels/cuda_kernels.cu");
 
-  println!("cargo:rustc-link-lib=static=cublas");
+  println!("cargo:rustc-link-lib=dylib=cublas");
 
   let cublas_path =
     Path::new("C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.2/lib/x64/cublas.lib");

@@ -388,16 +388,6 @@ impl BasicNeuralNetworkCPURust {
     let mut predictions = neuron_outputs[neuron_outputs.len() - 1].element_apply(&|x| f32::exp(x));
     let exp_final_layer_outputs_summed: Vec<f32> = predictions.sum_columns();
 
-    if predictions.columns == 1 {
-      println!("LETS GET THIS FIGURED OUT!");
-      neuron_outputs[neuron_outputs.len() - 1].print();
-      predictions.print();
-      exp_final_layer_outputs_summed
-        .iter()
-        .for_each(|x| print!("{} ", x));
-      println!()
-    }
-
     // Divide all data by col sum
     for output_neuron in 0..predictions.rows {
       for observation_number in 0..predictions.columns {

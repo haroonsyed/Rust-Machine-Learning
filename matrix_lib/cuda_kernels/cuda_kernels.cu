@@ -66,6 +66,11 @@ void cuda_synchronize() {
 /////////////////////
 /// Matrix Setup API
 /////////////////////
+void init_cublas_handle() {
+    cublasCreate(&handle);
+    cublasSetStream(handle, 0);
+    init_cublas = true;
+}
 void init_min_pool_size() {
     int device;
     cudaGetDevice(&device);
@@ -396,8 +401,8 @@ size_t cuda_matrix_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, 
     float* gpu_out_buffer = mat_map[out_mat_id];
 
     // Kernel launch parameters
-    const int THREADS_PER_BLOCK_X = 32;
-    const int THREADS_PER_BLOCK_Y = 32;
+    const int THREADS_PER_BLOCK_X = 16;
+    const int THREADS_PER_BLOCK_Y = 16;
 
     dim3 block_dim(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y, 1);
     dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
@@ -406,13 +411,14 @@ size_t cuda_matrix_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, 
     // dim3 grid_dim(( / THREADS_PER_BLOCK_X ), ( / THREADS_PER_BLOCK_Y) + 1, 1);
 
     // Run the kernels
-    // matrix_multiply_kernel_3<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    // matrix_multiply_kernel_2<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
 
     // CUBLAS version (for comparison to mine)
+    if (!init_cublas) {
+        init_cublas_handle();
+    }
     float alpha = 1.0;
     float beta = 0.0;
-    cublasHandle_t handle;
-    cublasCreate(&handle);
     cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, mat2_cols, mat1_rows, mat1_cols, &alpha, gpu_mat2_buffer, mat2_cols, gpu_mat1_buffer, mat1_cols, &beta, gpu_out_buffer, mat2_cols);
 
     gpuErrchk(cudaPeekAtLastError());
