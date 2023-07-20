@@ -20,9 +20,6 @@ matrix_lib = { path = "./matrix_lib" }
 [dev-dependencies]
 criterion = "0.4.0"
 
-[profile.release]
-debug = true
-
 [[bench]]
 name = "matrix_bench"
 harness = false

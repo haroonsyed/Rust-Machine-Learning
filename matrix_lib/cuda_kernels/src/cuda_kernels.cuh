@@ -1,10 +1,6 @@
 #include <cublas_v2.h>
 #include <cuda.h>
 
-#include <atomic>
-#include <iostream>
-#include <unordered_map>
-
 // Experiment to make access to map thread safe.
 // For now only use one thread with this library.
 

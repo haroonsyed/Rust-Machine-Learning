@@ -1,9 +1,11 @@
+#include <unordered_map>
+
 #include "./cuda_kernels.cuh"
 
 bool init_cublas = false;
 bool init_pool = false;
 cublasHandle_t handle;
-std::atomic<size_t> mat_generated_count(0);
+size_t mat_generated_count(0);
 std::unordered_map<size_t, float*> mat_map;
 
 // Error checking macro: https://stackoverflow.com/a/14038590
@@ -56,7 +58,7 @@ void test() {
     cudaFree(d_result);
 
     printf("Result: %d\n", result);
-    std::cout << "Finished Running Kernels." << std::endl;
+    printf("Finished Running Kernels.");
 }
 
 void test_array_fill(float* buffer, size_t length) {

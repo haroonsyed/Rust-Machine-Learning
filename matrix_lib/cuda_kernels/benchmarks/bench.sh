@@ -1,2 +1,2 @@
- nvcc main.cu ../cuda_kernels.cu  -o main -lcublas
+ gcc main.cpp -o main -lstdc++ -L .. -lcuda_kernels -L /usr/local/cuda/lib64 -lcublas -lcudart
  ./main
