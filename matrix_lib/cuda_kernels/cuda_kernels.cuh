@@ -5,12 +5,6 @@
 #include <iostream>
 #include <unordered_map>
 
-bool init_cublas = false;
-bool init_pool = false;
-cublasHandle_t handle;
-std::atomic<size_t> mat_generated_count(0);
-std::unordered_map<size_t, float*> mat_map;
-
 // Experiment to make access to map thread safe.
 // For now only use one thread with this library.
 

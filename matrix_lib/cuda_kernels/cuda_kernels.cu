@@ -1,5 +1,11 @@
 #include "./cuda_kernels.cuh"
 
+bool init_cublas = false;
+bool init_pool = false;
+cublasHandle_t handle;
+std::atomic<size_t> mat_generated_count(0);
+std::unordered_map<size_t, float*> mat_map;
+
 // Error checking macro: https://stackoverflow.com/a/14038590
 #define gpuErrchk(ans) \
     { gpuAssert((ans), __FILE__, __LINE__); }
@@ -411,15 +417,15 @@ size_t cuda_matrix_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, 
     // dim3 grid_dim(( / THREADS_PER_BLOCK_X ), ( / THREADS_PER_BLOCK_Y) + 1, 1);
 
     // Run the kernels
-    // matrix_multiply_kernel_2<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    matrix_multiply_kernel_2<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
 
     // CUBLAS version (for comparison to mine)
-    if (!init_cublas) {
-        init_cublas_handle();
-    }
-    float alpha = 1.0;
-    float beta = 0.0;
-    cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, mat2_cols, mat1_rows, mat1_cols, &alpha, gpu_mat2_buffer, mat2_cols, gpu_mat1_buffer, mat1_cols, &beta, gpu_out_buffer, mat2_cols);
+    // if (!init_cublas) {
+    //     init_cublas_handle();
+    // }
+    // float alpha = 1.0;
+    // float beta = 0.0;
+    // cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, mat2_cols, mat1_rows, mat1_cols, &alpha, gpu_mat2_buffer, mat2_cols, gpu_mat1_buffer, mat1_cols, &beta, gpu_out_buffer, mat2_cols);
 
     gpuErrchk(cudaPeekAtLastError());
 
