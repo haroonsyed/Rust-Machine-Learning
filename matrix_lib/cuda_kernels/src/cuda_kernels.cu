@@ -298,54 +298,28 @@ __global__ void matrix_multiply_kernel(float* mat1_buffer, int mat1_rows, int ma
 
 __global__ void matrix_multiply_kernel_2(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
     // Go by col row instead of row col. Enabled memory coalescing
-    int col = blockDim.x * blockIdx.x + threadIdx.x;
-    int row = blockDim.y * blockIdx.y + threadIdx.y;
+    const int col = blockDim.x * blockIdx.x + threadIdx.x;
+    const int row = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if (row < out_rows && col < out_cols) {
-        // O[i][j] = mat1[i][:] weighted sum mat2[:][j]
-        // Where common dimension : is mat1col/mat2row
-
-        float weighted_sum = 0.0;
-        for (int common = 0; common < mat1_cols; common++) {
-            // mat1[i][common]
-            int mat1_index = mat1_cols * row + common;
-            // mat1[common][j]
-            int mat2_index = mat2_cols * common + col;
-
-            weighted_sum += mat1_buffer[mat1_index] * mat2_buffer[mat2_index];
-        }
-
-        int output_index = row * out_cols + col;
-        out_buffer[output_index] = weighted_sum;
+    if (row >= out_rows || col >= out_cols) {
+        return;
     }
-}
 
-__global__ void matrix_multiply_kernel_2_strided(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
-    // Go by col row instead of row col. Enabled memory coalescing
-    int col = blockDim.x * blockIdx.x + threadIdx.x;
-    int row = blockDim.y * blockIdx.y + threadIdx.y;
+    // O[i][j] = mat1[i][:] weighted sum mat2[:][j]
+    // Where common dimension : is mat1col/mat2row
 
-    while (row < out_rows && col < out_cols) {
-        // O[i][j] = mat1[i][:] weighted sum mat2[:][j]
-        // Where common dimension : is mat1col/mat2row
+    float weighted_sum = 0.0;
+    for (int common = 0; common < mat1_cols; common++) {
+        // mat1[i][common]
+        int mat1_index = mat1_cols * row + common;
+        // mat1[common][j]
+        int mat2_index = mat2_cols * common + col;
 
-        float weighted_sum = 0.0;
-        for (int common = 0; common < mat1_cols; common++) {
-            // mat1[i][common]
-            int mat1_index = mat1_cols * row + common;
-            // mat1[common][j]
-            int mat2_index = mat2_cols * common + col;
-
-            weighted_sum += mat1_buffer[mat1_index] * mat2_buffer[mat2_index];
-        }
-
-        int output_index = row * out_cols + col;
-        out_buffer[output_index] = weighted_sum;
-
-        // update index
-        col += gridDim.x * blockDim.x;
-        row += gridDim.y * blockDim.y;
+        weighted_sum += mat1_buffer[mat1_index] * mat2_buffer[mat2_index];
     }
+
+    const int output_index = row * out_cols + col;
+    out_buffer[output_index] = weighted_sum;
 }
 
 __global__ void matrix_multiply_kernel_3(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
@@ -364,6 +338,8 @@ __global__ void matrix_multiply_kernel_3(float* mat1_buffer, int mat1_rows, int 
     int out_block_pos = block_row * block_dim * out_cols + block_col * block_dim;
 
     // So within our block we are gonna figure out this thread's position
+    // int thread_row = threadIdx.x / block_dim;
+    // int thread_col = threadIdx.x % block_dim;
     int thread_row = threadIdx.y;
     int thread_col = threadIdx.x;
 
@@ -373,27 +349,33 @@ __global__ void matrix_multiply_kernel_3(float* mat1_buffer, int mat1_rows, int 
         return;
     }
 
-    // For each block that fits in the common dimension we will have the threads of this block accumulate multiplications
     float weighted_sum = 0.0;
-    for (int common = 0; common < mat1_cols; common += block_dim) {
-        // Load elements within block into shared mem
+    int common_partial_block = mat1_cols % block_dim;
+    int common_in_block = mat1_cols - common_partial_block;
+    for (int k = 0; k < common_in_block; k += block_dim) {
         s_mat1[thread_row * block_dim + thread_col] = mat1_buffer[mat1_block_pos + thread_row * mat1_cols + thread_col];
         s_mat2[thread_row * block_dim + thread_col] = mat2_buffer[mat2_block_pos + thread_row * mat2_cols + thread_col];
         __syncthreads();
 
-        // Now do the dot products needed within the block
-        for (int i = 0; i < block_dim; i++) {
-            if (common + i < mat1_cols) {
-                weighted_sum += s_mat1[thread_row * block_dim + i] * s_mat2[i * block_dim + thread_col];
-            }
-        }
-
-        // Ensure all threads are done with their work before advancing shared mem data
         mat1_block_pos += block_dim;
         mat2_block_pos += block_dim * mat2_cols;
+        for (int i = 0; i < block_dim; i++) {
+            weighted_sum += s_mat1[thread_row * block_dim + i] * s_mat2[i * block_dim + thread_col];
+        }
         __syncthreads();
     }
-    // Write result
+
+    // Handle partial block case
+    s_mat1[thread_row * block_dim + thread_col] = mat1_buffer[mat1_block_pos + thread_row * mat1_cols + thread_col];
+    s_mat2[thread_row * block_dim + thread_col] = mat2_buffer[mat2_block_pos + thread_row * mat2_cols + thread_col];
+    __syncthreads();
+
+    mat1_block_pos += block_dim;
+    mat2_block_pos += block_dim * mat2_cols;
+    for (int i = 0; i < common_partial_block; i++) {
+        weighted_sum += s_mat1[thread_row * block_dim + i] * s_mat2[i * block_dim + thread_col];
+    }
+
     out_buffer[out_block_pos + (thread_row * out_cols) + thread_col] = weighted_sum;
 }
 
@@ -409,17 +391,14 @@ size_t cuda_matrix_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, 
     float* gpu_out_buffer = mat_map[out_mat_id];
 
     // Kernel launch parameters
-    const int THREADS_PER_BLOCK_X = 16;
-    const int THREADS_PER_BLOCK_Y = 16;
+    const int THREADS_PER_BLOCK_X = 32;
+    const int THREADS_PER_BLOCK_Y = 32;
 
     dim3 block_dim(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y, 1);
     dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
-    // dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    // dim3 grid_dim(( / THREADS_PER_BLOCK_X ), ( / THREADS_PER_BLOCK_Y) + 1, 1);
-
     // Run the kernels
-    matrix_multiply_kernel_2<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    matrix_multiply_kernel_3<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
 
     // CUBLAS version (for comparison to mine)
     // if (!init_cublas) {
