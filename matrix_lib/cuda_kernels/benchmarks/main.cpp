@@ -52,9 +52,9 @@ int main() {
     for (int i = 0; i < num_iter; i++) {
         // Perform multiplication
         int result_id = cuda_matrix_multiply(mat1, dim, dim, mat2, dim, dim);
+        cuda_synchronize();
         unregister_matrix(result_id);
     }
-    cuda_synchronize();
 
     float gpu_time = 0;
 

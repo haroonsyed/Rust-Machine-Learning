@@ -586,32 +586,34 @@ mod tests {
     let mut rng = rand::thread_rng();
     let range = Normal::new(0.0, 1.0).unwrap();
 
-    let rows = 1024;
-    let cols = 1024;
-    let data_1 = (0..rows)
-      .map(|_| {
-        (0..cols)
-          .map(|_| range.sample(&mut rng) as f32)
-          .collect_vec()
-      })
-      .collect_vec();
-    let data_2 = (0..cols)
-      .map(|_| {
-        (0..rows)
-          .map(|_| range.sample(&mut rng) as f32)
-          .collect_vec()
-      })
-      .collect_vec();
+    for common in (999..1024) {
+      let rows = 1024;
+      let cols = common;
+      let data_1 = (0..rows)
+        .map(|_| {
+          (0..cols)
+            .map(|_| range.sample(&mut rng) as f32)
+            .collect_vec()
+        })
+        .collect_vec();
+      let data_2 = (0..cols)
+        .map(|_| {
+          (0..rows)
+            .map(|_| range.sample(&mut rng) as f32)
+            .collect_vec()
+        })
+        .collect_vec();
 
-    let mat_gpu_1 = Matrix::new_2d(&data_1);
-    let mat_gpu_2 = Matrix::new_2d(&data_2);
-    let mat_cpu_1 = MatrixCpu::new_2d(&data_1);
-    let mat_cpu_2 = MatrixCpu::new_2d(&data_2);
+      let mat_gpu_1 = Matrix::new_2d(&data_1);
+      let mat_gpu_2 = Matrix::new_2d(&data_2);
+      let mat_cpu_1 = MatrixCpu::new_2d(&data_1);
+      let mat_cpu_2 = MatrixCpu::new_2d(&data_2);
 
-    let result_gpu = mat_gpu_1.matrix_multiply(&mat_gpu_2);
-    let result_cpu = mat_cpu_1.matrix_multiply(&mat_cpu_2);
+      let result_gpu = mat_gpu_1.matrix_multiply(&mat_gpu_2);
+      let result_cpu = mat_cpu_1.matrix_multiply(&mat_cpu_2);
 
-    assert!(matrix_are_equal_gpu_cpu(&result_gpu, &result_cpu, 2));
+      assert!(matrix_are_equal_gpu_cpu(&result_gpu, &result_cpu, 2));
+    }
   }
 
   #[test]
