@@ -405,14 +405,14 @@ __global__ void matrix_multiply_kernel_4(int M, int N, int K, float* mat1_buffer
     // Used to track if out of bounds
     const int mat1_load_index_row = block_row * block_M + threadIdx.x;
     const int mat2_load_index_col = block_col * block_N + threadIdx.x;
-    int common_index = threadIdx.y;
+    int mat_common_index = threadIdx.y;
     const bool exceeded_mat1_row = mat1_load_index_row >= M;
     const bool exceeded_mat2_col = mat2_load_index_col >= N;
 
     // outer loop over block tiles
     for (uint common_block = 0; common_block < K; common_block += block_K) {
-        const int within_mat1 = (int)!(exceeded_mat1_row || common_index >= K);
-        const int within_mat2 = (int)!(common_index >= K || exceeded_mat2_col);
+        const int within_mat1 = (int)!(exceeded_mat1_row || mat_common_index >= K);
+        const int within_mat2 = (int)!(mat_common_index >= K || exceeded_mat2_col);
         int mat1_load_index = mat1_block_pos + threadIdx.x * K + threadIdx.y;
         int mat2_load_index = mat2_block_pos + threadIdx.y * N + threadIdx.x;
 
@@ -428,16 +428,16 @@ __global__ void matrix_multiply_kernel_4(int M, int N, int K, float* mat1_buffer
         // Advance block
         mat1_block_pos += block_K;
         mat2_block_pos += block_K * N;
-        common_index += block_K;
+        mat_common_index += block_K;
 
         // Go through common dimensions of block (across row of mat1 and down col of mat2)
-        for (uint common_index = 0; common_index < block_K; ++common_index) {
-            const float shared_mat2_val = s_mat2[common_index * block_N + threadIdx.x];
+        for (uint block_common_index = 0; block_common_index < block_K; ++block_common_index) {
+            const float shared_mat2_val = s_mat2[block_common_index * block_N + threadIdx.x];
 
             // Now this thread will accumulate the result for each t_row in the t_col of C
             for (uint result_index = 0; result_index < block_K; ++result_index) {
                 thread_results[result_index] +=
-                    s_mat1[(threadIdx.y * block_K + result_index) * block_K + common_index] * shared_mat2_val;
+                    s_mat1[(threadIdx.y * block_K + result_index) * block_K + block_common_index] * shared_mat2_val;
             }
         }
         __syncthreads();
@@ -450,6 +450,113 @@ __global__ void matrix_multiply_kernel_4(int M, int N, int K, float* mat1_buffer
     for (int i = 0; i < block_K; i++) {
         if (out_index_row + i < M && out_index_col < N) {
             out_buffer[out_block_pos + (threadIdx.y * block_K + i) * N + threadIdx.x] = thread_results[i];
+        }
+    }
+}
+
+// block_M is rows in mat1 shared block
+// block_N is cols in mat2 shared block
+// block_k is shared dimensions for shared block.
+// The thread will calculate block_k * block_k results (So now a 2d version of v3)
+// For this to work we want the shared dimension block_K to be extremely smaller than block_M and block_N
+// This way, multiple threads reuse sections from mat1 and mat2 ,with more output work
+// Example: bK is 8 while bM and bN are 128. Output is a 128x128 area.
+//          So you can spin up 256 threads per block. They load vram->shared
+//          Then each thread can work on 8x8 pieces of the output 128x128 area (128x128/64 = 256)
+//          You might be wondering why not 512 threads like previously?
+//          Well that increases the mem requirements per block, reducing occupancy.
+template <const int block_M, const int block_N, const int block_K>
+__global__ void matrix_multiply_kernel_5(int M, int N, int K, float* __restrict__ mat1_buffer, float* __restrict__ mat2_buffer, float* __restrict__ out_buffer) {
+    // 2D Block tiling with shared memory
+    __shared__ float s_mat1[block_M * block_K];
+    __shared__ float s_mat2[block_K * block_N];
+
+    float thread_results[block_K * block_K] = {0.0};
+
+    const int block_row = blockIdx.y;
+    const int block_col = blockIdx.x;
+
+    // Output within block details
+    const int tid = threadIdx.y * blockDim.x + threadIdx.x;
+    const int out_block_row = tid / (block_M / block_K);
+    const int out_block_col = tid % (block_N / block_K);
+
+    const int num_threads_per_block = blockDim.x * blockDim.y;
+    const int num_elements_to_load = (block_M * block_K) / num_threads_per_block;
+
+    const int stride_mat1 = num_threads_per_block / block_K;
+    const int stride_mat2 = num_threads_per_block / block_N;
+
+    int mat1_pos = block_row * block_M * K;
+    int mat2_pos = block_col * block_N;
+
+// outer loop over block tiles
+#pragma unroll
+    for (int common_block = 0; common_block < K; common_block += block_K) {
+#pragma unroll 4
+        for (int i = 0; i < num_elements_to_load; i++) {
+            const int mat1_row_within_block = (threadIdx.x + stride_mat1 * i);
+            const int mat1_col_within_block = threadIdx.y;
+            const int mat2_row_within_block = (threadIdx.y / num_elements_to_load) + i * stride_mat2;
+            const int mat2_col_within_block = (threadIdx.y % num_elements_to_load) * blockDim.x + threadIdx.x;
+
+            const int mat1_load_index_row = block_row * block_M + mat1_row_within_block;
+            const int mat1_load_index_col = common_block + mat1_col_within_block;
+            const int mat2_load_index_row = common_block + mat2_row_within_block;
+            const int mat2_load_index_col = block_col * block_N + mat2_col_within_block;
+
+            const bool exceeded_mat1_row = mat1_load_index_row >= M;
+            const bool exceeded_mat1_col = mat1_load_index_col >= K;
+            const bool exceeded_mat2_row = mat2_load_index_row >= K;
+            const bool exceeded_mat2_col = mat2_load_index_col >= N;
+
+            const int within_mat1 = (int)!(exceeded_mat1_row || exceeded_mat1_col);
+            const int within_mat2 = (int)!(exceeded_mat2_row || exceeded_mat2_col);
+            int mat1_load_index = mat1_pos + mat1_row_within_block * K + mat1_col_within_block;
+            int mat2_load_index = mat2_pos + mat2_row_within_block * N + mat2_col_within_block;
+
+            mat1_load_index *= within_mat1;
+            mat2_load_index *= within_mat2;
+
+            s_mat1[mat1_row_within_block * block_K + mat1_col_within_block] =
+                mat1_buffer[mat1_load_index] * within_mat1;
+            s_mat2[mat2_row_within_block * block_N + mat2_col_within_block] =
+                mat2_buffer[mat2_load_index] * within_mat2;
+        }
+
+        mat1_pos += block_K;
+        mat2_pos += block_K * N;
+
+        __syncthreads();
+
+        // Go through common dimensions of block (across row of mat1 and down col of mat2)
+#pragma unroll 8
+        for (int block_common_index = 0; block_common_index < block_K; block_common_index++) {
+            // Now this thread will accumulate the block_K x block_K results from shared memory
+#pragma unroll 8
+            for (int result_index_row = 0; result_index_row < block_K; result_index_row++) {
+#pragma unroll 8
+                for (int result_index_col = 0; result_index_col < block_K; result_index_col++) {
+                    thread_results[result_index_row * block_K + result_index_col] +=
+                        s_mat1[(out_block_row * block_K + result_index_row) * block_K + block_common_index] *
+                        s_mat2[(block_common_index * block_N) + (out_block_col * block_K + result_index_col)];
+                }
+            }
+        }
+        __syncthreads();
+    }
+
+    // Write results with bounds checking
+    const int out_index_row = block_row * block_M + out_block_row * block_K;
+    const int out_index_col = block_col * block_N + out_block_col * block_K;
+
+#pragma unroll 8
+    for (int i = 0; i < block_K; i++) {
+#pragma unroll 8
+        for (int j = 0; j < block_K; j++) {
+            if (out_index_row + i < M && out_index_col + j < N) {
+                out_buffer[(out_index_row + i) * N + out_index_col + j] = thread_results[i * block_K + j];
+            }
         }
     }
 }
@@ -480,12 +587,12 @@ size_t cuda_matrix_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, 
     const int N = mat2_cols;
     const int K = mat1_cols;
 
-    const int THREADS_PER_BLOCK_X = 64;
+    const int THREADS_PER_BLOCK_X = 32;
     const int THREADS_PER_BLOCK_Y = 8;
 
     dim3 block_dim(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
-    dim3 grid_dim((N / block_dim.x) + 1, (M / block_dim.y / block_dim.y) + 1, 1);
-    matrix_multiply_kernel_4<THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y><<<grid_dim, block_dim>>>(M, N, K, gpu_mat1_buffer, gpu_mat2_buffer, gpu_out_buffer);
+    dim3 grid_dim((N / 128) + 1, (M / 128) + 1, 1);
+    matrix_multiply_kernel_5<128, 128, 8><<<grid_dim, block_dim>>>(M, N, K, gpu_mat1_buffer, gpu_mat2_buffer, gpu_out_buffer);
 
     // CUBLAS version (for comparison to mine)
     // if (!init_cublas) {
