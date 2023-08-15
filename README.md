@@ -45,8 +45,8 @@ Any data is located in the data folder.
    Mac/Linux: `source ./.venv/bin/activate`
 4. Install dependencies from requirements.txt<br/>
    `pip install -r requirements_{platform}.txt`
-6. Compile Rust Code using `maturin develop` or `maturin develop --release`
-7. Open notebooks in jupyter notebook/jupyter lab/vscode etc..
+5. Compile Rust Code using `maturin develop` or `maturin develop --release`
+6. Open notebooks in jupyter notebook/jupyter lab/vscode etc..
 
 ## Credits
 
