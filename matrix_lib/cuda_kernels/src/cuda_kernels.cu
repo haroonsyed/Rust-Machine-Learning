@@ -410,7 +410,7 @@ __global__ void matrix_multiply_kernel_4(int M, int N, int K, float* mat1_buffer
     const bool exceeded_mat2_col = mat2_load_index_col >= N;
 
     // outer loop over block tiles
-    for (uint common_block = 0; common_block < K; common_block += block_K) {
+    for (unsigned int common_block = 0; common_block < K; common_block += block_K) {
         const int within_mat1 = (int)!(exceeded_mat1_row || mat_common_index >= K);
         const int within_mat2 = (int)!(mat_common_index >= K || exceeded_mat2_col);
         int mat1_load_index = mat1_block_pos + threadIdx.x * K + threadIdx.y;
@@ -431,11 +431,11 @@ __global__ void matrix_multiply_kernel_4(int M, int N, int K, float* mat1_buffer
         mat_common_index += block_K;
 
         // Go through common dimensions of block (across row of mat1 and down col of mat2)
-        for (uint block_common_index = 0; block_common_index < block_K; ++block_common_index) {
+        for (unsigned int block_common_index = 0; block_common_index < block_K; ++block_common_index) {
             const float shared_mat2_val = s_mat2[block_common_index * block_N + threadIdx.x];
 
             // Now this thread will accumulate the result for each t_row in the t_col of C
-            for (uint result_index = 0; result_index < block_K; ++result_index) {
+            for (unsigned int result_index = 0; result_index < block_K; ++result_index) {
                 thread_results[result_index] +=
                     s_mat1[(threadIdx.y * block_K + result_index) * block_K + block_common_index] * shared_mat2_val;
             }
