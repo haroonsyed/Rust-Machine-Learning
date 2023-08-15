@@ -1,11 +1,11 @@
 [package]
-name = "Rust-Machine-Learning"
+name = "rust-machine-learning"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name = "Rust_Machine_Learning"
+name = "rust_machine_learning"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
@@ -19,9 +19,6 @@ matrix_lib = { path = "./matrix_lib" }
 
 [dev-dependencies]
 criterion = "0.4.0"
-
-[profile.release]
-debug = true
 
 [[bench]]
 name = "matrix_bench"
