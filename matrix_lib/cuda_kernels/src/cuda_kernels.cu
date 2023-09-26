@@ -128,40 +128,32 @@ void get_matrix_data(size_t mat_id, int rows, int cols, float* data_buffer) {
 //////////////////////////
 /// Matrix Operations API
 //////////////////////////
-/// For now everything is naive implementations to pass tests
-/// TODO: Optimize memory accesses for coalition (tidX is problematic since it accesses down rows. Try to have block handle data sequentially). Possibly grid stride too.
+/// TODO: Possibly grid stride. Optimize transpose. Optimize matmult.
 __global__ void element_add_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = mat1[i][j] + mat2[i][j]
-
-        int index = tidX * out_cols + tidY;
+        int index = tidY * out_cols + tidX;
         out_buffer[index] = mat1_buffer[index] + mat2_buffer[index];
     }
 }
-
 size_t cuda_element_add(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace) {
-    // Create output buffer
+    // Create output buffer`
     int out_rows = mat1_rows;
     int out_cols = mat1_cols;
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
-
     // Get the gpu buffers to operate on
     float* gpu_mat1_buffer = mat_map[mat1_id];
     float* gpu_mat2_buffer = mat_map[mat2_id];
     float* gpu_out_buffer = mat_map[out_mat_id];
-
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
-
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
     // Run the kernels
     element_add_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
-
     // Return result matrix id
     return out_mat_id;
 }
@@ -169,11 +161,10 @@ size_t cuda_element_add(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size
 __global__ void element_subtract_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = mat1[i][j] - mat2[i][j]
 
-        int index = tidX * out_cols + tidY;
+        int index = tidY * out_cols + tidX;
         out_buffer[index] = mat1_buffer[index] - mat2_buffer[index];
     }
 }
@@ -192,7 +183,7 @@ size_t cuda_element_subtract(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
     // Run the kernels
     element_subtract_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
@@ -206,10 +197,10 @@ __global__ void element_multiply_kernel(float* mat1_buffer, int mat1_rows, int m
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = mat1[i][j] * mat2[i][j]
 
-        int index = tidX * out_cols + tidY;
+        int index = tidY * out_cols + tidX;
         out_buffer[index] = mat1_buffer[index] * mat2_buffer[index];
     }
 }
@@ -228,7 +219,7 @@ size_t cuda_element_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
     // Run the kernels
     element_multiply_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
@@ -242,10 +233,10 @@ __global__ void scalar_multiply_kernel(float* mat1_buffer, int mat1_rows, int ma
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = mat1[i][j] * scalar
 
-        int index = tidX * out_cols + tidY;
+        int index = tidY * out_cols + tidX;
         out_buffer[index] = mat1_buffer[index] * scalar;
     }
 }
@@ -263,7 +254,7 @@ size_t cuda_scalar_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
     // Run the kernels
     scalar_multiply_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, scalar, gpu_out_buffer, out_rows, out_cols);
@@ -612,11 +603,11 @@ __global__ void add_vector_to_columns_kernel(float* mat1_buffer, int mat1_rows, 
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = mat1[i][j] + mat2[i][0]
 
-        int mat1_index = tidX * mat1_cols + tidY;
-        int mat2_index = tidX;
+        int mat1_index = tidY * mat1_cols + tidX;
+        int mat2_index = tidY;
 
         int output_index = mat1_index;
         out_buffer[output_index] = mat1_buffer[mat1_index] + mat2_buffer[mat2_index];
@@ -627,11 +618,11 @@ __global__ void add_vector_to_rows_kernel(float* mat1_buffer, int mat1_rows, int
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = mat1[i][j] + mat2[0][j]
 
-        int mat1_index = tidX * mat1_cols + tidY;
-        int mat2_index = tidY;
+        int mat1_index = tidY * mat1_cols + tidX;
+        int mat2_index = tidX;
 
         int output_index = mat1_index;
         out_buffer[output_index] = mat1_buffer[mat1_index] + mat2_buffer[mat2_index];
@@ -655,7 +646,7 @@ size_t cuda_add_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
     // Run the kernels
     if (is_column_vector) {
@@ -673,11 +664,11 @@ __global__ void divide_by_column_vector_kernel(float* mat1_buffer, int mat1_rows
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = mat1[i][j] / mat2[i][0]
 
-        int mat1_index = tidX * mat1_cols + tidY;
-        int mat2_index = tidX;
+        int mat1_index = tidY * mat1_cols + tidX;
+        int mat2_index = tidY;
 
         int output_index = mat1_index;
         out_buffer[output_index] = mat1_buffer[mat1_index] / mat2_buffer[mat2_index];
@@ -688,11 +679,11 @@ __global__ void divide_by_row_vector_kernel(float* mat1_buffer, int mat1_rows, i
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = mat1[i][j] / mat2[0][j]
 
-        int mat1_index = tidX * mat1_cols + tidY;
-        int mat2_index = tidY;
+        int mat1_index = tidY * mat1_cols + tidX;
+        int mat2_index = tidX;
 
         int output_index = mat1_index;
         out_buffer[output_index] = mat1_buffer[mat1_index] / mat2_buffer[mat2_index];
@@ -716,7 +707,7 @@ size_t cuda_divide_by_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
     // Run the kernels
     if (is_column_vector) {
@@ -734,10 +725,10 @@ __global__ void element_exp_kernel(float* mat1_buffer, int mat1_rows, int mat1_c
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = exp(mat1[i][j])
 
-        int index = tidX * out_cols + tidY;
+        int index = tidY * out_cols + tidX;
         out_buffer[index] = exp(mat1_buffer[index]);  // Also available __exp for fast
     }
 }
@@ -755,7 +746,7 @@ size_t cuda_element_exp(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, bool
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
     // Run the kernels
     element_exp_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
@@ -769,10 +760,10 @@ __global__ void element_ReLU_kernel(float* mat1_buffer, int mat1_rows, int mat1_
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = x if x>0 else 0
 
-        int index = tidX * out_cols + tidY;
+        int index = tidY * out_cols + tidX;
         out_buffer[index] = mat1_buffer[index] > 0 ? mat1_buffer[index] : 0.0;
     }
 }
@@ -790,7 +781,7 @@ size_t cuda_element_ReLU(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, boo
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
     // Run the kernels
     element_ReLU_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
@@ -804,10 +795,10 @@ __global__ void element_ReLU_prime_kernel(float* mat1_buffer, int mat1_rows, int
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = x if x>0 else 1
 
-        int index = tidX * out_cols + tidY;
+        int index = tidY * out_cols + tidX;
         out_buffer[index] = mat1_buffer[index] == 0.0 ? 0.0 : 1.0;
     }
 }
@@ -825,7 +816,7 @@ size_t cuda_element_ReLU_prime(size_t mat1_id, size_t mat1_rows, size_t mat1_col
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
     // Run the kernels
     element_ReLU_prime_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
@@ -839,17 +830,17 @@ __global__ void sum_rows_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[i][0] = sum (mat1[i][:])
 
         float row_sum = 0.0;
-        int mat1_row_start_index = tidX * mat1_cols;
+        int mat1_row_start_index = tidY * mat1_cols;
         for (int i = 0; i < mat1_cols; i++) {
             int mat1_index = mat1_row_start_index + i;
             row_sum += mat1_buffer[mat1_index];
         }
 
-        int output_index = tidX * out_cols + tidY;
+        int output_index = tidY * out_cols + tidX;
         out_buffer[output_index] = row_sum;
     }
 }
@@ -867,7 +858,7 @@ size_t cuda_sum_rows(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
     // Run the kernels
     sum_rows_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
@@ -881,16 +872,16 @@ __global__ void sum_columns_kernel(float* mat1_buffer, int mat1_rows, int mat1_c
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[0][j] = sum (mat1[:][j])
 
         float col_sum = 0.0;
         for (int i = 0; i < mat1_rows; i++) {
-            int mat1_index = tidY + i * mat1_cols;
+            int mat1_index = tidX + i * mat1_cols;
             col_sum += mat1_buffer[mat1_index];
         }
 
-        int output_index = tidX * out_cols + tidY;
+        int output_index = tidY * out_cols + tidX;
         out_buffer[output_index] = col_sum;
     }
 }
@@ -908,7 +899,7 @@ size_t cuda_sum_columns(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
     // Run the kernels
     sum_columns_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
@@ -922,12 +913,12 @@ __global__ void transpose_kernel(float* mat1_buffer, int mat1_rows, int mat1_col
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
-    if (tidX < out_rows && tidY < out_cols) {
+    if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = mat1[j][i]
 
-        int mat1_index = tidY * mat1_cols + tidX;
+        int mat1_index = tidX * mat1_cols + tidY;
 
-        int output_index = tidX * out_cols + tidY;
+        int output_index = tidY * out_cols + tidX;
         out_buffer[output_index] = mat1_buffer[mat1_index];
     }
 }
@@ -945,7 +936,7 @@ size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_rows / block_dim.x) + 1, (out_cols / block_dim.y) + 1, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
     // Run the kernels
     transpose_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
