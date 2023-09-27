@@ -33,25 +33,43 @@ size_t cuda_sum_columns(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 }
 
-void bench_matrix_transpose() {
-    // This is just for timing, assumes everything is correct.
-    // The tests already cover correctness.
-    int dim = 4096;
+void warmup() {
+    int mat_dim = 4096;
     std::vector<float> data;
-    for (int i = 0; i < dim * dim; i++) {
+    for (int i = 0; i < mat_dim * mat_dim; i++) {
         data.push_back(23.47);
     }
 
     // Register
-    int mat1 = register_matrix(&data[0], dim, dim);
-    int mat2 = register_matrix(&data[0], dim, dim);
+    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
+    int mat2 = register_matrix(&data[0], mat_dim, mat_dim);
+
+    // WARMUP
+    for (int i = 0; i < 50; i++) {
+        // Perform multiplication
+        int result_id = cuda_matrix_multiply(mat1, mat_dim, mat_dim, mat2, mat_dim, mat_dim);
+        unregister_matrix(result_id);
+    }
+    cuda_synchronize();
+}
+
+void bench_matrix_transpose(int mat_dim, int num_iter) {
+    // This is just for timing, assumes everything is correct.
+    // The tests already cover correctness.
+    std::vector<float> data;
+    for (int i = 0; i < mat_dim * mat_dim; i++) {
+        data.push_back(23.47);
+    }
+
+    // Register
+    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
+    int mat2 = register_matrix(&data[0], mat_dim, mat_dim);
 
     auto start_host = high_resolution_clock::now();
 
-    int num_iter = 100;
     for (int i = 0; i < num_iter; i++) {
         // Perform multiplication
-        int result_id = cuda_transpose(mat1, dim, dim);
+        int result_id = cuda_transpose(mat1, mat_dim, mat_dim);
         cuda_synchronize();
         unregister_matrix(result_id);
     }
@@ -64,28 +82,26 @@ void bench_matrix_transpose() {
     std::cout << "Including overhead was: " << (float)cpu_time.count() / num_iter << " ms" << std::endl;
 }
 
-void bench_matrix_multiply() {
+void bench_matrix_multiply(int mat_dim, int num_iter) {
     // This is just for timing, assumes everything is correct.
     // The tests already cover correctness.
-    int dim = 4096;
     std::vector<float> data;
-    for (int i = 0; i < dim * dim; i++) {
+    for (int i = 0; i < mat_dim * mat_dim; i++) {
         data.push_back(23.47);
     }
 
     // Register
-    int mat1 = register_matrix(&data[0], dim, dim);
-    int mat2 = register_matrix(&data[0], dim, dim);
+    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
+    int mat2 = register_matrix(&data[0], mat_dim, mat_dim);
 
     auto start_host = high_resolution_clock::now();
 
-    int num_iter = 100;
     for (int i = 0; i < num_iter; i++) {
         // Perform multiplication
-        int result_id = cuda_matrix_multiply(mat1, dim, dim, mat2, dim, dim);
-        cuda_synchronize();
+        int result_id = cuda_matrix_multiply(mat1, mat_dim, mat_dim, mat2, mat_dim, mat_dim);
         unregister_matrix(result_id);
     }
+    cuda_synchronize();
 
     float gpu_time = 0;
 
@@ -96,5 +112,11 @@ void bench_matrix_multiply() {
 }
 
 int main() {
-    bench_matrix_transpose();
+    // Get the temps and frequencies up
+    warmup();
+
+    const int mat_dim = 4096;
+    const int num_iter = 100;
+    bench_matrix_transpose(mat_dim, num_iter);
+    // bench_matrix_multiply(mat_dim, num_iter);
 }
