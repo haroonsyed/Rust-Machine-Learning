@@ -503,12 +503,25 @@ impl Matrix {
       columns: output_columns,
     };
   }
+
+  pub fn max_pool(&self) -> Self {
+    let result_id: usize;
+
+    unsafe { result_id = cuda_max_pool(self.id, self.rows, self.columns) }
+
+    let output_rows = self.rows / 2 + self.rows % 2;
+    let output_columns = self.columns / 2 + self.columns % 2;
+
+    return Matrix {
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
+    };
+  }
 }
 
 #[cfg(test)]
 mod tests {
-  use std::time::Instant;
-
   use itertools::Itertools;
   use rand::prelude::Distribution;
   use statrs::distribution::Normal;
@@ -586,7 +599,7 @@ mod tests {
     let mut rng = rand::thread_rng();
     let range = Normal::new(0.0, 1.0).unwrap();
 
-    for common in (999..1024) {
+    for common in 999..1024 {
       let rows = 1024;
       let cols = common;
       let data_1 = (0..rows)
@@ -778,6 +791,74 @@ mod tests {
   }
 
   #[test]
+  fn max_pool_v1() {
+    let test_data = MatrixCpu::new_2d(&vec![vec![-5.0, 2.0], vec![4.0, 5.0]]);
+
+    let expected_result = MatrixCpu::new_2d(&vec![vec![5.0]]);
+
+    let observed_result = test_data.max_pool();
+
+    assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn max_pool_v2() {
+    let test_data = MatrixCpu::new_2d(&vec![vec![-5.0, 2.0, -100.0], vec![4.0, 5.0, 23.0]]);
+
+    let expected_result = MatrixCpu::new_2d(&vec![vec![5.0, 23.0]]);
+
+    let observed_result = test_data.max_pool();
+
+    assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn max_pool_gpu_v1() {
+    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0], vec![4.0, 5.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![5.0]]);
+
+    let observed_result = test_data.max_pool();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn max_pool_gpu_v2() {
+    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0, -100.0], vec![4.0, 5.0, 23.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![5.0, 23.0]]);
+
+    let observed_result = test_data.max_pool();
+
+    expected_result.print();
+    observed_result.print();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn max_pool_cpu_gpu_agreement() {
+    let mut rng = rand::thread_rng();
+    let range = Normal::new(0.0, 1e8).unwrap();
+
+    let rows = 5000;
+    let cols = 784;
+    let data = (0..rows)
+      .map(|_| {
+        (0..cols)
+          .map(|_| range.sample(&mut rng) as f32)
+          .collect_vec()
+      })
+      .collect_vec();
+
+    let mat_gpu = Matrix::new_2d(&data).max_pool();
+    let mat_cpu = MatrixCpu::new_2d(&data).max_pool();
+
+    assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 8));
+  }
+
+  #[test]
   fn stress_test_sum_rows_matrix() {
     let mut matrices = Vec::new();
 
@@ -815,6 +896,27 @@ mod tests {
   }
 
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
+    if a.rows != b.rows || a.columns != b.columns {
+      return false;
+    }
+
+    a.print();
+    b.print();
+
+    let a_data = a.get_data();
+    let b_data = b.get_data();
+    for i in 0..a.rows {
+      for j in 0..a.columns {
+        if !approx_equal(a_data[i][j], b_data[i][j], precision) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  fn matrix_are_equal_cpu(a: &MatrixCpu, b: &MatrixCpu, precision: usize) -> bool {
     if a.rows != b.rows || a.columns != b.columns {
       return false;
     }
@@ -884,39 +986,4 @@ mod tests {
     // Ensure output is correct
     (0..len).for_each(|i| assert_eq!(out[i], i as f32));
   }
-
-  // #[test]
-  // fn mat_mult_benchmark() {
-  //   // Random numbers for generation
-  //   let mat_dim = 4096;
-
-  //   let id_1;
-  //   let id_2;
-  //   unsafe {
-  //     id_1 = register_matrix(vec![0.0; mat_dim * mat_dim].as_ptr(), mat_dim, mat_dim);
-  //     id_2 = register_matrix(vec![0.0; mat_dim * mat_dim].as_ptr(), mat_dim, mat_dim);
-  //   }
-
-  //   let num_iterations = 20;
-  //   let start = Instant::now();
-
-  //   let mut result_id = 0;
-  //   for _ in 0..num_iterations {
-  //     unsafe {
-  //       result_id = cuda_matrix_multiply(id_1, mat_dim, mat_dim, id_2, mat_dim, mat_dim);
-  //       cuda_synchronize();
-  //       unregister_matrix(result_id);
-  //     }
-  //   }
-  //   unsafe { cuda_synchronize() }
-  //   let elapsed = start.elapsed();
-  //   println!(
-  //   "\n=================================\nTime per iteration: {} ms\n=================================",
-  //   elapsed.as_millis() as f64 / num_iterations as f64
-  // );
-
-  //   print!("{}", result_id);
-
-  //   assert!(false);
-  // }
 }
