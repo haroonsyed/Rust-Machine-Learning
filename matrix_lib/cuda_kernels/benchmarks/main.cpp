@@ -33,7 +33,38 @@ size_t cuda_sum_columns(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 }
 
-int main() {
+void bench_matrix_transpose() {
+    // This is just for timing, assumes everything is correct.
+    // The tests already cover correctness.
+    int dim = 4096;
+    std::vector<float> data;
+    for (int i = 0; i < dim * dim; i++) {
+        data.push_back(23.47);
+    }
+
+    // Register
+    int mat1 = register_matrix(&data[0], dim, dim);
+    int mat2 = register_matrix(&data[0], dim, dim);
+
+    auto start_host = high_resolution_clock::now();
+
+    int num_iter = 100;
+    for (int i = 0; i < num_iter; i++) {
+        // Perform multiplication
+        int result_id = cuda_transpose(mat1, dim, dim);
+        cuda_synchronize();
+        unregister_matrix(result_id);
+    }
+
+    float gpu_time = 0;
+
+    auto end_host = high_resolution_clock::now();
+    auto cpu_time = duration_cast<milliseconds>(end_host - start_host);
+
+    std::cout << "Including overhead was: " << (float)cpu_time.count() / num_iter << " ms" << std::endl;
+}
+
+void bench_matrix_multiply() {
     // This is just for timing, assumes everything is correct.
     // The tests already cover correctness.
     int dim = 4096;
@@ -62,7 +93,8 @@ int main() {
     auto cpu_time = duration_cast<milliseconds>(end_host - start_host);
 
     std::cout << "Including overhead was: " << (float)cpu_time.count() / num_iter << " ms" << std::endl;
+}
 
-    // Okay something is wrong with the overhead on rust benchmark. Something taking 184.3 ms here is taking 1.3 seconds there.
-    // Same functions on ffi being called...
+int main() {
+    bench_matrix_transpose();
 }
