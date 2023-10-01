@@ -503,12 +503,82 @@ impl Matrix {
       columns: output_columns,
     };
   }
+
+  pub fn max_pool(&self) -> Self {
+    let result_id: usize;
+
+    unsafe { result_id = cuda_max_pool(self.id, self.rows, self.columns) }
+
+    let output_rows = self.rows / 2 + self.rows % 2;
+    let output_columns = self.columns / 2 + self.columns % 2;
+
+    return Matrix {
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
+    };
+  }
+
+  pub fn rotate_180(&self) -> Self {
+    let result_id: usize;
+
+    unsafe { result_id = cuda_rotate_180(self.id, self.rows, self.columns) }
+
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix {
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
+    };
+  }
+
+  pub fn convolution(&self, kernel: &Matrix) -> Self {
+    let result_id: usize;
+
+    unsafe {
+      result_id = cuda_convolution(
+        self.id,
+        self.rows,
+        self.columns,
+        kernel.id,
+        kernel.rows,
+        kernel.columns,
+      )
+    }
+
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix {
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
+    };
+  }
+
+  pub fn reshape(&mut self, new_rows: usize, new_columns: usize) -> &Self {
+    if new_rows * new_columns == self.get_data_length() {
+      self.rows = new_rows;
+      self.columns = new_columns;
+    } else {
+      panic!("Cannot reshape, matrices are not the same length!")
+    }
+
+    return self;
+  }
+
+  pub fn to_one_dimensional(&mut self) -> &Self {
+    self.columns = self.get_data_length();
+    self.rows = 1;
+
+    return self;
+  }
 }
 
 #[cfg(test)]
 mod tests {
-  use std::time::Instant;
-
   use itertools::Itertools;
   use rand::prelude::Distribution;
   use statrs::distribution::Normal;
@@ -586,7 +656,7 @@ mod tests {
     let mut rng = rand::thread_rng();
     let range = Normal::new(0.0, 1.0).unwrap();
 
-    for common in (999..1024) {
+    for common in 999..1024 {
       let rows = 1024;
       let cols = common;
       let data_1 = (0..rows)
@@ -778,6 +848,282 @@ mod tests {
   }
 
   #[test]
+  fn max_pool_v1() {
+    let test_data = MatrixCpu::new_2d(&vec![vec![-5.0, 2.0], vec![4.0, 5.0]]);
+
+    let expected_result = MatrixCpu::new_2d(&vec![vec![5.0]]);
+
+    let observed_result = test_data.max_pool();
+
+    assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn max_pool_v2() {
+    let test_data = MatrixCpu::new_2d(&vec![vec![-5.0, 2.0, -100.0], vec![4.0, 5.0, 23.0]]);
+
+    let expected_result = MatrixCpu::new_2d(&vec![vec![5.0, 23.0]]);
+
+    let observed_result = test_data.max_pool();
+
+    assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn max_pool_gpu_v1() {
+    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0], vec![4.0, 5.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![5.0]]);
+
+    let observed_result = test_data.max_pool();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn max_pool_gpu_v2() {
+    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0, -100.0], vec![4.0, 5.0, 23.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![5.0, 23.0]]);
+
+    let observed_result = test_data.max_pool();
+
+    expected_result.print();
+    observed_result.print();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn max_pool_cpu_gpu_agreement() {
+    let mut rng = rand::thread_rng();
+    let range = Normal::new(0.0, 1e8).unwrap();
+
+    let rows = 5000;
+    let cols = 784;
+    let data = (0..rows)
+      .map(|_| {
+        (0..cols)
+          .map(|_| range.sample(&mut rng) as f32)
+          .collect_vec()
+      })
+      .collect_vec();
+
+    let mat_gpu = Matrix::new_2d(&data).max_pool();
+    let mat_cpu = MatrixCpu::new_2d(&data).max_pool();
+
+    assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 8));
+  }
+
+  #[test]
+  fn rotate_180() {
+    let test_data = MatrixCpu::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let expected_result = MatrixCpu::new_2d(&vec![
+      vec![9.0, 8.0, 7.0],
+      vec![6.0, 5.0, 4.0],
+      vec![3.0, 2.0, 1.0],
+    ]);
+
+    let observed_result = test_data.rotate_180();
+
+    assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn rotate_180_2() {
+    let test_data = MatrixCpu::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+
+    let expected_result = MatrixCpu::new_2d(&vec![vec![6.0, 5.0, 4.0], vec![3.0, 2.0, 1.0]]);
+
+    let observed_result = test_data.rotate_180();
+
+    assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn rotate_180_gpu() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![9.0, 8.0, 7.0],
+      vec![6.0, 5.0, 4.0],
+      vec![3.0, 2.0, 1.0],
+    ]);
+
+    let observed_result = test_data.rotate_180();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn rotate_180_gpu_2() {
+    let test_data = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![6.0, 5.0, 4.0], vec![3.0, 2.0, 1.0]]);
+
+    let observed_result = test_data.rotate_180();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn rotate_180_cpu_gpu_agreement() {
+    let mut rng = rand::thread_rng();
+    let range = Normal::new(0.0, 1e8).unwrap();
+
+    let rows = 5000;
+    let cols = 784;
+    let data = (0..rows)
+      .map(|_| {
+        (0..cols)
+          .map(|_| range.sample(&mut rng) as f32)
+          .collect_vec()
+      })
+      .collect_vec();
+
+    let mat_gpu = Matrix::new_2d(&data).max_pool();
+    let mat_cpu = MatrixCpu::new_2d(&data).max_pool();
+
+    assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 8));
+  }
+
+  #[test]
+  fn convolution() {
+    let test_data = MatrixCpu::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let kernel = MatrixCpu::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let expected_result = MatrixCpu::new_2d(&vec![
+      vec![94.0, 154.0, 106.0],
+      vec![186.0, 285.0, 186.0],
+      vec![106.0, 154.0, 94.0],
+    ]);
+
+    let observed_result = test_data.convolution(&kernel);
+
+    assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn convolution_2() {
+    let test_data = MatrixCpu::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0],
+      vec![5.0, 6.0, 7.0, 8.0],
+      vec![9.0, 10.0, 11.0, 12.0],
+    ]);
+
+    let kernel = MatrixCpu::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let expected_result = MatrixCpu::new_2d(&vec![
+      vec![111.0, 178.0, 217.0, 145.0],
+      vec![231.0, 348.0, 393.0, 252.0],
+      vec![133.0, 190.0, 211.0, 127.0],
+    ]);
+
+    let observed_result = test_data.convolution(&kernel);
+
+    assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn convolution_gpu() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let kernel = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![94.0, 154.0, 106.0],
+      vec![186.0, 285.0, 186.0],
+      vec![106.0, 154.0, 94.0],
+    ]);
+
+    let observed_result = test_data.convolution(&kernel);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn convolution_gpu_2() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0],
+      vec![5.0, 6.0, 7.0, 8.0],
+      vec![9.0, 10.0, 11.0, 12.0],
+    ]);
+
+    let kernel = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![111.0, 178.0, 217.0, 145.0],
+      vec![231.0, 348.0, 393.0, 252.0],
+      vec![133.0, 190.0, 211.0, 127.0],
+    ]);
+
+    let observed_result = test_data.convolution(&kernel);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn convolution_cpu_gpu_agreement() {
+    let mut rng = rand::thread_rng();
+    let range = Normal::new(0.0, 1e2).unwrap();
+
+    let rows = 5000;
+    let cols = 784;
+    let data = (0..rows)
+      .map(|_| {
+        (0..cols)
+          .map(|_| range.sample(&mut rng) as f32)
+          .collect_vec()
+      })
+      .collect_vec();
+
+    let kernel = &vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ];
+
+    let mat_gpu = Matrix::new_2d(&data).convolution(&Matrix::new_2d(kernel));
+    let mat_cpu = MatrixCpu::new_2d(&data).convolution(&MatrixCpu::new_2d(kernel));
+
+    assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 2));
+  }
+
+  #[test]
   fn stress_test_sum_rows_matrix() {
     let mut matrices = Vec::new();
 
@@ -835,6 +1181,27 @@ mod tests {
     return true;
   }
 
+  fn matrix_are_equal_cpu(a: &MatrixCpu, b: &MatrixCpu, precision: usize) -> bool {
+    if a.rows != b.rows || a.columns != b.columns {
+      return false;
+    }
+
+    a.print();
+    b.print();
+
+    let a_data = a.get_data();
+    let b_data = b.get_data();
+    for i in 0..a.rows {
+      for j in 0..a.columns {
+        if !approx_equal(a_data[i][j], b_data[i][j], precision) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
   fn matrix_are_equal_gpu_cpu(a: &Matrix, b: &MatrixCpu, precision: usize) -> bool {
     if a.get_data_length() < 100 && b.rows * b.columns < 100 {
       a.print();
@@ -850,7 +1217,10 @@ mod tests {
     for i in 0..a.rows {
       for j in 0..a.columns {
         if !approx_equal(a_data[i][j], b[i][j], precision) {
-          println!("Matrices not equal at {} {}", a_data[i][j], b[i][j]);
+          println!(
+            "Matrices not equal at index: {} {} with value: {} {}",
+            i, j, a_data[i][j], b[i][j]
+          );
           return false;
         }
       }
@@ -884,39 +1254,4 @@ mod tests {
     // Ensure output is correct
     (0..len).for_each(|i| assert_eq!(out[i], i as f32));
   }
-
-  // #[test]
-  // fn mat_mult_benchmark() {
-  //   // Random numbers for generation
-  //   let mat_dim = 4096;
-
-  //   let id_1;
-  //   let id_2;
-  //   unsafe {
-  //     id_1 = register_matrix(vec![0.0; mat_dim * mat_dim].as_ptr(), mat_dim, mat_dim);
-  //     id_2 = register_matrix(vec![0.0; mat_dim * mat_dim].as_ptr(), mat_dim, mat_dim);
-  //   }
-
-  //   let num_iterations = 20;
-  //   let start = Instant::now();
-
-  //   let mut result_id = 0;
-  //   for _ in 0..num_iterations {
-  //     unsafe {
-  //       result_id = cuda_matrix_multiply(id_1, mat_dim, mat_dim, id_2, mat_dim, mat_dim);
-  //       cuda_synchronize();
-  //       unregister_matrix(result_id);
-  //     }
-  //   }
-  //   unsafe { cuda_synchronize() }
-  //   let elapsed = start.elapsed();
-  //   println!(
-  //   "\n=================================\nTime per iteration: {} ms\n=================================",
-  //   elapsed.as_millis() as f64 / num_iterations as f64
-  // );
-
-  //   print!("{}", result_id);
-
-  //   assert!(false);
-  // }
 }

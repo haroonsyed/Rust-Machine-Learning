@@ -945,3 +945,168 @@ size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     // Return result matrix id
     return out_mat_id;
 }
+
+__global__ void cuda_max_pool_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // For each 2x2 area pick the maximum value
+        // We will mem coalesce by getting first two in row 1
+        // Then next 2 in row2
+
+        // Grab data w/t bounds check
+        // TODO: Bounds check
+
+        int block_start_row = tidY * 2;
+        int block_start_col = tidX * 2;
+        int block_start = block_start_row * mat1_cols + block_start_col;
+
+        // bool block_00_oob = false;
+        bool block_01_oob = (block_start_col + 1) >= mat1_cols;
+        bool block_10_oob = (block_start_row + 1) >= mat1_rows;
+        bool block_11_oob = block_01_oob || block_10_oob;
+
+        float small_float = -1e30;  // Should probably use FLT_MIN but language server no like it
+
+        // TODO: Use bit operations instead of ternary (it's faster idk why the compiler can't figure it out)
+        float block_00 = mat1_buffer[block_start];
+        float block_01 = block_01_oob ? small_float : mat1_buffer[block_start + 1];
+        block_start += mat1_cols;
+        float block_10 = block_10_oob ? small_float : mat1_buffer[block_start];
+        float block_11 = block_11_oob ? small_float : mat1_buffer[block_start + 1];
+
+        float result = max(max(block_00, block_01), max(block_10, block_11));
+
+        int output_index = tidY * out_cols + tidX;
+        out_buffer[output_index] = result;
+    }
+}
+
+// 2x2 since other reduction sizes are not really used
+size_t cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
+    // Create output buffer
+    int out_rows = mat1_rows / 2 + mat1_rows % 2;
+    int out_cols = mat1_cols / 2 + mat1_cols % 2;
+    size_t out_mat_id = register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    float* gpu_mat1_buffer = mat_map[mat1_id];
+    float* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 32;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
+
+    // Run the kernels
+    cuda_max_pool_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Return result matrix id
+    return out_mat_id;
+}
+
+__global__ void cuda_rotate_180_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // Rotating an array 180 means
+        // x_output = length - x_current
+        // y_output = height - y_current
+        int x_out = mat1_cols - tidX - 1;
+        int y_out = mat1_rows - tidY - 1;
+        int input = mat1_buffer[tidY * mat1_cols + tidX];
+
+        int output_index = y_out * out_cols + x_out;
+        out_buffer[output_index] = input;
+    }
+}
+
+size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
+    // Create output buffer
+    int out_rows = mat1_rows;
+    int out_cols = mat1_cols;
+    size_t out_mat_id = register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    float* gpu_mat1_buffer = mat_map[mat1_id];
+    float* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 32;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
+
+    // Run the kernels
+    cuda_rotate_180_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Return result matrix id
+    return out_mat_id;
+}
+
+// Naive implementation
+__global__ void cuda_convolution_kernel_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
+
+        float result = 0.0;
+        const int apothem = kernel_rows / 2;
+        for (int n = 0; n < kernel_cols; n++) {
+            for (int m = 0; m < kernel_rows; m++) {
+                int input_row = m - apothem + tidY;
+                int input_col = n - apothem + tidX;
+                bool input_row_in_bounds = input_row >= 0 && input_row < mat1_rows;
+                bool input_col_in_bounds = input_col >= 0 && input_col < mat1_cols;
+
+                if (input_row_in_bounds && input_col_in_bounds) {
+                    const int curr_mat1_index = input_row * mat1_cols + input_col;
+                    const int curr_kernel_index = m * kernel_cols + n;
+                    result += mat1_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
+                }
+            }
+        }
+
+        int mat1_index = tidY * mat1_cols + tidX;
+
+        int output_index = mat1_index;
+        out_buffer[output_index] = result;
+    }
+}
+
+// Convolution is zero-padded (Output is the same size as input)
+// Expects odd size, square kernels ONLY
+// Be careful, this needs to be optimized or your CNN will suffer
+size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols) {
+    bool input_kernel_valid = kernel_rows == kernel_cols && kernel_rows % 2 == 1;
+    if (!input_kernel_valid) {
+        throw std::invalid_argument("Kernel parameter invalid. Make sure it is square and odd dimensions!");
+    }
+
+    // Create output buffer
+    int out_rows = mat1_rows;
+    int out_cols = mat1_cols;
+    size_t out_mat_id = register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    float* gpu_mat1_buffer = mat_map[mat1_id];
+    float* gpu_kernel_buffer = mat_map[kernel_id];
+    float* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 32;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
+
+    // Run the kernels
+    cuda_convolution_kernel_1<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Return result matrix id
+    return out_mat_id;
+}

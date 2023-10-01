@@ -228,4 +228,93 @@ impl MatrixCpu {
 
     return result;
   }
+
+  pub fn max_pool(&self) -> Self {
+    let result_rows = self.rows / 2 + self.rows % 2;
+    let result_cols = self.columns / 2 + self.columns % 2;
+    let mut result = Self::zeros(result_rows, result_cols);
+
+    for i in 0..result_rows {
+      for j in 0..result_cols {
+        let block_start_row = i * 2;
+        let block_start_col = j * 2;
+
+        // let block_00_oob = false;
+        let block_01_oob = (block_start_col + 1) >= self.columns;
+        let block_10_oob = (block_start_row + 1) >= self.rows;
+        let block_11_oob = block_01_oob || block_10_oob;
+
+        // grab the 4x4 surrounding items
+        let block_00 = self[block_start_row][block_start_col];
+        let block_01 = if block_01_oob {
+          -1e30
+        } else {
+          self[block_start_row][block_start_col + 1]
+        };
+        let block_10 = if block_10_oob {
+          -1e30
+        } else {
+          self[block_start_row + 1][block_start_col]
+        };
+        let block_11 = if block_11_oob {
+          -1e30
+        } else {
+          self[block_start_row + 1][block_start_col + 1]
+        };
+
+        result[i][j] += f32::max(f32::max(block_00, block_01), f32::max(block_10, block_11));
+      }
+    }
+
+    return result;
+  }
+
+  pub fn rotate_180(&self) -> Self {
+    let result_rows = self.rows;
+    let result_cols = self.columns;
+    let mut result = Self::zeros(result_rows, result_cols);
+
+    for i in 0..result_rows {
+      for j in 0..result_cols {
+        // Rotating an array 180 means
+        // x_output = length - x_current
+        // y_output = height - y_current
+        let x_out = self.columns - 1 - j;
+        let y_out = self.rows - 1 - i;
+        result[y_out][x_out] = self[i][j];
+      }
+    }
+
+    return result;
+  }
+
+  pub fn convolution(&self, kernel: &MatrixCpu) -> Self {
+    let result_rows = self.rows;
+    let result_cols = self.columns;
+    let mut result = Self::zeros(result_rows, result_cols);
+
+    for i in 0..result_rows {
+      for j in 0..result_cols {
+        let mut result_val = 0.0;
+        let apothem = kernel.rows / 2;
+        for m in 0..kernel.rows {
+          for n in 0..kernel.columns {
+            let input_y = i as isize - apothem as isize + m as isize;
+            let input_x = j as isize - apothem as isize + n as isize;
+            if input_y >= 0
+              && input_y < self.rows as isize
+              && input_x >= 0
+              && input_x < self.columns as isize
+            {
+              result_val += self[input_y as usize][input_x as usize] * kernel[m][n];
+            }
+          }
+        }
+
+        result[i][j] = result_val;
+      }
+    }
+
+    return result;
+  }
 }
