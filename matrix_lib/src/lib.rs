@@ -653,7 +653,7 @@ mod tests {
 
   #[test]
   fn large_matmult_cpu_gpu_agreement() {
-    let mut rng = rand::ead_rng();
+    let mut rng = rand::thread_rng();
     let range = Normal::new(0.0, 1.0).unwrap();
 
     for common in 999..1024 {
