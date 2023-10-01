@@ -37,6 +37,8 @@ size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size
 }
 
 void warmup() {
+    std::cout << "Warming Up..." << std::endl;
+
     int mat_dim = 4096;
     std::vector<float> data;
     for (int i = 0; i < mat_dim * mat_dim; i++) {
@@ -54,6 +56,8 @@ void warmup() {
         unregister_matrix(result_id);
     }
     cuda_synchronize();
+
+    std::cout << "Finished warming up, starting benchmark..." << std::endl;
 }
 
 void bench_matrix_transpose(int mat_dim, int num_iter) {
@@ -211,7 +215,7 @@ int main() {
 
     const int mat_dim = 4096;
     const int num_iter = 100;
-    bench_convolution(mat_dim, num_iter, 25);
+    bench_convolution(mat_dim, num_iter, 63);
     // bench_rotate_180(mat_dim, num_iter);
     // bench_max_pool(mat_dim, num_iter);
     // bench_matrix_transpose(mat_dim, num_iter);
