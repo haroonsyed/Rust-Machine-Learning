@@ -557,6 +557,24 @@ impl Matrix {
       columns: output_columns,
     };
   }
+
+  pub fn reshape(&mut self, new_rows: usize, new_columns: usize) -> &Self {
+    if new_rows * new_columns == self.get_data_length() {
+      self.rows = new_rows;
+      self.columns = new_columns;
+    } else {
+      panic!("Cannot reshape, matrices are not the same length!")
+    }
+
+    return self;
+  }
+
+  pub fn to_one_dimensional(&mut self) -> &Self {
+    self.columns = self.get_data_length();
+    self.rows = 1;
+
+    return self;
+  }
 }
 
 #[cfg(test)]
@@ -635,7 +653,7 @@ mod tests {
 
   #[test]
   fn large_matmult_cpu_gpu_agreement() {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::ead_rng();
     let range = Normal::new(0.0, 1.0).unwrap();
 
     for common in 999..1024 {
