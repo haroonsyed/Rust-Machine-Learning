@@ -268,4 +268,23 @@ impl MatrixCpu {
 
     return result;
   }
+
+  pub fn rotate_180(&self) -> Self {
+    let result_rows = self.rows;
+    let result_cols = self.columns;
+    let mut result = Self::zeros(result_rows, result_cols);
+
+    for i in 0..result_rows {
+      for j in 0..result_cols {
+        // Rotating an array 180 means
+        // x_output = length - x_current
+        // y_output = height - y_current
+        let x_out = self.columns - 1 - j;
+        let y_out = self.rows - 1 - i;
+        result[y_out][x_out] = self[i][j];
+      }
+    }
+
+    return result;
+  }
 }

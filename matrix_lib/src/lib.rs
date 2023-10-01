@@ -518,6 +518,21 @@ impl Matrix {
       columns: output_columns,
     };
   }
+
+  pub fn rotate_180(&self) -> Self {
+    let result_id: usize;
+
+    unsafe { result_id = cuda_rotate_180(self.id, self.rows, self.columns) }
+
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix {
+      id: result_id,
+      rows: output_rows,
+      columns: output_columns,
+    };
+  }
 }
 
 #[cfg(test)]
@@ -839,6 +854,87 @@ mod tests {
 
   #[test]
   fn max_pool_cpu_gpu_agreement() {
+    let mut rng = rand::thread_rng();
+    let range = Normal::new(0.0, 1e8).unwrap();
+
+    let rows = 5000;
+    let cols = 784;
+    let data = (0..rows)
+      .map(|_| {
+        (0..cols)
+          .map(|_| range.sample(&mut rng) as f32)
+          .collect_vec()
+      })
+      .collect_vec();
+
+    let mat_gpu = Matrix::new_2d(&data).max_pool();
+    let mat_cpu = MatrixCpu::new_2d(&data).max_pool();
+
+    assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 8));
+  }
+
+  #[test]
+  fn rotate_180() {
+    let test_data = MatrixCpu::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let expected_result = MatrixCpu::new_2d(&vec![
+      vec![9.0, 8.0, 7.0],
+      vec![6.0, 5.0, 4.0],
+      vec![3.0, 2.0, 1.0],
+    ]);
+
+    let observed_result = test_data.rotate_180();
+
+    assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn rotate_180_2() {
+    let test_data = MatrixCpu::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+
+    let expected_result = MatrixCpu::new_2d(&vec![vec![6.0, 5.0, 4.0], vec![3.0, 2.0, 1.0]]);
+
+    let observed_result = test_data.rotate_180();
+
+    assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn rotate_180_gpu() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![9.0, 8.0, 7.0],
+      vec![6.0, 5.0, 4.0],
+      vec![3.0, 2.0, 1.0],
+    ]);
+
+    let observed_result = test_data.rotate_180();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn rotate_180_gpu_2() {
+    let test_data = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![6.0, 5.0, 4.0], vec![3.0, 2.0, 1.0]]);
+
+    let observed_result = test_data.rotate_180();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn rotate_180_cpu_gpu_agreement() {
     let mut rng = rand::thread_rng();
     let range = Normal::new(0.0, 1e8).unwrap();
 

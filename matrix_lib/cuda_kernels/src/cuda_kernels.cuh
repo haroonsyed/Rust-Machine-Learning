@@ -49,4 +49,5 @@ size_t cuda_sum_rows(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_sum_columns(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
+size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 }

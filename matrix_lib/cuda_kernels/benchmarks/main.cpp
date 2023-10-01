@@ -32,6 +32,7 @@ size_t cuda_sum_rows(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_sum_columns(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
+size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 }
 
 void warmup() {
@@ -112,6 +113,35 @@ void bench_max_pool(int mat_dim, int num_iter) {
     std::cout << "Including overhead was: " << (float)cpu_time.count() / num_iter << " ms" << std::endl;
 }
 
+void bench_rotate_180(int mat_dim, int num_iter) {
+    // This is just for timing, assumes everything is correct.
+    // The tests already cover correctness.
+    std::vector<float> data;
+    for (int i = 0; i < mat_dim * mat_dim; i++) {
+        data.push_back(23.47);
+    }
+
+    // Register
+    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
+    int mat2 = register_matrix(&data[0], mat_dim, mat_dim);
+
+    auto start_host = high_resolution_clock::now();
+
+    for (int i = 0; i < num_iter; i++) {
+        // Perform multiplication
+        int result_id = cuda_rotate_180(mat1, mat_dim, mat_dim);
+        unregister_matrix(result_id);
+    }
+    cuda_synchronize();
+
+    float gpu_time = 0;
+
+    auto end_host = high_resolution_clock::now();
+    auto cpu_time = duration_cast<milliseconds>(end_host - start_host);
+
+    std::cout << "Including overhead was: " << (float)cpu_time.count() / num_iter << " ms" << std::endl;
+}
+
 void bench_matrix_multiply(int mat_dim, int num_iter) {
     // This is just for timing, assumes everything is correct.
     // The tests already cover correctness.
@@ -147,7 +177,8 @@ int main() {
 
     const int mat_dim = 4096;
     const int num_iter = 100;
-    bench_max_pool(mat_dim, num_iter);
+    bench_rotate_180(mat_dim, num_iter);
+    // bench_max_pool(mat_dim, num_iter);
     // bench_matrix_transpose(mat_dim, num_iter);
     // bench_matrix_multiply(mat_dim, num_iter);
 }
