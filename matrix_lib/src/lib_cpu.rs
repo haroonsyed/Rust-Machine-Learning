@@ -287,4 +287,34 @@ impl MatrixCpu {
 
     return result;
   }
+
+  pub fn convolution(&self, kernel: &MatrixCpu) -> Self {
+    let result_rows = self.rows;
+    let result_cols = self.columns;
+    let mut result = Self::zeros(result_rows, result_cols);
+
+    for i in 0..result_rows {
+      for j in 0..result_cols {
+        let mut result_val = 0.0;
+        let apothem = kernel.rows / 2;
+        for m in 0..kernel.rows {
+          for n in 0..kernel.columns {
+            let input_y = i as isize - apothem as isize + m as isize;
+            let input_x = j as isize - apothem as isize + n as isize;
+            if input_y >= 0
+              && input_y < self.rows as isize
+              && input_x >= 0
+              && input_x < self.columns as isize
+            {
+              result_val += self[input_y as usize][input_x as usize] * kernel[m][n];
+            }
+          }
+        }
+
+        result[i][j] = result_val;
+      }
+    }
+
+    return result;
+  }
 }

@@ -90,4 +90,12 @@ extern "C" {
   pub fn cuda_transpose(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_max_pool(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_rotate_180(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
+  pub fn cuda_convolution(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    kernel_id: usize,
+    kernel_rows: usize,
+    kernel_cols: usize,
+  ) -> usize;
 }
