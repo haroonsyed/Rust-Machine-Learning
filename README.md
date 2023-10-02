@@ -8,7 +8,11 @@ I wanted to learn rust and machine learning..so I thought why not do ML in rust.
 
 #### Python is just used for preprocessing and loading of data, visualization and verification of results.<br/>
 
-That means all the ml algorithms are written using good old if/else, for loops etc. No significant help from libraries (unless you count random number generation and Rust's amazing itertools).
+That means all the ml algorithms are written using good old if/else, for loops etc. No significant help from libraries.<br/><br/>
+The following are the only libraries used for actual ML logic:
+- Rust's itertools for iterating over data more easily
+- Rust's statsrs and Python's numpy random number generation
+- Rust's Image lib to decode thousands of images of varying formats into a raw float array efficiently
 
 ## Structure
 
