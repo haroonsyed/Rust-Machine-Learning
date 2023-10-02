@@ -6,6 +6,7 @@ pub mod cpu_basic_neural_network;
 pub mod decision_tree;
 pub mod gradient_descent;
 pub mod gradientboost;
+pub mod image_util;
 pub mod k_means;
 pub mod k_nearest_neighbor;
 pub mod naive_bayes;
@@ -23,6 +24,10 @@ fn rust_machine_learning(_py: Python, m: &PyModule) -> PyResult<()> {
   m.add_function(wrap_pyfunction!(k_means::centers_are_equal, m)?)?;
   m.add_function(wrap_pyfunction!(
     k_nearest_neighbor::k_nearest_neighbor_2d,
+    m
+  )?)?;
+  m.add_function(wrap_pyfunction!(
+    image_util::load_raw_image_training_data,
     m
   )?)?;
   m.add_function(wrap_pyfunction!(gradient_descent::gradient_descent, m)?)?;
