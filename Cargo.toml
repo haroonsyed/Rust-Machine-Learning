@@ -16,6 +16,7 @@ ordered-float = "3.4.0"
 num = "0.4.0" 
 statrs = "0.16.0"
 matrix_lib = { path = "./matrix_lib" }
+image = "0.24.7"
 
 [dev-dependencies]
 criterion = "0.4.0"
