@@ -196,7 +196,7 @@ void bench_matrix_multiply(int mat_dim, int num_iter) {
 
     for (int i = 0; i < num_iter; i++) {
         // Perform multiplication
-        int result_id = cuda_max_pool(mat1, mat_dim, mat_dim);
+        int result_id = cuda_matrix_multiply(mat1, mat_dim, mat_dim, mat2, mat_dim, mat_dim);
         unregister_matrix(result_id);
     }
     cuda_synchronize();
