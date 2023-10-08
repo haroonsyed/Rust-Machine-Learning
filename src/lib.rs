@@ -26,10 +26,6 @@ fn rust_machine_learning(_py: Python, m: &PyModule) -> PyResult<()> {
     k_nearest_neighbor::k_nearest_neighbor_2d,
     m
   )?)?;
-  m.add_function(wrap_pyfunction!(
-    image_util::load_raw_image_training_data,
-    m
-  )?)?;
   m.add_function(wrap_pyfunction!(gradient_descent::gradient_descent, m)?)?;
   m.add_class::<naive_bayes::NaiveBayesModel>()?;
   m.add_class::<decision_tree::DecisionTree>()?;
@@ -40,5 +36,6 @@ fn rust_machine_learning(_py: Python, m: &PyModule) -> PyResult<()> {
   m.add_class::<basic_neural_network::BasicNeuralNetwork>()?;
   m.add_class::<cpu_basic_neural_network::BasicNeuralNetworkCPU>()?;
   m.add_class::<convolutional_neural_network::ConvolutionalNeuralNetwork>()?;
+  m.add_class::<image_util::ImageBatchLoader>()?;
   Ok(())
 }
