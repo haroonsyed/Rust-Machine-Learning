@@ -1,5 +1,3 @@
-// use crate::py_util::py_print;
-use itertools::{izip, Itertools};
 use matrix_lib::Matrix;
 use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
@@ -79,6 +77,14 @@ impl ConvolutionalNeuralNetworkRust {
     // Train the network
 
     // Cleanup and return
+    let network = ConvolutionalNeuralNetworkRust {
+      conv_layers: Vec::new(),
+      biases: Vec::new(),
+      fully_connected_layer: BasicNeuralNetworkRust {
+        weights: Vec::new(),
+        biases: Vec::new(),
+      },
+    };
     return network;
   }
 
@@ -90,6 +96,7 @@ impl ConvolutionalNeuralNetworkRust {
 
     // Classify
 
+    let classifications = Vec::new();
     return classifications;
   }
 
@@ -162,17 +169,17 @@ impl ConvolutionalNeuralNetworkRust {
     layer: usize,
   ) {
     // Used for yin
-    let prev_layer_outputs = if layer == 0 {
-      observations
-    } else {
-      &neuron_outputs[layer - 1]
-    };
+    // let prev_layer_outputs = if layer == 0 {
+    //   observations
+    // } else {
+    //   &neuron_outputs[layer - 1]
+    // };
 
     // Possibly need a normalization factor?
     //let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
 
     // RelU
-    let activation_prime_x = neuron_outputs[layer].element_ReLU_prime();
+    // let activation_prime_x = neuron_outputs[layer].element_ReLU_prime();
 
     // Calculate Error to backprop
 
