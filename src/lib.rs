@@ -1,10 +1,12 @@
 pub mod adaboost;
 pub mod basic_neural_network;
 pub mod basic_stats;
+pub mod convolutional_neural_network;
 pub mod cpu_basic_neural_network;
 pub mod decision_tree;
 pub mod gradient_descent;
 pub mod gradientboost;
+pub mod image_util;
 pub mod k_means;
 pub mod k_nearest_neighbor;
 pub mod naive_bayes;
@@ -33,5 +35,7 @@ fn rust_machine_learning(_py: Python, m: &PyModule) -> PyResult<()> {
   m.add_class::<xgb::XGB>()?;
   m.add_class::<basic_neural_network::BasicNeuralNetwork>()?;
   m.add_class::<cpu_basic_neural_network::BasicNeuralNetworkCPU>()?;
+  m.add_class::<convolutional_neural_network::ConvolutionalNeuralNetwork>()?;
+  m.add_class::<image_util::ImageBatchLoader>()?;
   Ok(())
 }
