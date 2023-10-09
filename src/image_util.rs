@@ -13,23 +13,22 @@ pub struct ImageBatchLoader {
 #[pymethods]
 impl ImageBatchLoader {
   #[new]
-  fn new(parent_folder: String) -> Self {
+  fn new(parent_folder: String, sample_width: usize, sample_height: usize) -> Self {
     return ImageBatchLoader {
-      loader: ImageBatchLoaderRust::new(parent_folder),
+      loader: ImageBatchLoaderRust::new(parent_folder, sample_width, sample_height),
     };
   }
 
   // Set batch size to zero to load all samples
-  fn batch_sample(
-    &self,
-    batch_size: usize,
-  ) -> PyResult<(Vec<Vec<Vec<f32>>>, Vec<(String, usize, usize)>)> {
+  fn batch_sample(&self, batch_size: usize) -> PyResult<(Vec<Vec<Vec<f32>>>, Vec<String>)> {
     return Ok(self.loader.batch_sample(batch_size));
   }
 }
 
 pub struct ImageBatchLoaderRust {
   pub paths_classifications: Vec<(PathBuf, String)>,
+  pub sample_width: usize,
+  pub sample_height: usize,
 }
 
 impl ImageBatchLoaderRust {
@@ -73,25 +72,22 @@ impl ImageBatchLoaderRust {
     return paths_classifications;
   }
 
-  pub fn new(parent_folder: String) -> Self {
+  pub fn new(parent_folder: String, sample_width: usize, sample_height: usize) -> Self {
     // Collect all the paths of images in the training set
     let paths_classifications = Self::get_image_paths_classifications(&parent_folder);
 
     return ImageBatchLoaderRust {
       paths_classifications,
+      sample_width,
+      sample_height,
     };
   }
 
   // Set the batch_size to 0 to load all the images
-  pub fn batch_sample(
-    &self,
-    batch_size: usize,
-  ) -> (Vec<Vec<Vec<f32>>>, Vec<(String, usize, usize)>) {
-    // let mut batch_sample = (Vec::new(), Vec::new());
-
+  pub fn batch_sample(&self, batch_size: usize) -> (Vec<Vec<Vec<f32>>>, Vec<String>) {
     let total_sample_count = self.paths_classifications.len();
 
-    let start_time = Instant::now();
+    let start = Instant::now();
 
     let batch_sample = (0..batch_size)
       .collect_vec()
@@ -103,26 +99,28 @@ impl ImageBatchLoaderRust {
         let (img_path, img_classification) = &self.paths_classifications[img_index];
 
         if let Ok(img) = image::open(&img_path) {
+          let img = img.thumbnail_exact(self.sample_width as u32, self.sample_height as u32);
+
           // Process Image
           let (width, height) = img.dimensions();
           let mut pixel_data = vec![Vec::with_capacity((width * height) as usize); 3];
 
-          // let (red, (green, blue)): (Vec<_>, (Vec<_>, Vec<_>)) = img
-          //   .into_rgb32f()
-          //   .par_chunks(3)
-          //   .map(|x| (x[0], (x[1], x[2])))
-          //   .unzip();
+          // Check image will fit center crop
+          // let top_left_x_crop = (width as i32 / 2) - (self.sample_width as i32 / 2) - 1;
+          // let top_left_y_crop = (height as i32 / 2) - (self.sample_height as i32 / 2) - 1;
+          // if top_left_x_crop < 0 || top_left_y_crop < 0 {
+          //   return None;
+          // }
 
-          // (0..height).into_iter().for_each(|y| {
-          //   (0..width).into_iter().for_each(|x| {
-          //     let pixel = img.get_pixel(x, y);
-          //     pixel_data[0].push(pixel[0] as f32);
-          //     pixel_data[1].push(pixel[1] as f32);
-          //     pixel_data[2].push(pixel[2] as f32);
-          //   })
-          // });
-
-          for (_, _, pixel) in img.pixels() {
+          for (_, _, pixel) in img
+            // .crop_imm(
+            //   top_left_x_crop as u32,
+            //   top_left_y_crop as u32,
+            //   self.sample_width as u32,
+            //   self.sample_height as u32,
+            // )
+            .pixels()
+          {
             // Write to each depth of the image data
             // SEPRATE OUT INTO R G B IMAGES
             pixel_data[0].push(pixel.0[0] as f32);
@@ -130,26 +128,18 @@ impl ImageBatchLoaderRust {
             pixel_data[2].push(pixel.0[2] as f32);
           }
 
-          // let pixel_data = vec![red, green, blue];
-
           // Write the image data and the metadata to the result
-          return Some((
-            pixel_data,
-            (
-              img_classification.to_owned(),
-              width as usize,
-              height as usize,
-            ),
-          ));
+          return Some((pixel_data, img_classification.to_owned()));
         } else {
           return None;
         }
       })
       .unzip();
 
-    let end_time = Instant::now();
-    let elapsed_time = end_time.duration_since(start_time);
-    println!("Execution time: {} ms", elapsed_time.as_millis());
+    let end = Instant::now();
+    let exec_time = end - start;
+
+    println!("Time to load samples: {}", exec_time.as_millis());
 
     return batch_sample;
   }
