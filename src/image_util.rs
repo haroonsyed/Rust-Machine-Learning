@@ -3,7 +3,7 @@ use itertools::Itertools;
 use pyo3::prelude::*;
 use rand::Rng;
 use rayon::prelude::*;
-use std::{fs, path::PathBuf, time::Instant};
+use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
 
 #[pyclass]
 pub struct ImageBatchLoader {
@@ -20,20 +20,24 @@ impl ImageBatchLoader {
   }
 
   // Set batch size to zero to load all samples
-  fn batch_sample(&self, batch_size: usize) -> PyResult<(Vec<Vec<Vec<f32>>>, Vec<String>)> {
+  fn batch_sample(&self, batch_size: usize) -> PyResult<(Vec<Vec<Vec<f32>>>, Vec<f32>)> {
     return Ok(self.loader.batch_sample(batch_size));
   }
 }
 
 pub struct ImageBatchLoaderRust {
-  pub paths_classifications: Vec<(PathBuf, String)>,
+  pub classifications_map: HashMap<String, f32>,
+  pub paths: Vec<PathBuf>,
   pub sample_width: usize,
   pub sample_height: usize,
 }
 
 impl ImageBatchLoaderRust {
-  fn get_image_paths_classifications(parent_folder: &String) -> Vec<(PathBuf, String)> {
-    let mut paths_classifications = Vec::new();
+  fn get_image_paths_classifications(
+    parent_folder: &String,
+  ) -> (Vec<PathBuf>, HashMap<String, f32>) {
+    let mut paths = Vec::new();
+    let mut classifications_map = HashMap::new();
 
     let entries = fs::read_dir(&parent_folder);
     if let Ok(entries) = entries {
@@ -58,8 +62,11 @@ impl ImageBatchLoaderRust {
                     || has_extension(&image_entry_path, "png")
                     || image_entry_path.extension().is_none();
                   if is_image {
-                    paths_classifications
-                      .push((image_entry_path, folder_name.to_string_lossy().to_string()));
+                    paths.push(image_entry_path);
+                    let new_classification_encoded = classifications_map.len() as f32; // The classification if it is not in map
+                    classifications_map
+                      .entry(folder_name.to_string_lossy().to_string())
+                      .or_insert(new_classification_encoded);
                   }
                 }
               }
@@ -69,23 +76,24 @@ impl ImageBatchLoaderRust {
       }
     }
 
-    return paths_classifications;
+    return (paths, classifications_map);
   }
 
   pub fn new(parent_folder: String, sample_width: usize, sample_height: usize) -> Self {
     // Collect all the paths of images in the training set
-    let paths_classifications = Self::get_image_paths_classifications(&parent_folder);
+    let (paths, classifications_map) = Self::get_image_paths_classifications(&parent_folder);
 
     return ImageBatchLoaderRust {
-      paths_classifications,
+      classifications_map,
+      paths,
       sample_width,
       sample_height,
     };
   }
 
   // Set the batch_size to 0 to load all the images
-  pub fn batch_sample(&self, batch_size: usize) -> (Vec<Vec<Vec<f32>>>, Vec<String>) {
-    let total_sample_count = self.paths_classifications.len();
+  pub fn batch_sample(&self, batch_size: usize) -> (Vec<Vec<Vec<f32>>>, Vec<f32>) {
+    let total_sample_count = self.paths.len();
 
     let start = Instant::now();
 
@@ -96,7 +104,12 @@ impl ImageBatchLoaderRust {
         // Load the pixel data for that image
         let mut rng = rand::thread_rng(); // Create a random number generator
         let img_index = rng.gen_range(0..total_sample_count);
-        let (img_path, img_classification) = &self.paths_classifications[img_index];
+        let img_path = &self.paths[img_index];
+        let img_classification_string = img_path.parent().unwrap().to_string_lossy().to_string();
+        let img_classification = &self
+          .classifications_map
+          .get(&img_classification_string)
+          .unwrap_or(&-1.0);
 
         if let Ok(img) = image::open(&img_path) {
           let img = img.thumbnail_exact(self.sample_width as u32, self.sample_height as u32);
