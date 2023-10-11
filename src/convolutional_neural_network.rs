@@ -97,6 +97,7 @@ impl ConvolutionalNeuralNetworkRust {
       conv_layers: Vec::new(),
       biases: Vec::new(),
       fully_connected_layer: BasicNeuralNetworkRust {
+        non_input_layer_sizes: Vec::new(),
         weights: Vec::new(),
         biases: Vec::new(),
       },
