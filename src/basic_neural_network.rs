@@ -14,26 +14,32 @@ pub struct BasicNeuralNetwork {
 impl BasicNeuralNetwork {
   #[new]
   fn new(
+    hidden_layer_sizes: Vec<usize>,
+    num_features: usize,
+    num_classifications: usize, // Set to anything 1 to perform regression
+  ) -> Self {
+    let network =
+      BasicNeuralNetworkRust::new(hidden_layer_sizes, num_features, num_classifications);
+
+    // Cleanup and return
+    return Self { network };
+  }
+
+  fn train(
+    &mut self,
     features_train: Vec<Vec<f32>>,
     input_labels: Vec<f32>,
-    hidden_layer_sizes: Vec<usize>,
-    num_classifications: usize, // Set to anything 1 to perform regression
     learning_rate: f32,
     num_iterations: usize,
-    batch_size: usize, // Set to 0 to use stochastic GD
-  ) -> Self {
-    let network = BasicNeuralNetworkRust::new(
+    batch_size: usize,
+  ) {
+    self.network.train(
       features_train,
       input_labels,
-      hidden_layer_sizes,
-      num_classifications,
       learning_rate,
       num_iterations,
       batch_size,
     );
-
-    // Cleanup and return
-    return Self { network };
   }
 
   fn classify(&self, features_test: Vec<Vec<f32>>) -> PyResult<Vec<f32>> {
@@ -70,23 +76,18 @@ impl BasicNeuralNetwork {
 }
 
 pub struct BasicNeuralNetworkRust {
+  pub non_input_layer_sizes: Vec<usize>,
   pub weights: Vec<Matrix>,
   pub biases: Vec<Matrix>,
 }
 
 impl BasicNeuralNetworkRust {
   pub fn new(
-    features_train: Vec<Vec<f32>>,
-    input_labels: Vec<f32>,
     hidden_layer_sizes: Vec<usize>,
+    num_features: usize,
     num_classifications: usize, // Set to anything 1 to perform regression
-    learning_rate: f32,
-    num_iterations: usize,
-    batch_size: usize, // Set to 0 to use stochastic GD
   ) -> Self {
     // Gather data on dimensions for matrices
-    let num_observations = features_train.len();
-    let num_features = features_train[0].len();
     let mut non_input_layer_sizes = hidden_layer_sizes.clone();
     non_input_layer_sizes.push(num_classifications);
 
@@ -117,17 +118,37 @@ impl BasicNeuralNetworkRust {
       .map(|layer| Matrix::zeros(non_input_layer_sizes[layer], 1))
       .collect_vec();
 
-    let mut neuron_outputs: Vec<Matrix> = non_input_layer_sizes
+    // Create network
+    let mut network = BasicNeuralNetworkRust {
+      non_input_layer_sizes,
+      weights,
+      biases,
+    };
+
+    // Cleanup and return
+    return network;
+  }
+
+  pub fn train(
+    &mut self,
+    features_train: Vec<Vec<f32>>,
+    input_labels: Vec<f32>,
+    learning_rate: f32,
+    num_iterations: usize,
+    batch_size: usize,
+  ) {
+    let num_classifications = *self.non_input_layer_sizes.last().unwrap_or(&1);
+    let num_observations = features_train.len();
+
+    let mut neuron_outputs: Vec<Matrix> = self
+      .non_input_layer_sizes
       .iter()
       .map(|&layer_size| Matrix::no_fill(layer_size, num_observations))
       .collect();
 
-    // Create network
-    let mut network = BasicNeuralNetworkRust { weights, biases };
-
     // Train model, choose regression or classification
     if num_classifications == 1 {
-      network.train_regression(
+      self.train_regression(
         features_train,
         &mut neuron_outputs,
         input_labels,
@@ -136,7 +157,7 @@ impl BasicNeuralNetworkRust {
         batch_size,
       );
     } else {
-      network.train_classification(
+      self.train_classification(
         features_train,
         &mut neuron_outputs,
         input_labels,
@@ -145,9 +166,6 @@ impl BasicNeuralNetworkRust {
         batch_size,
       );
     }
-
-    // Cleanup and return
-    return network;
   }
 
   pub fn regression(&self, features_test: &Vec<Vec<f32>>) -> Vec<f32> {

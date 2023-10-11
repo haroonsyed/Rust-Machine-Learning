@@ -3,42 +3,70 @@ use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
 use statrs::distribution::Normal;
 
-use crate::basic_neural_network::BasicNeuralNetworkRust;
+use crate::{basic_neural_network::BasicNeuralNetworkRust, image_util::ImageBatchLoaderRust};
 
 #[pyclass]
 pub struct ConvolutionalNeuralNetwork {
   pub network: ConvolutionalNeuralNetworkRust,
+  batch_loader: Option<ImageBatchLoaderRust>,
 }
 
 #[pymethods]
 impl ConvolutionalNeuralNetwork {
   #[new]
   fn new(
-    features_train: Vec<Vec<f32>>,
-    input_labels: Vec<f32>,
     num_classifications: usize,
     filters_per_conv_layer: Vec<usize>,
     filter_dimension: usize, // Must be odd
-    learning_rate: f32,
-    batch_size: usize, // Set to 0 to use stochastic GD
-    num_iterations: usize,
   ) -> Self {
     let network = ConvolutionalNeuralNetworkRust::new(
-      features_train,
-      input_labels,
       num_classifications,
       filters_per_conv_layer,
       filter_dimension,
-      learning_rate,
-      batch_size,
-      num_iterations,
     );
 
     // Cleanup and return
-    return Self { network };
+    return Self {
+      network,
+      batch_loader: Option::None,
+    };
   }
 
-  fn classify(&self, features_test: Vec<Vec<f32>>) -> PyResult<Vec<f32>> {
+  fn set_image_loader(&mut self, parent_folder: String, sample_width: usize, sample_height: usize) {
+    self.batch_loader = Option::Some(ImageBatchLoaderRust::new(
+      parent_folder,
+      sample_width,
+      sample_height,
+    ));
+  }
+
+  fn train_using_image_loader(
+    &mut self,
+    learning_rate: f32,
+    batch_size: usize,
+    num_iterations: usize,
+  ) {
+    if let Some(batch_loader) = self.batch_loader.as_ref() {
+      let (observations, labels) = batch_loader.batch_sample(batch_size);
+      self
+        .network
+        .train(&observations, &labels, learning_rate, num_iterations);
+    }
+  }
+
+  fn train_raw_data(
+    &mut self,
+    observations: Vec<Vec<Vec<f32>>>,
+    labels: Vec<f32>,
+    learning_rate: f32,
+    num_iterations: usize,
+  ) {
+    self
+      .network
+      .train(&observations, &labels, learning_rate, num_iterations);
+  }
+
+  fn classify(&self, features_test: Vec<Vec<Vec<f32>>>) -> PyResult<Vec<f32>> {
     let classifications = self.network.classify(&features_test);
 
     return Ok(classifications);
@@ -53,18 +81,10 @@ pub struct ConvolutionalNeuralNetworkRust {
 
 impl ConvolutionalNeuralNetworkRust {
   pub fn new(
-    features_train: Vec<Vec<f32>>,
-    input_labels: Vec<f32>,
     num_classifications: usize,
     filters_per_conv_layer: Vec<usize>,
     filter_dimension: usize, // Must be odd
-    learning_rate: f32,
-    batch_size: usize, // Set to 0 to use stochastic GD
-    num_iterations: usize,
   ) -> Self {
-    // Gather data on dimensions for matrices
-    let num_observations = features_train.len();
-
     // Init the filters and biases
     // Random seed for weights
     let mut rng = rand::thread_rng();
@@ -73,14 +93,11 @@ impl ConvolutionalNeuralNetworkRust {
     // Create the fully connected layer
 
     // Create the CNN object
-
-    // Train the network
-
-    // Cleanup and return
     let network = ConvolutionalNeuralNetworkRust {
       conv_layers: Vec::new(),
       biases: Vec::new(),
       fully_connected_layer: BasicNeuralNetworkRust {
+        non_input_layer_sizes: Vec::new(),
         weights: Vec::new(),
         biases: Vec::new(),
       },
@@ -88,11 +105,11 @@ impl ConvolutionalNeuralNetworkRust {
     return network;
   }
 
-  pub fn classify(&self, features_test: &Vec<Vec<f32>>) -> Vec<f32> {
+  pub fn classify(&self, features_test: &Vec<Vec<Vec<f32>>>) -> Vec<f32> {
     let num_observations = features_test.len();
 
     // Feed forward through network
-    let observations = Matrix::new_2d(&features_test).transpose();
+    // let observations = Matrix::new_2d(&features_test).transpose();
 
     // Classify
 
@@ -100,57 +117,19 @@ impl ConvolutionalNeuralNetworkRust {
     return classifications;
   }
 
-  pub fn mini_batch(
-    row_based_observations: &Vec<Vec<f32>>,
-    labels: &Vec<f32>,
-    batch_size: usize,
-  ) -> (Matrix, Vec<f32>) {
-    let mut rng = rand::thread_rng();
-    let row_dist = Uniform::new(0, row_based_observations.len());
-
-    let mut mini_batch_data = Vec::new();
-    let mut mini_batch_labels = vec![0.0; batch_size];
-    for i in 0..batch_size {
-      let row_index = row_dist.sample(&mut rng);
-      let sampled_row = row_based_observations[row_index].to_vec();
-      mini_batch_data.push(sampled_row);
-      mini_batch_labels[i] = labels[row_index];
-    }
-
-    let mini_batch = Matrix::new_2d(&mini_batch_data).transpose();
-    return (mini_batch, mini_batch_labels);
-  }
-
   pub fn train(
     &mut self,
-    observations: Vec<Vec<f32>>,
-    conv_layer_outputs: &mut Vec<Vec<Matrix>>,
-    labels: Vec<f32>,
+    observations: &Vec<Vec<Vec<f32>>>,
+    labels: &Vec<f32>,
     learning_rate: f32,
     num_iterations: usize,
-    batch_size: usize,
   ) {
-    let observations_matrix = Matrix::new_2d(&observations).transpose();
+    // let observations_matrix = Matrix::new_2d(&observations).transpose();
+    let conv_layer_outputs: &mut Vec<Vec<Matrix>>;
 
-    // For now we will make the number of iterations a constant
     for i in 0..num_iterations {
-      // Batch
-      let batch_data: (Matrix, Vec<f32>) =
-        BasicNeuralNetworkRust::mini_batch(&observations, &labels, batch_size);
-
-      let batch = if batch_size == 0 {
-        &observations_matrix
-      } else {
-        &batch_data.0
-      };
-      let batch_labels = if batch_size == 0 {
-        &labels
-      } else {
-        &batch_data.1
-      };
-
       // Feed forward
-      self.feed_forward(batch, conv_layer_outputs);
+      // self.feed_forward(observations, conv_layer_outputs);
 
       // Calculate error from feed forward step
 
