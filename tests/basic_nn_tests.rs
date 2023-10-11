@@ -15,6 +15,8 @@ mod basic_nn_tests {
   fn feed_forward() {
     let observations = Matrix::new_2d(&vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]]); // 3 observations with 2 features
 
+    let non_input_layer_sizes = vec![3, 2];
+
     let weights = vec![
       Matrix::new_2d(&vec![
         // Layer 1 has 3 neurons, with 2 inputs per neuron
@@ -43,7 +45,11 @@ mod basic_nn_tests {
       ]),
     ];
 
-    let network = BasicNeuralNetworkRust { weights, biases };
+    let network = BasicNeuralNetworkRust {
+      non_input_layer_sizes,
+      weights,
+      biases,
+    };
 
     // Create a matrix to hold the actual output
     // Remember each output is product of matmul between weights and observations/neuron_outputs[layer-1] + (bias to each column)
@@ -111,6 +117,7 @@ mod basic_nn_tests {
   #[test]
   fn backpropogation_output_layer() {
     let labels = vec![1.0, 0.0, 1.0];
+    let non_input_layer_sizes = vec![3, 2];
 
     let weights = vec![
       Matrix::new_2d(&vec![
@@ -140,7 +147,11 @@ mod basic_nn_tests {
       ]),
     ];
 
-    let mut network = BasicNeuralNetworkRust { weights, biases };
+    let mut network = BasicNeuralNetworkRust {
+      non_input_layer_sizes,
+      weights,
+      biases,
+    };
 
     // Create a matrix to hold the actual output
     // Remember each output is product of matmul between weights and observations/neuron_outputs[layer-1] + (bias to each column)
@@ -226,6 +237,8 @@ mod basic_nn_tests {
       &vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
     );
 
+    let non_input_layer_sizes = vec![3, 2];
+
     let weights = vec![
       Matrix::new_2d(&vec![
         // Layer 1 has 3 neurons, with 2 inputs per neuron
@@ -258,7 +271,11 @@ mod basic_nn_tests {
       ]),
     ];
 
-    let mut network = BasicNeuralNetworkRust { weights, biases };
+    let mut network = BasicNeuralNetworkRust {
+      non_input_layer_sizes,
+      weights,
+      biases,
+    };
 
     // Create a matrix to hold the actual output
     // Remember each output is product of matmul between weights and observations/neuron_outputs[layer-1] + (bias to each column)
@@ -345,6 +362,8 @@ mod basic_nn_tests {
     let observations = vec![vec![0.1, 0.4], vec![0.2, 0.5], vec![0.3, 0.6]]; // 3 observations with 2 features
     let labels = vec![1.0, 0.0, 1.0];
 
+    let non_input_layer_sizes = vec![3, 2];
+
     let weights = vec![
       Matrix::new_2d(&vec![
         // Layer 1 has 3 neurons, with 2 inputs per neuron
@@ -382,7 +401,11 @@ mod basic_nn_tests {
         vec![vec![0.0; 3]; 2]),
     ];
 
-    let mut network = BasicNeuralNetworkRust { weights, biases };
+    let mut network = BasicNeuralNetworkRust {
+      non_input_layer_sizes,
+      weights,
+      biases,
+    };
     let learning_rate = 0.1;
     network.train_classification(
       observations,
@@ -442,6 +465,8 @@ mod basic_nn_tests {
       &vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]], // 3 observations with 2 features
     );
     let labels = vec![1.0, 0.0, 1.0];
+
+    let non_input_layer_sizes = vec![3, 2];
 
     let weights_gpu = vec![
       Matrix::new_2d(&vec![
@@ -519,6 +544,7 @@ mod basic_nn_tests {
 
     // Create the networks
     let mut gpu_network = BasicNeuralNetworkRust {
+      non_input_layer_sizes,
       weights: weights_gpu,
       biases: biases_gpu,
     };
