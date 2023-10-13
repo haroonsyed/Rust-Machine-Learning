@@ -119,7 +119,7 @@ impl BasicNeuralNetworkRust {
       .collect_vec();
 
     // Create network
-    let mut network = BasicNeuralNetworkRust {
+    let network = BasicNeuralNetworkRust {
       non_input_layer_sizes,
       weights,
       biases,

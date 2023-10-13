@@ -1,5 +1,5 @@
 use cc;
-use std::{env, path::PathBuf};
+use std::env;
 
 fn main() {
   println!("cargo:rerun-if-changed=cuda_kernels/cuda_kernels.cu");

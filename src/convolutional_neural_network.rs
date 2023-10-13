@@ -1,6 +1,7 @@
+use itertools::Itertools;
 use matrix_lib::Matrix;
 use pyo3::prelude::*;
-use rand::{distributions::Uniform, prelude::Distribution};
+use rand::prelude::Distribution;
 use statrs::distribution::Normal;
 
 use crate::{basic_neural_network::BasicNeuralNetworkRust, image_util::ImageBatchLoaderRust};
@@ -16,11 +17,17 @@ impl ConvolutionalNeuralNetwork {
   #[new]
   fn new(
     num_classifications: usize,
+    max_pool_stride: usize,
+    input_width: usize,
+    input_height: usize,
     filters_per_conv_layer: Vec<usize>,
     filter_dimension: usize, // Must be odd
   ) -> Self {
     let network = ConvolutionalNeuralNetworkRust::new(
       num_classifications,
+      max_pool_stride,
+      input_width,
+      input_height,
       filters_per_conv_layer,
       filter_dimension,
     );
@@ -74,6 +81,7 @@ impl ConvolutionalNeuralNetwork {
 }
 
 pub struct ConvolutionalNeuralNetworkRust {
+  pub max_pool_stride: usize,
   pub conv_layers: Vec<Vec<Matrix>>,
   pub biases: Vec<Matrix>,
   pub fully_connected_layer: BasicNeuralNetworkRust,
@@ -82,6 +90,9 @@ pub struct ConvolutionalNeuralNetworkRust {
 impl ConvolutionalNeuralNetworkRust {
   pub fn new(
     num_classifications: usize,
+    max_pool_stride: usize,
+    input_width: usize,
+    input_height: usize,
     filters_per_conv_layer: Vec<usize>,
     filter_dimension: usize, // Must be odd
   ) -> Self {
@@ -90,17 +101,47 @@ impl ConvolutionalNeuralNetworkRust {
     let mut rng = rand::thread_rng();
     let range = Normal::new(0.0, 0.68).unwrap();
 
+    let num_layers = filters_per_conv_layer.len();
+
+    let biases = (0..num_layers)
+      .map(|_| Matrix::zeros(filter_dimension, filter_dimension))
+      .collect_vec();
+
+    let conv_layers = filters_per_conv_layer
+      .iter()
+      .map(|layer_size| {
+        (0..*layer_size)
+          .map(|_| {
+            Matrix::new_2d(
+              &(0..filter_dimension)
+                .map(|_| {
+                  (0..filter_dimension)
+                    .map(|_| range.sample(&mut rng) as f32)
+                    .collect_vec()
+                })
+                .collect_vec(),
+            )
+          })
+          .collect_vec()
+      })
+      .collect_vec();
+
     // Create the fully connected layer
+    // hidden layer size is 0, it is just a translation layer of linearized max pool to classification
+    // num_features will be final conv layer linearized
+    let num_max_pool = num_layers / max_pool_stride;
+    let output_width = input_width / (2 << num_max_pool);
+    let output_height = input_height / (2 << num_max_pool);
+    let num_features = output_width * output_height;
+    let fully_connected_layer =
+      BasicNeuralNetworkRust::new(Vec::new(), num_features, num_classifications);
 
     // Create the CNN object
     let network = ConvolutionalNeuralNetworkRust {
-      conv_layers: Vec::new(),
-      biases: Vec::new(),
-      fully_connected_layer: BasicNeuralNetworkRust {
-        non_input_layer_sizes: Vec::new(),
-        weights: Vec::new(),
-        biases: Vec::new(),
-      },
+      max_pool_stride,
+      conv_layers,
+      biases,
+      fully_connected_layer,
     };
     return network;
   }
