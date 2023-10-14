@@ -1,4 +1,5 @@
 use itertools::{izip, Itertools};
+use matrix_lib::flatten_matrix_array;
 use matrix_lib::Matrix;
 use pyo3::prelude::*;
 use rand::prelude::Distribution;
@@ -212,11 +213,29 @@ impl ConvolutionalNeuralNetworkRust {
     // Feed forward
     let filter_outputs = self.feed_forward(&observations_matrices);
 
-    // Calculate error from feed forward step
+    // Feed forward and backprop from fully connected layer
+    let linearized_final_layer_outputs = filter_outputs
+      .iter()
+      .map(|sample_output| {
+        let mut flattened = flatten_matrix_array(&sample_output.last().unwrap());
 
-    // Backpropogate hidden
+        // Zero overhead tranpose. BE CAREFUL, USE NORMAL TRANSPOSE WHEN WORKING WITH NON 1D OUTPUT
+        flattened.reshape(flattened.columns, flattened.rows);
 
-    // Update the weights
+        return flattened;
+      })
+      .collect_vec();
+
+    let sample_errors = linearized_final_layer_outputs
+      .iter()
+      .map(|output| {
+        self
+          .fully_connected_layer
+          .train_classification_observation_matrix(output, labels, learning_rate)
+      })
+      .collect_vec();
+
+    // Backpropogate conv layers
   }
 
   //return Vec<Vec<Vec<Matrix>>> sample -> layer -> filters -> Matrix
