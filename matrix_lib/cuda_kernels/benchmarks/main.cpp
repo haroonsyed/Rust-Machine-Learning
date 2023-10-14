@@ -34,6 +34,7 @@ size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols);
+size_t cuda_flatten_array(size_t* mat_ids, size_t arr_size, size_t mat_rows, size_t mat_cols);  // Take n same_dimension matrices and flatten them into an array
 }
 
 void warmup() {
@@ -209,13 +210,45 @@ void bench_matrix_multiply(int mat_dim, int num_iter) {
     std::cout << "Including overhead was: " << (float)cpu_time.count() / num_iter << " ms" << std::endl;
 }
 
+void bench_flatten_array(int mat_dim, int mat_count, int num_iter) {
+    // This is just for timing, assumes everything is correct.
+    // The tests already cover correctness.
+    std::vector<float> data;
+    for (int i = 0; i < mat_dim * mat_dim; i++) {
+        data.push_back(23.47);
+    }
+
+    // Register
+    std::vector<size_t> mat_ids;
+    for (int i = 0; i < mat_count; i++) {
+        mat_ids.push_back(register_matrix(&data[0], mat_dim, mat_dim));
+    }
+
+    auto start_host = high_resolution_clock::now();
+
+    for (int i = 0; i < num_iter; i++) {
+        // Perform multiplication
+        int result_id = cuda_flatten_array(&mat_ids[0], mat_ids.size(), mat_dim, mat_dim);
+        unregister_matrix(result_id);
+    }
+    cuda_synchronize();
+
+    float gpu_time = 0;
+
+    auto end_host = high_resolution_clock::now();
+    auto cpu_time = duration_cast<milliseconds>(end_host - start_host);
+
+    std::cout << "Including overhead was: " << (float)cpu_time.count() / num_iter << " ms" << std::endl;
+}
+
 int main() {
     // Get the temps and frequencies up
     warmup();
 
-    const int mat_dim = 4096;
+    const int mat_dim = 32;
     const int num_iter = 100;
-    bench_convolution(mat_dim, num_iter, 63);
+    bench_flatten_array(mat_dim, 256, 1);
+    // bench_convolution(mat_dim, num_iter, 63);
     // bench_rotate_180(mat_dim, num_iter);
     // bench_max_pool(mat_dim, num_iter);
     // bench_matrix_transpose(mat_dim, num_iter);

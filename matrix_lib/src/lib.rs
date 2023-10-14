@@ -2,7 +2,8 @@ pub mod bindings;
 pub mod lib_cpu;
 
 use bindings::*;
-use std::ffi::c_float;
+use itertools::Itertools;
+use std::ffi::{c_float, c_ulonglong};
 
 pub struct Matrix {
   id: usize,
@@ -577,15 +578,45 @@ impl Matrix {
   }
 }
 
+// All matrices are required to be the same shape
+pub fn flatten_matrix_array(to_flatten: &Vec<Matrix>) -> Matrix {
+  if to_flatten.len() == 0 {
+    return Matrix::zeros(0, 0);
+  }
+
+  let mat_ids = to_flatten.iter().map(|mat| mat.id).collect_vec();
+
+  let mat_rows = to_flatten[0].rows;
+  let mat_cols = to_flatten[0].columns;
+
+  let out_id;
+  unsafe {
+    out_id = cuda_flatten_array(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      to_flatten.len(),
+      mat_rows,
+      mat_cols,
+    )
+  };
+
+  let out_rows = 1;
+  let out_cols = to_flatten[0].get_data_length() * to_flatten.len();
+  return Matrix {
+    id: out_id,
+    rows: out_rows,
+    columns: out_cols,
+  };
+}
+
 #[cfg(test)]
 mod tests {
   use itertools::Itertools;
   use rand::prelude::Distribution;
   use statrs::distribution::Normal;
 
-  use crate::bindings::*;
   use crate::lib_cpu::MatrixCpu;
   use crate::Matrix;
+  use crate::{bindings::*, flatten_matrix_array};
 
   #[test]
   fn element_add() {
@@ -1124,6 +1155,33 @@ mod tests {
   }
 
   #[test]
+  fn flatten_matrix_gpu() {
+    let out_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let out_2 = Matrix::new_2d(&vec![
+      vec![10.0, 11.0, 12.0],
+      vec![13.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0],
+    ]);
+
+    let out_3 = Matrix::new_2d(&vec![
+      vec![19.0, 20.0, 21.0],
+      vec![22.0, 23.0, 24.0],
+      vec![25.0, 26.0, 27.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![(1..28).map(|x| x as f32).collect_vec()]);
+
+    let observed_result = flatten_matrix_array(&vec![out_1, out_2, out_3]);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
   fn stress_test_sum_rows_matrix() {
     let mut matrices = Vec::new();
 
@@ -1162,6 +1220,7 @@ mod tests {
 
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
     if a.rows != b.rows || a.columns != b.columns {
+      println!("Matrices not the same shape!");
       return false;
     }
 
@@ -1183,6 +1242,7 @@ mod tests {
 
   fn matrix_are_equal_cpu(a: &MatrixCpu, b: &MatrixCpu, precision: usize) -> bool {
     if a.rows != b.rows || a.columns != b.columns {
+      println!("Matrices not the same shape!");
       return false;
     }
 

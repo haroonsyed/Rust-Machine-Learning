@@ -1,4 +1,5 @@
 use std::ffi::c_float;
+use std::ffi::c_ulonglong;
 
 extern "C" {
   pub fn test();
@@ -97,5 +98,11 @@ extern "C" {
     kernel_id: usize,
     kernel_rows: usize,
     kernel_cols: usize,
+  ) -> usize;
+  pub fn cuda_flatten_array(
+    mat_ids: *const c_ulonglong,
+    arr_size: usize,
+    mat_rows: usize,
+    mat_cols: usize,
   ) -> usize;
 }

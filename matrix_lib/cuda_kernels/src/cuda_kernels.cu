@@ -1,4 +1,5 @@
 #include <unordered_map>
+#include <vector>
 
 #include "./cuda_kernels.cuh"
 
@@ -1106,6 +1107,59 @@ size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size
     // Run the kernels
     cuda_convolution_kernel_1<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
+
+    // Return result matrix id
+    return out_mat_id;
+}
+
+__global__ void cuda_flatten_array_kernel(float** mat_buffers, int mat_rows, int mat_cols, float* out_buffer, int out_rows, int out_cols) {
+    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    const int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+    const int output_index = tidY * out_cols + tidX;
+    const int output_img_size = out_rows * out_cols;
+    const int each_input_img_size = mat_rows * mat_cols;
+
+    if (output_index < output_img_size) {
+        // Grab the gpu buffer we are reffering to
+        const int current_buffer_index = output_index / each_input_img_size;
+        const float* current_buffer = mat_buffers[current_buffer_index];
+
+        // Determine the pixel to copy
+        const int current_buffer_pixel = output_index % each_input_img_size;
+
+        // Write result
+        out_buffer[output_index] = current_buffer[current_buffer_pixel];
+    }
+}
+
+// Take n same_dimension matrices and flatten them into an array
+size_t cuda_flatten_array(size_t* mat_ids, size_t arr_size, size_t mat_rows, size_t mat_cols) {
+    // Create output buffer
+    int out_rows = 1;
+    int out_cols = arr_size * mat_rows * mat_cols;
+    size_t out_mat_id = register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    std::vector<float*> mat_buffers;
+    for (size_t i = 0; i < arr_size; i++) {
+        mat_buffers.push_back(mat_map[mat_ids[i]]);
+    }
+
+    float** gpu_mat_buffers;
+    cudaMallocAsync(&gpu_mat_buffers, sizeof(float*) * arr_size, 0);
+    cudaMemcpy(gpu_mat_buffers, &mat_buffers[0], sizeof(float*) * arr_size, cudaMemcpyHostToDevice);
+    float* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters
+    dim3 block_dim(256, 1, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
+
+    // Run the kernels
+    cuda_flatten_array_kernel<<<grid_dim, block_dim>>>(gpu_mat_buffers, mat_rows, mat_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Cleanup
+    cudaFreeAsync((void*)gpu_mat_buffers, 0);
 
     // Return result matrix id
     return out_mat_id;
