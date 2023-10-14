@@ -81,7 +81,7 @@ impl ConvolutionalNeuralNetwork {
 
 pub struct ConvolutionalNeuralNetworkRust {
   pub num_classifications: usize,
-  pub max_pool_stride: usize,
+  pub max_pool_stride: usize, // Set to 0 to do no max pooling
   pub input_width: usize,
   pub input_height: usize,
   pub input_depth: usize,
@@ -153,7 +153,11 @@ impl ConvolutionalNeuralNetworkRust {
     // Create the fully connected layer
     // hidden layer size is 0, it is just a translation layer of linearized max pool to classification
     // num_features will be final conv layer linearized
-    let num_max_pool = num_layers / max_pool_stride;
+    let num_max_pool = if max_pool_stride == 0 {
+      0
+    } else {
+      num_layers / max_pool_stride
+    };
     let final_filtered_width = input_width / (2 << num_max_pool);
     let final_filtered_height = input_height / (2 << num_max_pool);
     let num_features = (final_filtered_width * final_filtered_height)
@@ -215,9 +219,51 @@ impl ConvolutionalNeuralNetworkRust {
     // Update the weights
   }
 
-  //return Vec<Vec<Matrix>> layer -> filters -> Matrix
-  pub fn feed_forward(&self, observations: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
-    return Vec::new();
+  //return Vec<Vec<Vec<Matrix>>> sample -> layer -> filters -> Matrix
+  pub fn feed_forward(&self, observations: &Vec<Vec<Matrix>>) -> Vec<Vec<Vec<Matrix>>> {
+    let mut filter_outputs = Vec::new();
+
+    // PER SAMPLE
+    for sample in observations {
+      let mut sample_outputs = Vec::new();
+      let mut prev_layer_output = sample;
+
+      // PER LAYER
+      for (layer_index, layer_filters, layer_biases) in izip!(
+        (0..self.conv_layers.len()),
+        self.conv_layers.iter(),
+        self.biases.iter()
+      ) {
+        let is_max_pool_layer =
+          layer_index % self.max_pool_stride == 0 && self.max_pool_stride != 0;
+        let mut layer_output = Vec::new();
+
+        // PER FILTER
+        for (filter, bias) in izip!(layer_filters, layer_biases) {
+          let mut filter_output =
+            Matrix::zeros(prev_layer_output[0].rows, prev_layer_output[1].columns);
+
+          // PER DEPTH
+          for (channel, filter) in izip!(prev_layer_output, filter) {
+            let filtered_channel_result = channel.convolution(filter);
+            filter_output.element_add(&filtered_channel_result);
+          }
+
+          filter_output.element_add(bias);
+
+          if is_max_pool_layer {
+            filter_output = filter_output.max_pool();
+          }
+
+          layer_output.push(filter_output);
+        }
+        sample_outputs.push(layer_output);
+        prev_layer_output = sample_outputs.last().unwrap();
+      }
+      filter_outputs.push(sample_outputs);
+    }
+
+    return filter_outputs;
   }
 
   pub fn backpropogation_hidden_layer(
