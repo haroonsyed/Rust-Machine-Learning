@@ -345,6 +345,41 @@ impl BasicNeuralNetworkRust {
     }
   }
 
+  pub fn train_classification_observation_matrix(
+    &mut self,
+    observations: &Matrix,
+    labels: &Vec<f32>,
+    learning_rate: f32,
+  ) -> Matrix {
+    let num_observations = observations.columns;
+    let mut neuron_outputs: Vec<Matrix> = self
+      .non_input_layer_sizes
+      .iter()
+      .map(|&layer_size| Matrix::no_fill(layer_size, num_observations))
+      .collect();
+
+    // Feed forward
+    self.feed_forward(&observations, &mut neuron_outputs);
+
+    // Calculate error from feed forward step
+    let predicted_probabilities = Self::softmax(&neuron_outputs);
+    let output_error = self.backpropogation_output_layer_classification(
+      &predicted_probabilities,
+      &labels,
+      &neuron_outputs,
+      learning_rate,
+    );
+
+    // Backpropogate hidden
+    return self.backpropogation_hidden_layer(
+      &observations,
+      &neuron_outputs,
+      &output_error,
+      learning_rate,
+      self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
+    );
+  }
+
   pub fn feed_forward(&self, observations: &Matrix, neuron_outputs: &mut Vec<Matrix>) {
     let num_layers = self.weights.len();
     for layer in 0..num_layers {
@@ -458,7 +493,7 @@ impl BasicNeuralNetworkRust {
     next_layer_error: &Matrix,
     learning_rate: f32,
     layer: usize,
-  ) {
+  ) -> Matrix {
     // Used for yin
     let prev_layer_outputs = if layer == 0 {
       observations
@@ -503,6 +538,7 @@ impl BasicNeuralNetworkRust {
         layer - 1,
       );
     }
+    return error;
   }
 
   fn matrix_classify(&self, observations: &Matrix) -> Vec<f32> {
