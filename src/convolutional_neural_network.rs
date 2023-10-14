@@ -56,10 +56,10 @@ impl ConvolutionalNeuralNetwork {
     num_iterations: usize,
   ) {
     if let Some(batch_loader) = self.batch_loader.as_ref() {
-      let (observations, labels) = batch_loader.batch_sample(batch_size);
-      self
-        .network
-        .train(&observations, &labels, learning_rate, num_iterations);
+      for _ in 0..num_iterations {
+        let (observations, labels) = batch_loader.batch_sample(batch_size);
+        self.network.train(&observations, &labels, learning_rate);
+      }
     }
   }
 
@@ -68,11 +68,8 @@ impl ConvolutionalNeuralNetwork {
     observations: Vec<Vec<Vec<f32>>>,
     labels: Vec<f32>,
     learning_rate: f32,
-    num_iterations: usize,
   ) {
-    self
-      .network
-      .train(&observations, &labels, learning_rate, num_iterations);
+    self.network.train(&observations, &labels, learning_rate);
   }
 
   fn classify(&self, features_test: Vec<Vec<Vec<f32>>>) -> PyResult<Vec<f32>> {
@@ -83,7 +80,11 @@ impl ConvolutionalNeuralNetwork {
 }
 
 pub struct ConvolutionalNeuralNetworkRust {
+  pub num_classifications: usize,
   pub max_pool_stride: usize,
+  pub input_width: usize,
+  pub input_height: usize,
+  pub input_depth: usize,
   pub conv_layers: Vec<Vec<Vec<Matrix>>>, // Layer -> Filter -> Depth
   pub biases: Vec<Vec<Matrix>>,           // Layer -> Filter -> Bias
   pub fully_connected_layer: BasicNeuralNetworkRust,
@@ -162,7 +163,11 @@ impl ConvolutionalNeuralNetworkRust {
 
     // Create the CNN object
     let network = ConvolutionalNeuralNetworkRust {
+      num_classifications,
       max_pool_stride,
+      input_width,
+      input_height,
+      input_depth,
       conv_layers,
       biases,
       fully_connected_layer,
@@ -187,27 +192,38 @@ impl ConvolutionalNeuralNetworkRust {
     observations: &Vec<Vec<Vec<f32>>>,
     labels: &Vec<f32>,
     learning_rate: f32,
-    num_iterations: usize,
   ) {
-    // let observations_matrix = Matrix::new_2d(&observations).transpose();
-    let conv_layer_outputs: &mut Vec<Vec<Matrix>>;
+    // Obervations are of shape sample -> depth -> data
+    // Observations matrices is sample -> depth -> data (as matrix with image width and height)
+    let observations_matrices = observations
+      .iter()
+      .map(|sample| {
+        sample
+          .iter()
+          .map(|channel_data| Matrix::new_1d(channel_data, self.input_height, self.input_width))
+          .collect_vec()
+      })
+      .collect_vec();
 
-    for i in 0..num_iterations {
-      // Feed forward
-      // self.feed_forward(observations, conv_layer_outputs);
+    // Feed forward
+    let filter_outputs = self.feed_forward(&observations_matrices);
 
-      // Calculate error from feed forward step
+    // Calculate error from feed forward step
 
-      // Backpropogate hidden
-    }
+    // Backpropogate hidden
+
+    // Update the weights
   }
 
-  pub fn feed_forward(&self, observations: &Matrix, conv_layer_outputs: &mut Vec<Vec<Matrix>>) {}
+  //return Vec<Vec<Matrix>> layer -> filters -> Matrix
+  pub fn feed_forward(&self, observations: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
+    return Vec::new();
+  }
 
   pub fn backpropogation_hidden_layer(
     &mut self,
-    observations: &Matrix,
-    conv_layer_outputs: &Vec<Vec<Matrix>>,
+    observations: &Vec<Vec<Matrix>>,
+    filter_outputs: &Vec<Vec<Matrix>>,
     next_layer_error: &Vec<Matrix>,
     learning_rate: f32,
     layer: usize,

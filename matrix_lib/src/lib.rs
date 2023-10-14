@@ -60,6 +60,19 @@ impl Matrix {
     return Matrix { id, rows, columns };
   }
 
+  pub fn new_1d(data: &Vec<f32>, rows: usize, columns: usize) -> Self {
+    if (data.len() != rows * columns) {
+      panic!("Rows and Columns specified not compatible with new_1d size!");
+    }
+
+    let id;
+    unsafe {
+      id = register_matrix(data.as_ptr(), rows, columns);
+    }
+
+    return Matrix { id, rows, columns };
+  }
+
   pub fn new_2d(data: &Vec<Vec<f32>>) -> Self {
     if data.len() == 0 {
       return Self::no_fill(0, 0);
