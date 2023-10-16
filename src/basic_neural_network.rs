@@ -204,6 +204,21 @@ impl BasicNeuralNetworkRust {
     return classifications;
   }
 
+  pub fn classify_matrix(&self, observations: &Matrix) -> Vec<f32> {
+    let num_observations = observations.columns;
+    let mut neuron_outputs: Vec<Matrix> = self
+      .weights
+      .iter()
+      .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
+      .collect_vec();
+
+    self.feed_forward(&observations, &mut neuron_outputs);
+    let predicted_probabilities = Self::softmax(&neuron_outputs);
+    let classifications = Self::get_classification(&predicted_probabilities);
+
+    return classifications;
+  }
+
   pub fn get_classification(predicted_probabilities: &Matrix) -> Vec<f32> {
     let pred_data = predicted_probabilities.transpose().get_data();
     return pred_data

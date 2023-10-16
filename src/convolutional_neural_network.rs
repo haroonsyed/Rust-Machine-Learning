@@ -181,15 +181,42 @@ impl ConvolutionalNeuralNetworkRust {
   }
 
   pub fn classify(&self, features_test: &Vec<Vec<Vec<f32>>>) -> Vec<f32> {
-    let num_observations = features_test.len();
+    // Obervations are of shape sample -> depth -> data
+    // Observations matrices is sample -> depth -> data (as matrix with image width and height)
+    let observations_matrices = features_test
+      .iter()
+      .map(|sample| {
+        sample
+          .iter()
+          .map(|channel_data| Matrix::new_1d(channel_data, self.input_height, self.input_width))
+          .collect_vec()
+      })
+      .collect_vec();
 
-    // Feed forward through network
-    // let observations = Matrix::new_2d(&features_test).transpose();
+    // Feed forward
+    let filter_outputs = self.feed_forward(&observations_matrices);
 
-    // Classify
+    // Feed forward and backprop from fully connected layer
+    let linearized_final_layer_outputs = filter_outputs
+      .iter()
+      .map(|sample_output| {
+        let mut flattened = flatten_matrix_array(&sample_output.last().unwrap());
 
-    let classifications = Vec::new();
-    return classifications;
+        // Zero overhead tranpose. BE CAREFUL, USE NORMAL TRANSPOSE WHEN WORKING WITH NON 1D OUTPUT
+        flattened.reshape(flattened.columns, flattened.rows);
+
+        return flattened;
+      })
+      .collect_vec();
+
+    return linearized_final_layer_outputs
+      .iter()
+      .map(|output| self.fully_connected_layer.classify_matrix(output)[0])
+      .collect_vec();
+
+    // return self
+    //   .fully_connected_layer
+    //   .classify_matrix(linearized_final_layer_outputs);
   }
 
   pub fn train(
