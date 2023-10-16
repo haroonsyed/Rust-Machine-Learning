@@ -236,6 +236,13 @@ impl ConvolutionalNeuralNetworkRust {
       .collect_vec();
 
     // Backpropogate conv layers
+    self.backpropogation_hidden_layer(
+      &observations_matrices,
+      &filter_outputs,
+      &sample_errors,
+      learning_rate,
+      self.conv_layers.len() - 1,
+    );
   }
 
   //return Vec<Vec<Vec<Matrix>>> sample -> layer -> filters -> Matrix
@@ -288,28 +295,66 @@ impl ConvolutionalNeuralNetworkRust {
   pub fn backpropogation_hidden_layer(
     &mut self,
     observations: &Vec<Vec<Matrix>>,
-    filter_outputs: &Vec<Vec<Matrix>>,
+    filter_outputs: &Vec<Vec<Vec<Matrix>>>,
     next_layer_error: &Vec<Matrix>,
     learning_rate: f32,
     layer: usize,
   ) {
     // Used for yin
-    // let prev_layer_outputs = if layer == 0 {
-    //   observations
-    // } else {
-    //   &neuron_outputs[layer - 1]
-    // };
+    let prev_layer_outputs = if layer == 0 {
+      observations
+    } else {
+      &filter_outputs[layer - 1]
+    };
 
     // Possibly need a normalization factor?
     //let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
 
-    // RelU
-    // let activation_prime_x = neuron_outputs[layer].element_ReLU_prime();
+    // n is the filter
+    // m is the channel
 
-    // Calculate Error to backprop
+    // Calculate error to backpropogate
+    let this_layer_error = izip!(self.conv_layers[layer].iter(), next_layer_error.iter())
+      .map(|(filter, next_error)| {
+        // Xm' = Xm - sum(de/dy * conv_full * Knm)
+        let delta_xm = next_error.convolution(&filter[0].rotate_180());
+        filter[1..].iter().for_each(|channel| {
+          delta_xm.element_add_inplace(&next_error.convolution(&channel.rotate_180()));
+        });
+        return delta_xm;
+      })
+      .collect_vec();
 
-    // Calculate error in bias
+    // Update the bias terms
+    izip!(self.biases[layer].iter(), next_layer_error.iter()).for_each(|(bias, error)| {
+      // b' = b - de/dy * learning_rate
+      bias.element_subtract_inplace(&error.scalar_multiply(learning_rate));
+    });
 
-    // Calculate error in erights
+    // Update kernels
+    izip!(
+      self.conv_layers[layer].iter(),
+      next_layer_error.iter(),
+      prev_layer_outputs.iter()
+    )
+    .for_each(|(filter, error, prev_filter_output)| {
+      // knm' = knm - Xm *conv* de/dy
+
+      izip!(filter.iter(), prev_filter_output.iter()).for_each(|(channel, prev_channel_output)| {
+        let delta_channel = prev_channel_output.convolution(error);
+        channel.element_subtract_inplace(&delta_channel.scalar_multiply(learning_rate));
+      });
+    });
+
+    // Continue the backpropogation
+    if layer != 0 {
+      self.backpropogation_hidden_layer(
+        observations,
+        filter_outputs,
+        &this_layer_error,
+        learning_rate,
+        layer - 1,
+      );
+    }
   }
 }
