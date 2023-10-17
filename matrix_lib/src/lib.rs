@@ -108,6 +108,11 @@ impl Matrix {
     println!("");
     println!("");
   }
+
+  pub fn print_shape(&self) {
+    println!("Shape of matrix is: {} {}", self.rows, self.columns);
+  }
+
   pub fn same_shape(&self, other: &Matrix) -> bool {
     return self.rows == other.rows && self.columns == other.columns;
   }

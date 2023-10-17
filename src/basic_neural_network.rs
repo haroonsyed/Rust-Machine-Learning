@@ -1,6 +1,6 @@
 // use crate::py_util::py_print;
 use itertools::{izip, Itertools};
-use matrix_lib::Matrix;
+use matrix_lib::{bindings::cuda_synchronize, Matrix};
 use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
 use statrs::distribution::Normal;
@@ -127,6 +127,14 @@ impl BasicNeuralNetworkRust {
 
     // Cleanup and return
     return network;
+  }
+
+  pub fn print_structure(&self) {
+    println!("Number of layers in network: {}", self.weights.len());
+    println!("Layer shapes:");
+    for weight in self.weights.iter() {
+      weight.print_shape();
+    }
   }
 
   pub fn train(
@@ -338,6 +346,7 @@ impl BasicNeuralNetworkRust {
       // Calculate error from feed forward step
       let predicted_probabilities = Self::softmax(neuron_outputs);
       let output_error = self.backpropogation_output_layer_classification(
+        &observations_matrix,
         &predicted_probabilities,
         batch_labels,
         neuron_outputs,
@@ -362,7 +371,7 @@ impl BasicNeuralNetworkRust {
 
   pub fn train_classification_observation_matrix(
     &mut self,
-    observations: &Matrix,
+    observations: &Matrix, // Expects each sample is in a column (so like a transposed pd datatable)
     labels: &Vec<f32>,
     learning_rate: f32,
   ) -> Matrix {
@@ -379,20 +388,26 @@ impl BasicNeuralNetworkRust {
     // Calculate error from feed forward step
     let predicted_probabilities = Self::softmax(&neuron_outputs);
     let output_error = self.backpropogation_output_layer_classification(
+      &observations,
       &predicted_probabilities,
       &labels,
       &neuron_outputs,
       learning_rate,
     );
 
-    // Backpropogate hidden
-    return self.backpropogation_hidden_layer(
-      &observations,
-      &neuron_outputs,
-      &output_error,
-      learning_rate,
-      self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
-    );
+    if self.weights.len() == 1 {
+      // Backpropogation no hidden layer
+      return output_error;
+    } else {
+      // Backpropogate hidden
+      return self.backpropogation_hidden_layer(
+        &observations,
+        &neuron_outputs,
+        &output_error,
+        learning_rate,
+        self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
+      );
+    }
   }
 
   pub fn feed_forward(&self, observations: &Matrix, neuron_outputs: &mut Vec<Matrix>) {
@@ -456,13 +471,18 @@ impl BasicNeuralNetworkRust {
 
   pub fn backpropogation_output_layer_classification(
     &mut self,
+    observations: &Matrix,
     predicted_probabilities: &Matrix,
     labels: &Vec<f32>,
     neuron_outputs: &Vec<Matrix>,
     learning_rate: f32,
   ) -> Matrix {
     let output_layer_index = self.biases.len() - 1;
-    let prev_layer_outputs = &neuron_outputs[output_layer_index - 1];
+    let prev_layer_outputs = if output_layer_index == 0 {
+      observations
+    } else {
+      &neuron_outputs[output_layer_index - 1]
+    };
     let output_biases = &self.biases[output_layer_index];
     let output_weights = &self.weights[output_layer_index];
     let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;

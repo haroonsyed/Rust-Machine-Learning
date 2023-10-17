@@ -97,7 +97,7 @@ impl ImageBatchLoaderRust {
 
     let start = Instant::now();
 
-    let batch_sample = (0..batch_size)
+    let batch_sample: (Vec<Vec<Vec<f32>>>, Vec<f32>) = (0..batch_size)
       .collect_vec()
       .par_iter()
       .filter_map(|_| {
@@ -105,7 +105,13 @@ impl ImageBatchLoaderRust {
         let mut rng = rand::thread_rng(); // Create a random number generator
         let img_index = rng.gen_range(0..total_sample_count);
         let img_path = &self.paths[img_index];
-        let img_classification_string = img_path.parent().unwrap().to_string_lossy().to_string();
+        let img_classification_string = img_path
+          .parent()
+          .unwrap()
+          .file_name()
+          .unwrap()
+          .to_string_lossy()
+          .to_string();
         let img_classification = &self
           .classifications_map
           .get(&img_classification_string)
