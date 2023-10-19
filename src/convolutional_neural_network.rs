@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use itertools::{izip, Itertools};
 use matrix_lib::flatten_matrix_array;
+use matrix_lib::unflatten_array_to_matrices;
 use matrix_lib::Matrix;
 use pyo3::prelude::*;
 use rand::prelude::Distribution;
@@ -75,7 +76,7 @@ impl ConvolutionalNeuralNetwork {
     self.network.train(&observations, &labels, learning_rate);
   }
 
-  fn classify(&self, features_test: Vec<Vec<Vec<f32>>>) -> PyResult<Vec<f32>> {
+  fn classify(&mut self, features_test: Vec<Vec<Vec<f32>>>) -> PyResult<Vec<f32>> {
     let classifications = self.network.classify(&features_test);
 
     return Ok(classifications);
@@ -199,7 +200,7 @@ impl ConvolutionalNeuralNetworkRust {
     return network;
   }
 
-  pub fn classify(&self, features_test: &Vec<Vec<Vec<f32>>>) -> Vec<f32> {
+  pub fn classify(&mut self, features_test: &Vec<Vec<Vec<f32>>>) -> Vec<f32> {
     // Obervations are of shape sample -> depth -> data
     // Observations matrices is sample -> depth -> data (as matrix with image width and height)
     let observations_matrices = features_test
@@ -264,7 +265,7 @@ impl ConvolutionalNeuralNetworkRust {
 
     self.fully_connected_layer.print_structure();
 
-    // Feed forward and backprop from fully connected layer
+    // Linearize output conv_layer to feed to fully connected layer
     let linearized_final_layer_outputs = filter_outputs
       .iter()
       .map(|sample_output| {
@@ -274,13 +275,45 @@ impl ConvolutionalNeuralNetworkRust {
       })
       .collect_vec();
 
+    // Feed forward and backprop from fully connected layer
     let sample_errors = izip!(linearized_final_layer_outputs.iter(), labels.iter())
       .map(|(output, label)| {
-        self
+        let softmax_error = self
           .fully_connected_layer
-          .train_classification_observation_matrix(output, &vec![*label], learning_rate)
+          .train_classification_observation_matrix(output, &vec![*label], learning_rate);
+
+        softmax_error.print_shape();
+        self.fully_connected_layer.weights[0].print_shape();
+
+        let mut output_error = self.fully_connected_layer.weights[0]
+          .transpose()
+          .matrix_multiply(&softmax_error);
+
+        output_error.print_shape();
+
+        output_error.reshape(output_error.columns, output_error.rows);
+
+        // Now unflatten the error
+        let output_error_dim = filter_outputs
+          .last()
+          .unwrap()
+          .last()
+          .unwrap()
+          .last()
+          .unwrap()
+          .rows;
+
+        return unflatten_array_to_matrices(&output_error, output_error_dim, output_error_dim);
       })
       .collect_vec();
+
+    // Print the number of filters in unflattened error, as well as the dimension of the error
+    println!(
+      "Each filter error is of dimension {} {} and there are {} filters per sample",
+      sample_errors[0][0].rows,
+      sample_errors[0][0].columns,
+      sample_errors[0].len(),
+    );
 
     println!("Finished feed forward in fully connected layer");
 
@@ -290,14 +323,17 @@ impl ConvolutionalNeuralNetworkRust {
       &filter_outputs,
       &sample_errors,
       learning_rate,
-      self.conv_layers.len() - 1,
+      self.conv_layers.len() - 2,
     );
 
     println!("Finished backpropogation");
   }
 
   //return Vec<Vec<Vec<Matrix>>> sample -> layer -> filters -> Matrix
-  pub fn feed_forward(&self, observations: &Vec<Vec<Matrix>>) -> Vec<Vec<Vec<Matrix>>> {
+  pub fn feed_forward(
+    &self,
+    observations: &Vec<Vec<Matrix>>, // sample -> depth -> data
+  ) -> Vec<Vec<Vec<Matrix>>> {
     let mut filter_outputs = Vec::new();
 
     // PER SAMPLE
@@ -345,9 +381,9 @@ impl ConvolutionalNeuralNetworkRust {
 
   pub fn backpropogation_hidden_layer(
     &mut self,
-    observations: &Vec<Vec<Matrix>>,
-    filter_outputs: &Vec<Vec<Vec<Matrix>>>,
-    next_layer_error: &Vec<Matrix>,
+    observations: &Vec<Vec<Matrix>>,        // sample -> depth -> data
+    filter_outputs: &Vec<Vec<Vec<Matrix>>>, // sample -> layer -> filter -> data
+    next_layer_error: &Vec<Vec<Matrix>>,    // sample -> filter -> data
     learning_rate: f32,
     layer: usize,
   ) {
@@ -367,59 +403,59 @@ impl ConvolutionalNeuralNetworkRust {
     // m is the channel
 
     // Calculate error to backpropogate
-    let this_layer_error = izip!(self.conv_layers[layer].iter(), next_layer_error.iter())
-      .map(|(filter, next_error)| {
-        // Xm' = Xm - sum(de/dy * conv_full * Knm)
-        let delta_xm = next_error.convolution(&filter[0].rotate_180());
-        filter[1..].iter().for_each(|channel| {
-          delta_xm.element_add_inplace(&next_error.convolution(&channel.rotate_180()));
-        });
-        return delta_xm;
-      })
-      .collect_vec();
-    println!(
-      "Size of delta_xm {} {} which was convolved with the filter {} {}",
-      this_layer_error[0].rows,
-      this_layer_error[0].columns,
-      self.conv_layers[layer][0][0].rows,
-      self.conv_layers[layer][0][0].columns
-    );
+    // let this_layer_error = izip!(self.conv_layers[layer].iter(), next_layer_error.iter())
+    //   .map(|(filter, next_error)| {
+    //     // Xm' = Xm - sum(de/dy * conv_full * Knm)
+    //     let delta_xm = next_error.convolution(&filter[0].rotate_180());
+    //     filter[1..].iter().for_each(|channel| {
+    //       delta_xm.element_add_inplace(&next_error.convolution(&channel.rotate_180()));
+    //     });
+    //     return delta_xm;
+    //   })
+    //   .collect_vec();
+    // println!(
+    //   "Size of delta_xm {} {} which was convolved with the filter {} {}",
+    //   this_layer_error[0].rows,
+    //   this_layer_error[0].columns,
+    //   self.conv_layers[layer][0][0].rows,
+    //   self.conv_layers[layer][0][0].columns
+    // );
 
-    println!("Calculated error for this layer");
+    // println!("Calculated error for this layer");
 
-    // Update the bias terms
-    izip!(self.biases[layer].iter(), next_layer_error.iter()).for_each(|(bias, error)| {
-      // b' = b - de/dy * learning_rate
-      bias.element_subtract_inplace(&error.scalar_multiply(learning_rate));
-    });
+    // // Update the bias terms
+    // izip!(self.biases[layer].iter(), next_layer_error.iter()).for_each(|(bias, error)| {
+    //   // b' = b - de/dy * learning_rate
+    //   bias.element_subtract_inplace(&error.scalar_multiply(learning_rate));
+    // });
 
-    println!("Calculated biases");
+    // println!("Calculated biases");
 
-    // Update kernels
-    izip!(
-      self.conv_layers[layer].iter(),
-      next_layer_error.iter(),
-      prev_layer_outputs.iter()
-    )
-    .for_each(|(filter, error, prev_filter_output)| {
-      // knm' = knm - Xm *conv* de/dy
+    // // Update kernels
+    // izip!(
+    //   self.conv_layers[layer].iter(),
+    //   next_layer_error.iter(),
+    //   prev_layer_outputs.iter()
+    // )
+    // .for_each(|(filter, error, prev_filter_output)| {
+    //   // knm' = knm - Xm *conv* de/dy
 
-      izip!(filter.iter(), prev_filter_output.iter()).for_each(|(channel, prev_channel_output)| {
-        let delta_channel = prev_channel_output.convolution(error);
-        channel.element_subtract_inplace(&delta_channel.scalar_multiply(learning_rate));
-      });
-    });
-    println!("Calculated error for kernels");
+    //   izip!(filter.iter(), prev_filter_output.iter()).for_each(|(channel, prev_channel_output)| {
+    //     let delta_channel = prev_channel_output.convolution(error);
+    //     channel.element_subtract_inplace(&delta_channel.scalar_multiply(learning_rate));
+    //   });
+    // });
+    // println!("Calculated error for kernels");
 
-    // Continue the backpropogation
-    if layer != 0 {
-      self.backpropogation_hidden_layer(
-        observations,
-        filter_outputs,
-        &this_layer_error,
-        learning_rate,
-        layer - 1,
-      );
-    }
+    // // Continue the backpropogation
+    // if layer != 0 {
+    //   self.backpropogation_hidden_layer(
+    //     observations,
+    //     filter_outputs,
+    //     &this_layer_error,
+    //     learning_rate,
+    //     layer - 1,
+    //   );
+    // }
   }
 }
