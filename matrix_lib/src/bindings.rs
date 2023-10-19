@@ -105,4 +105,11 @@ extern "C" {
     mat_rows: usize,
     mat_cols: usize,
   ) -> usize;
+  pub fn cuda_unflatten_array(
+    array_id: usize,
+    arr_size: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    mat_ids: *mut c_ulonglong,
+  );
 }

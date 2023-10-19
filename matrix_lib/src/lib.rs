@@ -61,7 +61,7 @@ impl Matrix {
   }
 
   pub fn new_1d(data: &Vec<f32>, rows: usize, columns: usize) -> Self {
-    if (data.len() != rows * columns) {
+    if data.len() != rows * columns {
       panic!("Rows and Columns specified not compatible with new_1d size!");
     }
 
@@ -626,15 +626,44 @@ pub fn flatten_matrix_array(to_flatten: &Vec<Matrix>) -> Matrix {
   };
 }
 
+// All matrices are required to be the same shape
+pub fn unflatten_array_to_matrices(
+  to_unflatten: &Matrix,
+  mat_rows: usize,
+  mat_cols: usize,
+) -> Vec<Matrix> {
+  let num_matrices = to_unflatten.get_data_length() / (mat_rows * mat_cols);
+  let mut mat_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_unflatten_array(
+      to_unflatten.id,
+      to_unflatten.get_data_length(),
+      mat_rows,
+      mat_cols,
+      mat_ids.as_mut_ptr() as *mut c_ulonglong,
+    )
+  };
+
+  return mat_ids
+    .iter()
+    .map(|mat_id| Matrix {
+      id: *mat_id,
+      rows: mat_rows,
+      columns: mat_cols,
+    })
+    .collect_vec();
+}
+
 #[cfg(test)]
 mod tests {
-  use itertools::Itertools;
+  use itertools::{izip, Itertools};
   use rand::prelude::Distribution;
   use statrs::distribution::Normal;
 
-  use crate::lib_cpu::MatrixCpu;
-  use crate::Matrix;
-  use crate::{bindings::*, flatten_matrix_array};
+  use crate::{
+    bindings::*, flatten_matrix_array, lib_cpu::MatrixCpu, unflatten_array_to_matrices, Matrix,
+  };
 
   #[test]
   fn element_add() {
@@ -1197,6 +1226,36 @@ mod tests {
     let observed_result = flatten_matrix_array(&vec![out_1, out_2, out_3]);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn unflatten_matrix_gpu() {
+    let mat_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let mat_2 = Matrix::new_2d(&vec![
+      vec![10.0, 11.0, 12.0],
+      vec![13.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0],
+    ]);
+
+    let mat_3 = Matrix::new_2d(&vec![
+      vec![19.0, 20.0, 21.0],
+      vec![22.0, 23.0, 24.0],
+      vec![25.0, 26.0, 27.0],
+    ]);
+
+    let flattened = Matrix::new_2d(&vec![(1..28).map(|x| x as f32).collect_vec()]);
+
+    let expected_result = vec![mat_1, mat_2, mat_3];
+    let observed_result = unflatten_array_to_matrices(&flattened, 3, 3);
+
+    izip!(observed_result, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
   }
 
   #[test]
