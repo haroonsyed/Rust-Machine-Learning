@@ -553,8 +553,12 @@ impl Matrix {
     };
   }
 
-  pub fn convolution(&self, kernel: &Matrix) -> Self {
+  pub fn convolution(&self, kernel: &Matrix, is_valid: bool) -> Self {
     let result_id: usize;
+
+    if !is_valid && kernel.rows != kernel.columns && kernel.rows % 2 == 0 {
+      panic!("Kernel must be square and odd for full convolution!");
+    }
 
     unsafe {
       result_id = cuda_convolution(
@@ -564,11 +568,20 @@ impl Matrix {
         kernel.id,
         kernel.rows,
         kernel.columns,
+        is_valid,
       )
     }
 
-    let output_rows = self.rows;
-    let output_columns = self.columns;
+    let output_rows = if is_valid {
+      self.rows - kernel.rows + 1
+    } else {
+      self.rows
+    };
+    let output_columns = if is_valid {
+      self.columns - kernel.columns + 1
+    } else {
+      self.columns
+    };
 
     return Matrix {
       id: result_id,
@@ -1125,7 +1138,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_gpu() {
+  fn convolution_gpu_full() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -1144,13 +1157,13 @@ mod tests {
       vec![106.0, 154.0, 94.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel);
+    let observed_result = test_data.convolution(&kernel, false);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   #[test]
-  fn convolution_gpu_2() {
+  fn convolution_gpu_full_2() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0, 4.0],
       vec![5.0, 6.0, 7.0, 8.0],
@@ -1169,7 +1182,58 @@ mod tests {
       vec![133.0, 190.0, 211.0, 127.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel);
+    let observed_result = test_data.convolution(&kernel, false);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn convolution_gpu_valid_1() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![37.0, 47.0], vec![67.0, 77.0]]);
+
+    let observed_result = test_data.convolution(&kernel, true);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn convolution_gpu_valid_2() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0],
+      vec![5.0, 6.0, 7.0, 8.0],
+      vec![9.0, 10.0, 11.0, 12.0],
+    ]);
+
+    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![106.0, 127.0], vec![190.0, 211.0]]);
+
+    let observed_result = test_data.convolution(&kernel, true);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn convolution_gpu_valid_3() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0],
+      vec![5.0, 6.0, 7.0, 8.0],
+      vec![9.0, 10.0, 11.0, 12.0],
+    ]);
+
+    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![44.0, 54.0, 64.0], vec![84.0, 94.0, 104.0]]);
+
+    let observed_result = test_data.convolution(&kernel, true);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -1195,7 +1259,7 @@ mod tests {
       vec![7.0, 8.0, 9.0],
     ];
 
-    let mat_gpu = Matrix::new_2d(&data).convolution(&Matrix::new_2d(kernel));
+    let mat_gpu = Matrix::new_2d(&data).convolution(&Matrix::new_2d(kernel), false);
     let mat_cpu = MatrixCpu::new_2d(&data).convolution(&MatrixCpu::new_2d(kernel));
 
     assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 2));

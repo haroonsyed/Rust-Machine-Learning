@@ -98,6 +98,7 @@ extern "C" {
     kernel_id: usize,
     kernel_rows: usize,
     kernel_cols: usize,
+    is_valid: bool,
   ) -> usize;
   pub fn cuda_flatten_array(
     mat_ids: *const c_ulonglong,

@@ -50,7 +50,7 @@ size_t cuda_sum_columns(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
-size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols);
+size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, bool is_valid);
 size_t cuda_flatten_array(size_t* mat_ids, size_t arr_size, size_t mat_rows, size_t mat_cols);                   // Take n same_dimension matrices and flatten them into an array
 void cuda_unflatten_array(size_t array_id, size_t arr_size, size_t mat_rows, size_t mat_cols, size_t* mat_ids);  // Take an array and unflatten it into n same_dimension matrices
 }
