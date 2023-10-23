@@ -100,6 +100,7 @@ pub struct ConvolutionalNeuralNetworkRust {
   pub conv_layers: Vec<Vec<Vec<Matrix>>>, // Layer -> Filter -> Depth
   pub biases: Vec<Vec<Matrix>>,           // Layer -> Filter -> Bias
   pub fully_connected_layer: BasicNeuralNetworkRust,
+  filter_output_dimensions_per_layer: Vec<(usize, usize)>, // Layer -> (width, height)
 }
 
 impl ConvolutionalNeuralNetworkRust {
@@ -112,40 +113,50 @@ impl ConvolutionalNeuralNetworkRust {
     filters_per_conv_layer: Vec<usize>,
     filter_dimension: usize, // Must be odd
   ) -> Self {
-    // Init the filters and biases
-    // Random seed for weights
-    let mut rng = rand::thread_rng();
-    let range = Normal::new(0.0, 0.68).unwrap();
+    // Calculate the output dimensions of each layer
+    let mut filter_output_dimensions_per_layer = Vec::new();
+    for layer_index in 0..filters_per_conv_layer.len() {
+      let is_max_pool_layer = if max_pool_stride == 0 {
+        false
+      } else {
+        layer_index % max_pool_stride == 0
+      };
 
-    let num_layers = filters_per_conv_layer.len();
-    let filter_depth_per_conv_layer = (0..filters_per_conv_layer.len())
-      .map(|index| {
-        if index == 0 {
-          return input_depth;
-        } else {
-          return filters_per_conv_layer[index - 1];
-        }
-      })
-      .collect_vec();
+      let prev_out_dimensions = if layer_index == 0 {
+        (input_width, input_height)
+      } else {
+        filter_output_dimensions_per_layer[layer_index - 1]
+      };
 
-    let biases = filters_per_conv_layer
-      .iter()
-      .enumerate()
-      .map(|(layer_index, filter_count)| {
-        let num_max_pool_so_far = if max_pool_stride == 0 {
-          0
-        } else {
-          layer_index / max_pool_stride
-        };
-        let layer_input_width = input_width / (1 << num_max_pool_so_far);
-        let layer_input_height = input_height / (1 << num_max_pool_so_far);
+      // This output_dimension = (input - filter + 1) assuming valid convolutions
+      let mut output_dimension_width = prev_out_dimensions.0 - filter_dimension + 1;
+      let mut output_dimension_height = prev_out_dimensions.1 - filter_dimension + 1;
 
-        return (0..*filter_count)
-          .map(|_| Matrix::zeros(layer_input_height, layer_input_width))
-          .collect_vec();
-      })
-      .collect_vec();
+      if is_max_pool_layer {
+        output_dimension_width = output_dimension_width / 2;
+        output_dimension_height = output_dimension_height / 2;
+      }
+      filter_output_dimensions_per_layer.push((output_dimension_width, output_dimension_height));
+    }
 
+    // Calculate the depth of the filters per layer
+    let mut filter_depth_per_conv_layer = filters_per_conv_layer.clone();
+    filter_depth_per_conv_layer.insert(0, input_depth);
+
+    // Create the untied biases
+    let biases = izip!(
+      filter_output_dimensions_per_layer.iter(),
+      filters_per_conv_layer.iter()
+    )
+    .map(|(filter_output_dimensions, filter_count)| {
+      let (rows, columns) = filter_output_dimensions;
+      (0..*filter_count)
+        .map(|_| Matrix::zeros(*rows, *columns))
+        .collect_vec()
+    })
+    .collect_vec();
+
+    // Create the kernel weights
     let conv_layers = izip!(
       filters_per_conv_layer.iter(),
       filter_depth_per_conv_layer.iter()
@@ -154,17 +165,7 @@ impl ConvolutionalNeuralNetworkRust {
       (0..filter_count)
         .map(|_| {
           (0..filter_depth)
-            .map(|_| {
-              Matrix::new_2d(
-                &(0..filter_dimension)
-                  .map(|_| {
-                    (0..filter_dimension)
-                      .map(|_| range.sample(&mut rng) as f32)
-                      .collect_vec()
-                  })
-                  .collect_vec(),
-              )
-            })
+            .map(|_| Matrix::new_random(0.0, 0.68, filter_dimension, filter_dimension))
             .collect_vec()
         })
         .collect_vec()
@@ -172,17 +173,10 @@ impl ConvolutionalNeuralNetworkRust {
     .collect_vec();
 
     // Create the fully connected layer
-    // hidden layer size is 0, it is just a translation layer of linearized max pool to classification
-    // num_features will be final conv layer linearized
-    let num_max_pool = if max_pool_stride == 0 {
-      0
-    } else {
-      num_layers / max_pool_stride
-    };
-    let final_filtered_width = input_width / (1 << num_max_pool);
-    let final_filtered_height = input_height / (1 << num_max_pool);
+    let (final_filtered_width, final_filtered_height) =
+      filter_output_dimensions_per_layer.last().unwrap();
     let num_features =
-      (final_filtered_width * final_filtered_height) * filters_per_conv_layer.last().unwrap_or(&1);
+      (final_filtered_width * final_filtered_height) * filter_depth_per_conv_layer.last().unwrap();
     let fully_connected_layer =
       BasicNeuralNetworkRust::new(Vec::new(), num_features, num_classifications);
 
@@ -196,126 +190,26 @@ impl ConvolutionalNeuralNetworkRust {
       conv_layers,
       biases,
       fully_connected_layer,
+      filter_output_dimensions_per_layer,
     };
     return network;
   }
 
   pub fn classify(&mut self, features_test: &Vec<Vec<Vec<f32>>>) -> Vec<f32> {
-    // Obervations are of shape sample -> depth -> data
-    // Observations matrices is sample -> depth -> data (as matrix with image width and height)
-    let observations_matrices = features_test
-      .iter()
-      .map(|sample| {
-        sample
-          .iter()
-          .map(|channel_data| Matrix::new_1d(channel_data, self.input_height, self.input_width))
-          .collect_vec()
-      })
-      .collect_vec();
+    // Obervations are of shape sample -> depth -> pixels
 
-    // Feed forward
-    let filter_outputs = self.feed_forward(&observations_matrices);
-
-    // Feed forward and backprop from fully connected layer
-    let linearized_final_layer_outputs = filter_outputs
-      .iter()
-      .map(|sample_output| {
-        let mut flattened = flatten_matrix_array(&sample_output.last().unwrap());
-
-        // Zero overhead tranpose. BE CAREFUL, USE NORMAL TRANSPOSE WHEN WORKING WITH NON 1D OUTPUT
-        flattened.reshape(flattened.columns, flattened.rows);
-
-        return flattened;
-      })
-      .collect_vec();
-
-    return linearized_final_layer_outputs
-      .iter()
-      .map(|output| self.fully_connected_layer.classify_matrix(output)[0])
-      .collect_vec();
-
-    // return self
-    //   .fully_connected_layer
-    //   .classify_matrix(linearized_final_layer_outputs);
+    return Vec::new();
   }
 
   pub fn train(
     &mut self,
-    observations: &Vec<Vec<Vec<f32>>>,
+    observations: &Vec<Vec<Vec<f32>>>, // sample -> depth -> pixels
     labels: &Vec<f32>,
     learning_rate: f32,
   ) {
-    // Obervations are of shape sample -> depth -> data
-    // Observations matrices is sample -> depth -> data (as matrix with image width and height)
-    let observations_matrices = observations
-      .iter()
-      .map(|sample| {
-        sample
-          .iter()
-          .map(|channel_data| Matrix::new_1d(channel_data, self.input_height, self.input_width))
-          .collect_vec()
-      })
-      .collect_vec();
-    println!("Finished preparing images");
-
-    // Feed forward
-    let filter_outputs = self.feed_forward(&observations_matrices);
-
-    println!("Finished feed forward in CNN Layers");
-
-    self.fully_connected_layer.print_structure();
-
-    // Linearize output conv_layer to feed to fully connected layer
-    let linearized_final_layer_outputs = filter_outputs
-      .iter()
-      .map(|sample_output| {
-        let mut flattened = flatten_matrix_array(&sample_output.last().unwrap());
-        flattened.reshape(flattened.columns, flattened.rows);
-        return flattened;
-      })
-      .collect_vec();
-
-    // Feed forward and backprop from fully connected layer
-    let sample_errors = izip!(linearized_final_layer_outputs.iter(), labels.iter())
-      .map(|(output, label)| {
-        let softmax_error = self
-          .fully_connected_layer
-          .train_classification_observation_matrix(output, &vec![*label], learning_rate);
-
-        softmax_error.print_shape();
-        self.fully_connected_layer.weights[0].print_shape();
-
-        let mut output_error = self.fully_connected_layer.weights[0]
-          .transpose()
-          .matrix_multiply(&softmax_error);
-
-        output_error.print_shape();
-
-        output_error.reshape(output_error.columns, output_error.rows);
-
-        // Now unflatten the error
-        let output_error_dim = filter_outputs
-          .last()
-          .unwrap()
-          .last()
-          .unwrap()
-          .last()
-          .unwrap()
-          .rows;
-
-        return unflatten_array_to_matrices(&output_error, output_error_dim, output_error_dim);
-      })
-      .collect_vec();
-
-    // Print the number of filters in unflattened error, as well as the dimension of the error
-    println!(
-      "Each filter error is of dimension {} {} and there are {} filters per sample",
-      sample_errors[0][0].rows,
-      sample_errors[0][0].columns,
-      sample_errors[0].len(),
-    );
-
-    println!("Finished feed forward in fully connected layer");
+    let observations_matrices = Vec::new();
+    let filter_outputs = Vec::new();
+    let sample_errors = Vec::new();
 
     // Backpropogate conv layers
     self.backpropogation_hidden_layer(
@@ -323,10 +217,8 @@ impl ConvolutionalNeuralNetworkRust {
       &filter_outputs,
       &sample_errors,
       learning_rate,
-      self.conv_layers.len() - 2,
+      self.conv_layers.len() - 1,
     );
-
-    println!("Finished backpropogation");
   }
 
   //return Vec<Vec<Vec<Matrix>>> sample -> layer -> filters -> Matrix
@@ -335,46 +227,6 @@ impl ConvolutionalNeuralNetworkRust {
     observations: &Vec<Vec<Matrix>>, // sample -> depth -> data
   ) -> Vec<Vec<Vec<Matrix>>> {
     let mut filter_outputs = Vec::new();
-
-    // PER SAMPLE
-    for sample in observations {
-      let mut sample_outputs = Vec::new();
-      let mut prev_layer_output = sample;
-
-      // PER LAYER
-      for (layer_index, layer_filters, layer_biases) in izip!(
-        (0..self.conv_layers.len()),
-        self.conv_layers.iter(),
-        self.biases.iter()
-      ) {
-        let is_max_pool_layer =
-          self.max_pool_stride != 0 && layer_index % self.max_pool_stride == 0;
-        let mut layer_output = Vec::new();
-
-        // PER FILTER
-        for (filter, bias) in izip!(layer_filters, layer_biases) {
-          let mut filter_output =
-            Matrix::zeros(prev_layer_output[0].rows, prev_layer_output[1].columns);
-
-          // PER DEPTH
-          for (channel, filter) in izip!(prev_layer_output, filter) {
-            let filtered_channel_result = channel.convolution(filter);
-            filter_output.element_add(&filtered_channel_result);
-          }
-
-          filter_output.element_add(bias);
-
-          if is_max_pool_layer {
-            filter_output = filter_output.max_pool();
-          }
-
-          layer_output.push(filter_output);
-        }
-        sample_outputs.push(layer_output);
-        prev_layer_output = sample_outputs.last().unwrap();
-      }
-      filter_outputs.push(sample_outputs);
-    }
 
     return filter_outputs;
   }
@@ -387,75 +239,7 @@ impl ConvolutionalNeuralNetworkRust {
     learning_rate: f32,
     layer: usize,
   ) {
-    println!("Starting backpropogation for layer {}", layer);
-
-    // Used for yin
-    let prev_layer_outputs = if layer == 0 {
-      observations
-    } else {
-      &filter_outputs[layer - 1]
-    };
-
-    // Possibly need a normalization factor?
-    //let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
-
     // n is the filter
     // m is the channel
-
-    // Calculate error to backpropogate
-    // let this_layer_error = izip!(self.conv_layers[layer].iter(), next_layer_error.iter())
-    //   .map(|(filter, next_error)| {
-    //     // Xm' = Xm - sum(de/dy * conv_full * Knm)
-    //     let delta_xm = next_error.convolution(&filter[0].rotate_180());
-    //     filter[1..].iter().for_each(|channel| {
-    //       delta_xm.element_add_inplace(&next_error.convolution(&channel.rotate_180()));
-    //     });
-    //     return delta_xm;
-    //   })
-    //   .collect_vec();
-    // println!(
-    //   "Size of delta_xm {} {} which was convolved with the filter {} {}",
-    //   this_layer_error[0].rows,
-    //   this_layer_error[0].columns,
-    //   self.conv_layers[layer][0][0].rows,
-    //   self.conv_layers[layer][0][0].columns
-    // );
-
-    // println!("Calculated error for this layer");
-
-    // // Update the bias terms
-    // izip!(self.biases[layer].iter(), next_layer_error.iter()).for_each(|(bias, error)| {
-    //   // b' = b - de/dy * learning_rate
-    //   bias.element_subtract_inplace(&error.scalar_multiply(learning_rate));
-    // });
-
-    // println!("Calculated biases");
-
-    // // Update kernels
-    // izip!(
-    //   self.conv_layers[layer].iter(),
-    //   next_layer_error.iter(),
-    //   prev_layer_outputs.iter()
-    // )
-    // .for_each(|(filter, error, prev_filter_output)| {
-    //   // knm' = knm - Xm *conv* de/dy
-
-    //   izip!(filter.iter(), prev_filter_output.iter()).for_each(|(channel, prev_channel_output)| {
-    //     let delta_channel = prev_channel_output.convolution(error);
-    //     channel.element_subtract_inplace(&delta_channel.scalar_multiply(learning_rate));
-    //   });
-    // });
-    // println!("Calculated error for kernels");
-
-    // // Continue the backpropogation
-    // if layer != 0 {
-    //   self.backpropogation_hidden_layer(
-    //     observations,
-    //     filter_outputs,
-    //     &this_layer_error,
-    //     learning_rate,
-    //     layer - 1,
-    //   );
-    // }
   }
 }

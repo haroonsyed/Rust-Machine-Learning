@@ -3,6 +3,8 @@ pub mod lib_cpu;
 
 use bindings::*;
 use itertools::Itertools;
+use rand::prelude::Distribution;
+use statrs::distribution::Normal;
 use std::ffi::{c_float, c_ulonglong};
 
 pub struct Matrix {
@@ -89,6 +91,21 @@ impl Matrix {
     }
 
     return Matrix { id, rows, columns };
+  }
+
+  pub fn new_random(mean: f64, std: f64, width: usize, height: usize) -> Self {
+    let mut rng = rand::thread_rng();
+    let range = Normal::new(mean, std).unwrap();
+
+    let data = (0..height)
+      .map(|_| {
+        (0..width)
+          .map(|_| range.sample(&mut rng) as f32)
+          .collect_vec()
+      })
+      .collect_vec();
+
+    return Self::new_2d(&data);
   }
 
   pub fn print(&self) {

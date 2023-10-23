@@ -158,7 +158,7 @@ impl ImageBatchLoaderRust {
     let end = Instant::now();
     let exec_time = end - start;
 
-    println!("Time to load samples: {}", exec_time.as_millis());
+    // println!("Time to load samples: {}", exec_time.as_millis());
 
     return batch_sample;
   }
