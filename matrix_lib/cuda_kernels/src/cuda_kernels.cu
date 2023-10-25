@@ -1049,65 +1049,6 @@ size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
 }
 
 // Naive implementation
-__global__ void cuda_convolution_kernel_full_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
-
-        float result = 0.0;
-        const int apothem = kernel_rows / 2;
-        for (int m = 0; m < kernel_rows; m++) {
-            for (int n = 0; n < kernel_cols; n++) {
-                int input_row = m - apothem + tidY;
-                int input_col = n - apothem + tidX;
-                bool input_row_in_bounds = input_row >= 0 && input_row < mat1_rows;
-                bool input_col_in_bounds = input_col >= 0 && input_col < mat1_cols;
-
-                if (input_row_in_bounds && input_col_in_bounds) {
-                    const int curr_mat1_index = input_row * mat1_cols + input_col;
-                    const int curr_kernel_index = m * kernel_cols + n;
-                    result += mat1_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
-                }
-            }
-        }
-
-        int mat1_index = tidY * mat1_cols + tidX;
-
-        int output_index = mat1_index;
-        out_buffer[output_index] = result;
-    }
-}
-
-// Convolution is zero-padded (Output is the same size as input)
-// Expects odd size, square kernels ONLY
-// Be careful, this needs to be optimized or your CNN will suffer
-size_t cuda_convolution_full(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols) {
-    // Create output buffer
-    int out_rows = mat1_rows;
-    int out_cols = mat1_cols;
-    size_t out_mat_id = register_matrix(out_rows, out_cols);
-
-    // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_kernel_buffer = mat_map[kernel_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 32;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
-
-    // Run the kernels
-    cuda_convolution_kernel_full_1<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-
-    // Return result matrix id
-    return out_mat_id;
-}
-
-// Naive implementation
 __global__ void cuda_convolution_kernel_valid_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
@@ -1157,10 +1098,125 @@ size_t cuda_convolution_valid(size_t mat1_id, size_t mat1_rows, size_t mat1_cols
     return out_mat_id;
 }
 
-size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, bool is_valid) {
-    if (is_valid) {
+// Naive implementation
+__global__ void cuda_convolution_kernel_same_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
+
+        float result = 0.0;
+        const int apothem = kernel_rows / 2;
+        for (int m = 0; m < kernel_rows; m++) {
+            for (int n = 0; n < kernel_cols; n++) {
+                int input_row = m - apothem + tidY;
+                int input_col = n - apothem + tidX;
+                bool input_row_in_bounds = input_row >= 0 && input_row < mat1_rows;
+                bool input_col_in_bounds = input_col >= 0 && input_col < mat1_cols;
+
+                if (input_row_in_bounds && input_col_in_bounds) {
+                    const int curr_mat1_index = input_row * mat1_cols + input_col;
+                    const int curr_kernel_index = m * kernel_cols + n;
+                    result += mat1_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
+                }
+            }
+        }
+
+        int output_index = tidY * out_cols + tidX;
+        out_buffer[output_index] = result;
+    }
+}
+
+// Convolution is zero-padded (Output is the same size as input)
+// Expects odd size, square kernels ONLY
+// Be careful, this needs to be optimized or your CNN will suffer
+size_t cuda_convolution_same(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols) {
+    // Create output buffer
+    int out_rows = mat1_rows;
+    int out_cols = mat1_cols;
+    size_t out_mat_id = register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    float* gpu_mat1_buffer = mat_map[mat1_id];
+    float* gpu_kernel_buffer = mat_map[kernel_id];
+    float* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 32;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
+
+    // Run the kernels
+    cuda_convolution_kernel_same_1<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Return result matrix id
+    return out_mat_id;
+}
+
+// Naive implementation
+__global__ void cuda_convolution_kernel_full_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
+        float result = 0.0;
+        const int input_start_row = (-kernel_rows + 1) + tidY;
+        const int input_start_col = (-kernel_cols + 1) + tidX;
+        for (int m = 0; m < kernel_rows; m++) {
+            for (int n = 0; n < kernel_cols; n++) {
+                int input_row = input_start_row + m;
+                int input_col = input_start_col + n;
+                bool input_row_in_bounds = input_row >= 0 && input_row < mat1_rows;
+                bool input_col_in_bounds = input_col >= 0 && input_col < mat1_cols;
+
+                if (input_row_in_bounds && input_col_in_bounds) {
+                    const int curr_mat1_index = input_row * mat1_cols + input_col;
+                    const int curr_kernel_index = m * kernel_cols + n;
+                    result += mat1_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
+                }
+            }
+        }
+
+        int output_index = tidY * out_cols + tidX;
+        out_buffer[output_index] = result;
+    }
+}
+
+// Be careful, this needs to be optimized or your CNN will suffer
+size_t cuda_convolution_full(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols) {
+    // Create output buffer
+    // Dimension of output is input + kernel - 1
+    int out_rows = mat1_rows + kernel_rows - 1;
+    int out_cols = mat1_cols + kernel_cols - 1;
+    size_t out_mat_id = register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    float* gpu_mat1_buffer = mat_map[mat1_id];
+    float* gpu_kernel_buffer = mat_map[kernel_id];
+    float* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 32;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
+
+    // Run the kernels
+    cuda_convolution_kernel_full_1<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Return result matrix id
+    return out_mat_id;
+}
+
+size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, ConvolutionType conv_type) {
+    if (conv_type == ConvolutionType::VALID) {
         return cuda_convolution_valid(mat1_id, mat1_rows, mat1_cols, kernel_id, kernel_rows, kernel_cols);
-    } else {
+    } else if (conv_type == ConvolutionType::SAME) {
+        return cuda_convolution_same(mat1_id, mat1_rows, mat1_cols, kernel_id, kernel_rows, kernel_cols);
+    } else if (conv_type == ConvolutionType::FULL) {
         return cuda_convolution_full(mat1_id, mat1_rows, mat1_cols, kernel_id, kernel_rows, kernel_cols);
     }
 }

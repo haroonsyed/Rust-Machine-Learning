@@ -7,6 +7,13 @@ use rand::prelude::Distribution;
 use statrs::distribution::Normal;
 use std::ffi::{c_float, c_ulonglong};
 
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub enum ConvolutionType {
+  VALID,
+  SAME,
+  FULL,
+}
 pub struct Matrix {
   id: usize,
   pub rows: usize,
@@ -115,13 +122,16 @@ impl Matrix {
     // OPTIMIZE!
     let data = self.get_data();
 
+    let mut print_out = String::new();
+
     for row in 0..self.rows {
       let formatted = (0..self.columns)
         .map(|col| format!("{:<5}", data[row][col]))
         .collect::<Vec<String>>()
         .join(" ");
-      println!("{}", formatted);
+      print_out = format!("{}{}\n", print_out, formatted);
     }
+    println!("{}", print_out);
     println!("");
     println!("");
   }
@@ -570,11 +580,13 @@ impl Matrix {
     };
   }
 
-  pub fn convolution(&self, kernel: &Matrix, is_valid: bool) -> Self {
+  pub fn convolution(&self, kernel: &Matrix, conv_type: ConvolutionType) -> Self {
     let result_id: usize;
 
-    if !is_valid && kernel.rows != kernel.columns && kernel.rows % 2 == 0 {
-      panic!("Kernel must be square and odd for full convolution!");
+    if matches!(conv_type, ConvolutionType::SAME)
+      && (kernel.rows != kernel.columns || kernel.rows % 2 == 0)
+    {
+      panic!("Kernel must be square and odd for same convolution!");
     }
 
     unsafe {
@@ -585,19 +597,20 @@ impl Matrix {
         kernel.id,
         kernel.rows,
         kernel.columns,
-        is_valid,
+        conv_type,
       )
     }
 
-    let output_rows = if is_valid {
-      self.rows - kernel.rows + 1
-    } else {
-      self.rows
+    let output_rows = match conv_type {
+      ConvolutionType::VALID => self.rows - kernel.rows + 1,
+      ConvolutionType::SAME => self.rows,
+      ConvolutionType::FULL => self.rows + kernel.rows - 1,
     };
-    let output_columns = if is_valid {
-      self.columns - kernel.columns + 1
-    } else {
-      self.columns
+
+    let output_columns = match conv_type {
+      ConvolutionType::VALID => self.columns - kernel.columns + 1,
+      ConvolutionType::SAME => self.columns,
+      ConvolutionType::FULL => self.columns + kernel.columns - 1,
     };
 
     return Matrix {
@@ -689,10 +702,12 @@ pub fn unflatten_array_to_matrices(
 mod tests {
   use itertools::{izip, Itertools};
   use rand::prelude::Distribution;
+  use rayon::vec;
   use statrs::distribution::Normal;
 
   use crate::{
-    bindings::*, flatten_matrix_array, lib_cpu::MatrixCpu, unflatten_array_to_matrices, Matrix,
+    bindings::*, flatten_matrix_array, lib_cpu::MatrixCpu, unflatten_array_to_matrices,
+    ConvolutionType, Matrix,
   };
 
   #[test]
@@ -1155,7 +1170,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_gpu_full() {
+  fn convolution_gpu_same() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -1174,13 +1189,13 @@ mod tests {
       vec![106.0, 154.0, 94.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel, false);
+    let observed_result = test_data.convolution(&kernel, ConvolutionType::SAME);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   #[test]
-  fn convolution_gpu_full_2() {
+  fn convolution_gpu_same_2() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0, 4.0],
       vec![5.0, 6.0, 7.0, 8.0],
@@ -1199,7 +1214,7 @@ mod tests {
       vec![133.0, 190.0, 211.0, 127.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel, false);
+    let observed_result = test_data.convolution(&kernel, ConvolutionType::SAME);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -1216,7 +1231,7 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![37.0, 47.0], vec![67.0, 77.0]]);
 
-    let observed_result = test_data.convolution(&kernel, true);
+    let observed_result = test_data.convolution(&kernel, ConvolutionType::VALID);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -1233,7 +1248,7 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![106.0, 127.0], vec![190.0, 211.0]]);
 
-    let observed_result = test_data.convolution(&kernel, true);
+    let observed_result = test_data.convolution(&kernel, ConvolutionType::VALID);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -1250,7 +1265,56 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![44.0, 54.0, 64.0], vec![84.0, 94.0, 104.0]]);
 
-    let observed_result = test_data.convolution(&kernel, true);
+    let observed_result = test_data.convolution(&kernel, ConvolutionType::VALID);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn convolution_gpu_full_1() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![4.0, 11.0, 18.0, 9.0],
+      vec![18.0, 37.0, 47.0, 21.0],
+      vec![36.0, 67.0, 77.0, 33.0],
+      vec![14.0, 23.0, 26.0, 9.0],
+    ]);
+
+    let observed_result = test_data.convolution(&kernel, ConvolutionType::FULL);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn convolution_gpu_full_2() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let kernel = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![9.0, 26.0, 50.0, 38.0, 21.0],
+      vec![42.0, 94.0, 154.0, 106.0, 54.0],
+      vec![90.0, 186.0, 285.0, 186.0, 90.0],
+      vec![54.0, 106.0, 154.0, 94.0, 42.0],
+      vec![21.0, 38.0, 50.0, 26.0, 9.0],
+    ]);
+
+    let observed_result = test_data.convolution(&kernel, ConvolutionType::FULL);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -1276,7 +1340,7 @@ mod tests {
       vec![7.0, 8.0, 9.0],
     ];
 
-    let mat_gpu = Matrix::new_2d(&data).convolution(&Matrix::new_2d(kernel), false);
+    let mat_gpu = Matrix::new_2d(&data).convolution(&Matrix::new_2d(kernel), ConvolutionType::SAME);
     let mat_cpu = MatrixCpu::new_2d(&data).convolution(&MatrixCpu::new_2d(kernel));
 
     assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 2));

@@ -1,6 +1,8 @@
 use std::ffi::c_float;
 use std::ffi::c_ulonglong;
 
+use crate::ConvolutionType;
+
 extern "C" {
   pub fn test();
   pub fn test_array_fill(out: *mut c_float, length: usize);
@@ -98,7 +100,7 @@ extern "C" {
     kernel_id: usize,
     kernel_rows: usize,
     kernel_cols: usize,
-    is_valid: bool,
+    conv_type: ConvolutionType,
   ) -> usize;
   pub fn cuda_flatten_array(
     mat_ids: *const c_ulonglong,

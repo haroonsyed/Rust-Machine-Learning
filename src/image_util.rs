@@ -142,9 +142,9 @@ impl ImageBatchLoaderRust {
           {
             // Write to each depth of the image data
             // SEPRATE OUT INTO R G B IMAGES
-            pixel_data[0].push(pixel.0[0] as f32);
-            pixel_data[1].push(pixel.0[1] as f32);
-            pixel_data[2].push(pixel.0[2] as f32);
+            pixel_data[0].push(pixel.0[0] as f32 / 255.0);
+            pixel_data[1].push(pixel.0[1] as f32 / 255.0);
+            pixel_data[2].push(pixel.0[2] as f32 / 255.0);
           }
 
           // Write the image data and the metadata to the result
