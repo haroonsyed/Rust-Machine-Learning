@@ -3,7 +3,6 @@ use itertools::{izip, Itertools};
 use matrix_lib::Matrix;
 use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
-use statrs::distribution::Normal;
 
 #[pyclass]
 pub struct BasicNeuralNetwork {
@@ -93,24 +92,17 @@ impl BasicNeuralNetworkRust {
     non_input_layer_sizes.push(num_classifications);
 
     // Init the matrices
-    // Random seed for weights
-    let mut rng = rand::thread_rng();
-    let range = Normal::new(0.0, 0.68).unwrap();
-
     let weights = (0..non_input_layer_sizes.len())
       .map(|layer| {
-        Matrix::new_2d(
-          &(0..non_input_layer_sizes[layer])
-            .map(|_| {
-              (0..if layer == 0 {
-                num_features
-              } else {
-                non_input_layer_sizes[layer - 1]
-              })
-                .map(|_| range.sample(&mut rng) as f32)
-                .collect_vec()
-            })
-            .collect_vec(),
+        Matrix::new_random(
+          0.0,
+          0.68,
+          if layer == 0 {
+            num_features
+          } else {
+            non_input_layer_sizes[layer - 1]
+          },
+          non_input_layer_sizes[layer],
         )
       })
       .collect_vec();
