@@ -6,6 +6,7 @@ use itertools::Itertools;
 use rand::prelude::Distribution;
 use statrs::distribution::Normal;
 use std::ffi::{c_float, c_ulonglong};
+use std::io::{stdout, BufWriter, Write};
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -116,24 +117,26 @@ impl Matrix {
   }
 
   pub fn print(&self) {
-    println!("");
-    println!("");
+    const BUFFER_CAPACITY: usize = 4096 * 1024;
+    let stdout = stdout();
+    let handle = stdout.lock();
+    let mut handle = BufWriter::with_capacity(BUFFER_CAPACITY, handle);
 
-    // OPTIMIZE!
     let data = self.get_data();
 
-    let mut print_out = String::new();
+    handle.write(b"\n").unwrap();
 
     for row in 0..self.rows {
-      let formatted = (0..self.columns)
-        .map(|col| format!("{:<5}", data[row][col]))
-        .collect::<Vec<String>>()
-        .join(" ");
-      print_out = format!("{}{}\n", print_out, formatted);
+      for index in (0..self.columns) {
+        let mut val = data[row][index];
+        val = (val * 1000.0).round() / 1000.0;
+        let formatted = format!(" {:<5} ", val);
+        handle.write(formatted.as_bytes()).unwrap();
+      }
+      handle.write(b"\n").unwrap();
     }
-    println!("{}", print_out);
-    println!("");
-    println!("");
+
+    handle.write(b"\n").unwrap();
   }
 
   pub fn print_shape(&self) {
@@ -677,6 +680,10 @@ pub fn unflatten_array_to_matrices(
 ) -> Vec<Matrix> {
   let num_matrices = to_unflatten.get_data_length() / (mat_rows * mat_cols);
   let mut mat_ids = vec![0; num_matrices];
+
+  if to_unflatten.get_data_length() != num_matrices * mat_rows * mat_cols {
+    panic!("Cannot unflatten array, matrix dimensions incorrect!")
+  }
 
   unsafe {
     cuda_unflatten_array(
