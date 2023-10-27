@@ -417,7 +417,32 @@ impl BasicNeuralNetworkRust {
   }
 
   pub fn softmax(neuron_outputs: &Vec<Matrix>) -> Matrix {
-    let outputs_exp = neuron_outputs[neuron_outputs.len() - 1].element_exp();
+    ///
+    // TEMP: ADJUSTED SOFTMAX FOR NUMERICAL STABILITY
+    ///
+    // Preprocess neuron outputs by subtracting the max value from each column
+    let final_layer_output = neuron_outputs.last().unwrap();
+
+    // grab the max
+    let output_data = final_layer_output.get_data();
+    let max_val_in_matrix = output_data
+      .iter()
+      .map(|row| row.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap())
+      .max_by(|a, b| a.partial_cmp(b).unwrap())
+      .unwrap();
+
+    // Subtract the max
+    let data = output_data
+      .iter()
+      .map(|row| row.iter().map(|val| val - max_val_in_matrix).collect_vec())
+      .collect_vec();
+
+    // Create matrix from this data
+    let adjusted_final_layer_output = Matrix::new_2d(&data);
+    ///
+    // TEMP: ADJUSTED SOFTMAX FOR NUMERICAL STABILITY
+    ///
+    let outputs_exp = adjusted_final_layer_output.element_exp_inplace();
 
     let exp_final_layer_outputs_summed = outputs_exp.sum_columns_matrix();
 
