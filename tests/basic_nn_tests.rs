@@ -45,15 +45,9 @@ mod basic_nn_tests {
       ]),
     ];
 
-    let network = BasicNeuralNetworkRust {
-      non_input_layer_sizes,
-      weights,
-      biases,
-    };
-
     // Create a matrix to hold the actual output
     // Remember each output is product of matmul between weights and observations/neuron_outputs[layer-1] + (bias to each column)
-    let mut neuron_outputs = vec![
+    let neuron_outputs = vec![
       Matrix::new_2d(&
         // 3 neurons x 3 observations
         vec![vec![0.0; 3]; 3]),
@@ -62,7 +56,14 @@ mod basic_nn_tests {
         vec![vec![0.0; 3]; 2]),
     ];
 
-    network.feed_forward(&observations, &mut neuron_outputs);
+    let mut network = BasicNeuralNetworkRust {
+      neuron_outputs,
+      non_input_layer_sizes,
+      weights,
+      biases,
+    };
+
+    network.feed_forward(&observations);
 
     let expected_neuron_outputs = vec![
       Matrix::new_2d(&
@@ -77,9 +78,9 @@ mod basic_nn_tests {
         vec![vec![0.374, 0.424, 0.474], vec![0.825, 0.938, 1.051]]),
     ];
 
-    for (a, b) in izip!(expected_neuron_outputs, neuron_outputs) {
-      a.print();
-      b.print();
+    for (a, b) in izip!(expected_neuron_outputs, network.neuron_outputs) {
+      // a.print();
+      // b.print();
       assert!(matrix_are_equal(&a, &b, 5));
     }
   }
@@ -147,12 +148,6 @@ mod basic_nn_tests {
       ]),
     ];
 
-    let mut network = BasicNeuralNetworkRust {
-      non_input_layer_sizes,
-      weights,
-      biases,
-    };
-
     // Create a matrix to hold the actual output
     // Remember each output is product of matmul between weights and observations/neuron_outputs[layer-1] + (bias to each column)
     let neuron_outputs = vec![
@@ -168,6 +163,13 @@ mod basic_nn_tests {
         vec![vec![0.374, 0.424, 0.474], vec![0.825, 0.938, 1.051]]),
     ];
 
+    let mut network = BasicNeuralNetworkRust {
+      neuron_outputs,
+      non_input_layer_sizes,
+      weights,
+      biases,
+    };
+
     let predicted_probabilities = Matrix::new_2d(&vec![
       vec![0.3872, 0.3742, 0.3596],
       vec![0.6079, 0.6257, 0.6403],
@@ -176,9 +178,9 @@ mod basic_nn_tests {
 
     // Backprop output layer
     network.backpropogation_output_layer_classification(
+      &Matrix::zeros(1, 1), // Won't be used
       &predicted_probabilities,
       &labels,
-      &neuron_outputs,
       learning_rate,
     );
 
@@ -221,10 +223,10 @@ mod basic_nn_tests {
       network.biases
     )
     .for_each(|(ew, w, eb, b)| {
-      eb.print();
-      b.print();
-      ew.print();
-      w.print();
+      // eb.print();
+      // b.print();
+      // ew.print();
+      // w.print();
 
       assert!(matrix_are_equal(&eb, &b, 5));
       assert!(matrix_are_equal(&ew, &w, 5));
@@ -271,12 +273,6 @@ mod basic_nn_tests {
       ]),
     ];
 
-    let mut network = BasicNeuralNetworkRust {
-      non_input_layer_sizes,
-      weights,
-      biases,
-    };
-
     // Create a matrix to hold the actual output
     // Remember each output is product of matmul between weights and observations/neuron_outputs[layer-1] + (bias to each column)
     let neuron_outputs = vec![
@@ -292,6 +288,13 @@ mod basic_nn_tests {
         vec![vec![0.374, 0.424, 0.474], vec![0.825, 0.938, 1.051]]),
     ];
 
+    let mut network = BasicNeuralNetworkRust {
+      neuron_outputs,
+      non_input_layer_sizes,
+      weights,
+      biases,
+    };
+
     let learning_rate = 0.1;
 
     let output_error = Matrix::new_2d(&vec![
@@ -302,7 +305,6 @@ mod basic_nn_tests {
     // Backprop output layer
     network.backpropogation_hidden_layer(
       &observations,
-      &neuron_outputs,
       &output_error,
       learning_rate,
       network.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
@@ -347,10 +349,10 @@ mod basic_nn_tests {
       network.biases
     )
     .for_each(|(ew, w, eb, b)| {
-      eb.print();
-      b.print();
-      ew.print();
-      w.print();
+      // eb.print();
+      // b.print();
+      // ew.print();
+      // w.print();
 
       assert!(matrix_are_equal(&eb, &b, 5));
       assert!(matrix_are_equal(&ew, &w, 5));
@@ -392,7 +394,7 @@ mod basic_nn_tests {
       ]),
     ];
 
-    let mut neuron_outputs = vec![
+    let neuron_outputs = vec![
       Matrix::new_2d(&
         // 3 neurons x 3 observations
         vec![vec![0.0; 3]; 3]),
@@ -402,19 +404,13 @@ mod basic_nn_tests {
     ];
 
     let mut network = BasicNeuralNetworkRust {
+      neuron_outputs,
       non_input_layer_sizes,
       weights,
       biases,
     };
     let learning_rate = 0.1;
-    network.train_classification(
-      observations,
-      &mut neuron_outputs,
-      labels,
-      learning_rate,
-      1,
-      0,
-    );
+    network.train_classification(observations, labels, learning_rate, 1, 0);
 
     let expected_weights = vec![
       Matrix::new_2d(&vec![
@@ -524,7 +520,7 @@ mod basic_nn_tests {
       ]),
     ];
 
-    let mut neuron_outputs_gpu = vec![
+    let neuron_outputs_gpu = vec![
       Matrix::new_2d(&
         // 3 neurons x 3 observations
         vec![vec![0.0; 3]; 3]),
@@ -544,6 +540,7 @@ mod basic_nn_tests {
 
     // Create the networks
     let mut gpu_network = BasicNeuralNetworkRust {
+      neuron_outputs: neuron_outputs_gpu,
       non_input_layer_sizes,
       weights: weights_gpu,
       biases: biases_gpu,
@@ -563,27 +560,27 @@ mod basic_nn_tests {
       println!("Iteration: {}", i);
       // FEED FORWARD
       println!("TESTING FEED FORWARD");
-      gpu_network.feed_forward(&observations_gpu, &mut neuron_outputs_gpu);
+      gpu_network.feed_forward(&observations_gpu);
       cpu_network.feed_forward(&observations_cpu, &mut neuron_outputs_cpu, &activation_func);
       networks_are_equal(
         &gpu_network,
-        &neuron_outputs_gpu,
+        gpu_network.neuron_outputs.as_ref(),
         &cpu_network,
         &neuron_outputs_cpu,
       );
 
       // Softmax
       println!("TESTING SOFTMAX");
-      let predicted_gpu = BasicNeuralNetworkRust::softmax(&neuron_outputs_gpu);
+      let predicted_gpu = BasicNeuralNetworkRust::softmax(&gpu_network.neuron_outputs);
       let predicted_cpu = BasicNeuralNetworkCPURust::softmax(&neuron_outputs_cpu);
       assert!(matrix_are_equal_gpu_cpu(&predicted_gpu, &predicted_cpu, 5));
 
       // Backprop output
       println!("TESTING BACKPROP");
       let next_layer_error_gpu = gpu_network.backpropogation_output_layer_classification(
+        &observations_gpu,
         &predicted_gpu,
         &labels,
-        &neuron_outputs_gpu,
         learning_rate,
       );
       let next_layer_error_cpu = cpu_network.backpropogation_output_layer_classification(
@@ -595,7 +592,7 @@ mod basic_nn_tests {
       matrix_are_equal_gpu_cpu(&next_layer_error_gpu, &next_layer_error_cpu, 5);
       networks_are_equal(
         &gpu_network,
-        &neuron_outputs_gpu,
+        &gpu_network.neuron_outputs,
         &cpu_network,
         &neuron_outputs_cpu,
       );
@@ -604,7 +601,6 @@ mod basic_nn_tests {
       println!("TESTING BACKPROP HIDDEN");
       gpu_network.backpropogation_hidden_layer(
         &observations_gpu,
-        &neuron_outputs_gpu,
         &next_layer_error_gpu,
         learning_rate,
         gpu_network.weights.len() - 2,
@@ -619,7 +615,7 @@ mod basic_nn_tests {
       );
       networks_are_equal(
         &gpu_network,
-        &neuron_outputs_gpu,
+        &gpu_network.neuron_outputs,
         &cpu_network,
         &neuron_outputs_cpu,
       );
@@ -639,18 +635,18 @@ mod basic_nn_tests {
       izip!(classifications_gpu, classifications_cpu).for_each(|(a, b)| assert_eq!(a, b));
     }
 
-    izip!(gpu_network.weights.iter(), cpu_network.weights.iter()).for_each(|(a, b)| {
-      a.print();
-      b.print();
-    });
-    izip!(gpu_network.biases.iter(), cpu_network.biases.iter()).for_each(|(a, b)| {
-      a.print();
-      b.print();
-    });
-    izip!(neuron_outputs_gpu.iter(), neuron_outputs_cpu.iter()).for_each(|(a, b)| {
-      a.print();
-      b.print();
-    });
+    // izip!(gpu_network.weights.iter(), cpu_network.weights.iter()).for_each(|(a, b)| {
+    //   a.print();
+    //   b.print();
+    // });
+    // izip!(gpu_network.biases.iter(), cpu_network.biases.iter()).for_each(|(a, b)| {
+    //   a.print();
+    //   b.print();
+    // });
+    // izip!(gpu_network.neuron_outputs.iter(), neuron_outputs_cpu.iter()).for_each(|(a, b)| {
+    //   a.print();
+    //   b.print();
+    // });
     // assert_eq!(1, 2);
   }
 
@@ -659,8 +655,8 @@ mod basic_nn_tests {
       return false;
     }
 
-    a.print();
-    b.print();
+    // a.print();
+    // b.print();
 
     let a_data = a.get_data();
     let b_data = b.get_data();
@@ -676,8 +672,8 @@ mod basic_nn_tests {
   }
 
   fn matrix_are_equal_gpu_cpu(a: &Matrix, b: &MatrixCpu, precision: usize) -> bool {
-    a.print();
-    b.print();
+    // a.print();
+    // b.print();
 
     if a.rows != b.rows || a.columns != b.columns {
       println!("Matrices do not even share dimensions");

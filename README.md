@@ -52,6 +52,10 @@ Any data is located in the data folder.
 5. Compile Rust Code using `maturin develop` or `maturin develop --release`
 6. Open notebooks in jupyter notebook/jupyter lab/vscode etc..
 
+## Running Tests
+Make sure to run tests using `cargo test -- --test-threads=1`.
+Running the tests in parallel may fail because the cuda matrix library is not thread safe (yet).
+
 ## Credits
 
 MNIST Handwritten digit database available from https://yann.lecun.com/exdb/mnist/ <br/>
