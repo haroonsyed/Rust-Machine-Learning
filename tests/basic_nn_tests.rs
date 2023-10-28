@@ -79,8 +79,8 @@ mod basic_nn_tests {
     ];
 
     for (a, b) in izip!(expected_neuron_outputs, network.neuron_outputs) {
-      // a.print();
-      // b.print();
+      a.print();
+      b.print();
       assert!(matrix_are_equal(&a, &b, 5));
     }
   }
@@ -223,10 +223,10 @@ mod basic_nn_tests {
       network.biases
     )
     .for_each(|(ew, w, eb, b)| {
-      // eb.print();
-      // b.print();
-      // ew.print();
-      // w.print();
+      eb.print();
+      b.print();
+      ew.print();
+      w.print();
 
       assert!(matrix_are_equal(&eb, &b, 5));
       assert!(matrix_are_equal(&ew, &w, 5));
@@ -349,10 +349,10 @@ mod basic_nn_tests {
       network.biases
     )
     .for_each(|(ew, w, eb, b)| {
-      // eb.print();
-      // b.print();
-      // ew.print();
-      // w.print();
+      eb.print();
+      b.print();
+      ew.print();
+      w.print();
 
       assert!(matrix_are_equal(&eb, &b, 5));
       assert!(matrix_are_equal(&ew, &w, 5));
@@ -635,19 +635,19 @@ mod basic_nn_tests {
       izip!(classifications_gpu, classifications_cpu).for_each(|(a, b)| assert_eq!(a, b));
     }
 
-    // izip!(gpu_network.weights.iter(), cpu_network.weights.iter()).for_each(|(a, b)| {
-    //   a.print();
-    //   b.print();
-    // });
-    // izip!(gpu_network.biases.iter(), cpu_network.biases.iter()).for_each(|(a, b)| {
-    //   a.print();
-    //   b.print();
-    // });
-    // izip!(gpu_network.neuron_outputs.iter(), neuron_outputs_cpu.iter()).for_each(|(a, b)| {
-    //   a.print();
-    //   b.print();
-    // });
-    // assert_eq!(1, 2);
+    izip!(gpu_network.weights.iter(), cpu_network.weights.iter()).for_each(|(a, b)| {
+      a.print();
+      b.print();
+    });
+    izip!(gpu_network.biases.iter(), cpu_network.biases.iter()).for_each(|(a, b)| {
+      a.print();
+      b.print();
+    });
+    izip!(gpu_network.neuron_outputs.iter(), neuron_outputs_cpu.iter()).for_each(|(a, b)| {
+      a.print();
+      b.print();
+    });
+    assert_eq!(1, 2);
   }
 
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
@@ -655,8 +655,8 @@ mod basic_nn_tests {
       return false;
     }
 
-    // a.print();
-    // b.print();
+    a.print();
+    b.print();
 
     let a_data = a.get_data();
     let b_data = b.get_data();
@@ -672,8 +672,8 @@ mod basic_nn_tests {
   }
 
   fn matrix_are_equal_gpu_cpu(a: &Matrix, b: &MatrixCpu, precision: usize) -> bool {
-    // a.print();
-    // b.print();
+    a.print();
+    b.print();
 
     if a.rows != b.rows || a.columns != b.columns {
       println!("Matrices do not even share dimensions");
