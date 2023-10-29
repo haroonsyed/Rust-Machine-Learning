@@ -647,7 +647,6 @@ mod basic_nn_tests {
       a.print();
       b.print();
     });
-    assert_eq!(1, 2);
   }
 
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {

@@ -1320,3 +1320,49 @@ void cuda_unflatten_array(size_t array_id, size_t arr_size, size_t mat_rows, siz
     cuda_unflatten_array_kernel<<<grid_dim, block_dim>>>(gpu_array_buffer, arr_size, mat_rows, mat_cols, gpu_mat_buffers_ptr);
     gpuErrchk(cudaPeekAtLastError());
 }
+
+__global__ void cuda_unflatten_array_strided_kernel(float* array_buffer, int arr_size, int num_matrices, int mat_rows, int mat_cols, float** mat_buffers) {
+    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    const int array_buffer_index = tidX;
+
+    if (array_buffer_index < arr_size) {
+        // Check which mat_buffer to write to
+        const int mat_buffer_index = array_buffer_index % num_matrices;
+        const int mat_buffer_pixel = array_buffer_index / num_matrices;
+
+        // Write result
+        mat_buffers[mat_buffer_index][mat_buffer_pixel] = array_buffer[array_buffer_index];
+    }
+}
+
+// Take an array and unflatten it into n same_dimension matrices. Each array's first n elements are the first elements in memory. [arr1_elem1, arr2_elem1, arr3_elem1, arr1_elem2, arr2_elem2, arr3_elem2, ...]
+void cuda_unflatten_array_strided(size_t array_id, size_t arr_size, size_t mat_rows, size_t mat_cols, size_t* mat_ids) {
+    int mat_size = mat_rows * mat_cols;
+    int num_matrices = arr_size / mat_size;
+
+    // Create the buffers for the matrices
+    std::vector<float*> gpu_mat_buffers;
+    for (int i = 0; i < num_matrices; i++) {
+        size_t mat_id = register_matrix(mat_rows, mat_cols);
+        gpu_mat_buffers.push_back(mat_map[mat_id]);
+
+        // Write back to rust vector
+        mat_ids[i] = mat_id;
+    }
+
+    // Upload the gpu_mat_buffers to the gpu
+    float** gpu_mat_buffers_ptr;
+    cudaMallocAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, 0);
+    cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+
+    // Get the flattened array
+    float* gpu_array_buffer = mat_map[array_id];
+
+    // Kernel launch parameters
+    dim3 block_dim(256, 1, 1);
+    dim3 grid_dim((arr_size / block_dim.x) + 1, 1, 1);
+
+    // Run the kernels
+    cuda_unflatten_array_strided_kernel<<<grid_dim, block_dim>>>(gpu_array_buffer, arr_size, num_matrices, mat_rows, mat_cols, gpu_mat_buffers_ptr);
+    gpuErrchk(cudaPeekAtLastError());
+}

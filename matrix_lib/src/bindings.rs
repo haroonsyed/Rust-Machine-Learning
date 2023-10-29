@@ -115,4 +115,11 @@ extern "C" {
     mat_cols: usize,
     mat_ids: *mut c_ulonglong,
   );
+  pub fn cuda_unflatten_array_strided(
+    array_id: usize,
+    arr_size: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    mat_ids: *mut c_ulonglong,
+  );
 }

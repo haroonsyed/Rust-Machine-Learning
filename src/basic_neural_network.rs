@@ -408,7 +408,7 @@ impl BasicNeuralNetworkRust {
 
       // Activation for final layer is softmax not ReLU
       if layer != num_layers - 1 {
-        self.neuron_outputs[layer] = self.neuron_outputs[layer].element_ReLU();
+        self.neuron_outputs[layer].element_ReLU_inplace();
       }
     }
   }

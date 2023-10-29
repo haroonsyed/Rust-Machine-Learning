@@ -24,9 +24,6 @@ pub fn get_expected_post_backprop_fc_weight() -> Vec<Matrix> {
     }
   }
 
-  // PRINT THE FIRST 20 ELEMENTS OF THE DATA
-  println!("data: {:?}", &data[0..20]);
-
   // Assuming your Matrix::new_1d and transpose functions exist
   return vec![Matrix::new_1d(&data, 5408, 10).transpose()];
 }

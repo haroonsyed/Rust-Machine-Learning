@@ -5,7 +5,7 @@ use cnn_tests_util::*;
 mod simplified_cnn_tests {
   use crate::cnn_tests_util::*;
   use itertools::{izip, Itertools};
-  use matrix_lib::{flatten_matrix_array, Matrix};
+  use matrix_lib::{flatten_matrix_array, unflatten_array_strided_to_matrices, Matrix};
   use rust_machine_learning::{
     basic_neural_network::BasicNeuralNetworkRust,
     simplified_convolutional_neural_network::SimplifiedConvolutionalNeuralNetworkRust,
@@ -215,12 +215,120 @@ mod simplified_cnn_tests {
     let fc_input_gradient = cnn.fully_connected_layer.weights[0]
       .transpose()
       .matrix_multiply(&expected_output_gradient);
-    let expected_fc_gradient = get_expected_post_backprop_fc_input_gradient().transpose();
+    let expected_fc_gradient = get_expected_post_backprop_fc_input_gradient();
     assert!(matrix_are_equal(
       &expected_fc_gradient,
       &fc_input_gradient,
       6
     ));
+  }
+
+  #[test]
+  fn test_unflatten_fc_gradient() {
+    // We will use 28x28 input images
+    let num_classifications = 10;
+    let input_width = 28;
+    let input_height = 28;
+    let input_depth = 1;
+    let filters_per_conv_layer = vec![8];
+    let filter_dimension = 3;
+
+    let mut cnn = SimplifiedConvolutionalNeuralNetworkRust::new(
+      num_classifications,
+      input_width,
+      input_height,
+      input_depth,
+      filters_per_conv_layer,
+      filter_dimension,
+    );
+
+    // Make sure CNN conv layers have predictable init random weights
+    cnn.conv_layers = get_conv_layer();
+
+    // Make the CNN FC have predictable init random weights
+    cnn.fully_connected_layer.weights = get_initial_fc_weights();
+
+    // Set the CNN neuron outputs
+    cnn.fully_connected_layer.neuron_outputs = cnn
+      .fully_connected_layer
+      .non_input_layer_sizes
+      .iter()
+      .map(|&layer_size| Matrix::no_fill(layer_size, 1))
+      .collect();
+
+    // Get the error from the FC layer
+    let fc_error = get_expected_post_backprop_fc_input_gradient();
+    let unflattened_fc_error = unflatten_array_strided_to_matrices(&fc_error, 26, 26);
+    let expected_unflattened_fc_error = get_expected_post_backprop_unflattened_fc_gradient();
+
+    for (observed, expected) in izip!(unflattened_fc_error, expected_unflattened_fc_error) {
+      assert!(matrix_are_equal(&expected, &observed, 6));
+    }
+  }
+
+  #[test]
+  fn test_conv_layer_backpropogation() {
+    // We will use 28x28 input images
+    let num_classifications = 10;
+    let input_width = 28;
+    let input_height = 28;
+    let input_depth = 1;
+    let filters_per_conv_layer = vec![8];
+    let filter_dimension = 3;
+
+    let mut cnn = SimplifiedConvolutionalNeuralNetworkRust::new(
+      num_classifications,
+      input_width,
+      input_height,
+      input_depth,
+      filters_per_conv_layer,
+      filter_dimension,
+    );
+
+    // Make sure CNN conv layers have predictable init random weights
+    cnn.conv_layers = get_conv_layer();
+
+    // Make the CNN FC have predictable init random weights
+    cnn.fully_connected_layer.weights = get_initial_fc_weights();
+
+    // Set the CNN neuron outputs
+    cnn.fully_connected_layer.neuron_outputs = cnn
+      .fully_connected_layer
+      .non_input_layer_sizes
+      .iter()
+      .map(|&layer_size| Matrix::no_fill(layer_size, 1))
+      .collect();
+
+    // Get the error from the FC layer
+    let fc_error = get_expected_post_backprop_fc_input_gradient().transpose();
+    let unflattened_fc_error = unflatten_array_strided_to_matrices(&fc_error, 26, 26);
+
+    // Parameters for backprop
+    let observations_matrices = get_mnist_test_matrix();
+    let filter_outputs = get_expected_feed_forward_outputs();
+    let sample_errors = vec![unflattened_fc_error];
+    let learning_rate = 1e-3;
+
+    // Send the error to backpropogation
+    cnn.backpropogation_hidden_layer(
+      &observations_matrices,
+      &vec![vec![filter_outputs]], // sample (1) -> layer (1) -> filter (8) -> data
+      &sample_errors,
+      learning_rate,
+      cnn.conv_layers.len() - 1,
+    );
+
+    // Verify the weights were updated correctly
+    let observed_conv_weights = cnn.conv_layers[0]
+      .iter()
+      .map(|filter_kernels| &filter_kernels[0])
+      .collect_vec();
+
+    let expected_conv_weights = get_expected_post_backprop_conv_weights();
+
+    for (observed, expected) in izip!(observed_conv_weights, expected_conv_weights) {
+      assert!(matrix_are_equal(&expected, observed, 6));
+    }
   }
 
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
@@ -250,13 +358,5 @@ mod simplified_cnn_tests {
   fn approx_equal(a: f32, b: f32, precision: usize) -> bool {
     let tolerance = f32::powf(10.0, -1.0 * precision as f32);
     return (a - b).abs() < tolerance;
-  }
-
-  fn get_learning_rate() -> f32 {
-    return 1e-4;
-  }
-
-  fn get_mnist_test_label() -> f32 {
-    return 6.0;
   }
 }

@@ -13,9 +13,11 @@ pub fn get_expected_post_backprop_fc_input_gradient() -> Matrix {
 
   let mut data = Vec::<f32>::new();
 
+  // Eeach new line is a new matrix row
+
   for line in reader.lines() {
     let line = line.expect("Failed to read line");
-    for num_str in line.trim().split(',') {
+    for num_str in line.split(',') {
       if let Ok(num) = num_str.parse::<f64>() {
         data.push(num as f32); // Convert f64 to f32
       } else {
@@ -24,9 +26,6 @@ pub fn get_expected_post_backprop_fc_input_gradient() -> Matrix {
     }
   }
 
-  // PRINT THE FIRST 20 ELEMENTS OF THE DATA
-  println!("data: {:?}", &data[0..20]);
-
   // Assuming your Matrix::new_1d and transpose functions exist
-  return Matrix::new_1d(&data, 5408, 1).transpose();
+  return Matrix::new_1d(&data, 5408, 1);
 }

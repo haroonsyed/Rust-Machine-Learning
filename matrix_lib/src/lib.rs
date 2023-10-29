@@ -704,11 +704,43 @@ pub fn unflatten_array_to_matrices(
     .collect_vec();
 }
 
+// All matrices are required to be the same shape. Each array's first n elements are the first elements in memory. [arr1_elem1, arr2_elem1, arr3_elem1, arr1_elem2, arr2_elem2, arr3_elem2, ...]
+pub fn unflatten_array_strided_to_matrices(
+  to_unflatten: &Matrix,
+  mat_rows: usize,
+  mat_cols: usize,
+) -> Vec<Matrix> {
+  let num_matrices = to_unflatten.get_data_length() / (mat_rows * mat_cols);
+  let mut mat_ids = vec![0; num_matrices];
+
+  if to_unflatten.get_data_length() != num_matrices * mat_rows * mat_cols {
+    panic!("Cannot unflatten array, matrix dimensions incorrect!")
+  }
+
+  unsafe {
+    cuda_unflatten_array_strided(
+      to_unflatten.id,
+      to_unflatten.get_data_length(),
+      mat_rows,
+      mat_cols,
+      mat_ids.as_mut_ptr() as *mut c_ulonglong,
+    )
+  };
+
+  return mat_ids
+    .iter()
+    .map(|mat_id| Matrix {
+      id: *mat_id,
+      rows: mat_rows,
+      columns: mat_cols,
+    })
+    .collect_vec();
+}
+
 #[cfg(test)]
 mod tests {
   use itertools::{izip, Itertools};
   use rand::prelude::Distribution;
-  use rayon::vec;
   use statrs::distribution::Normal;
 
   use crate::{
