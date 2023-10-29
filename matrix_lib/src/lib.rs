@@ -127,9 +127,8 @@ impl Matrix {
     handle.write(b"\n").unwrap();
 
     for row in 0..self.rows {
-      for index in (0..self.columns) {
-        let mut val = data[row][index];
-        val = (val * 1000.0).round() / 1000.0;
+      for index in 0..self.columns {
+        let val = data[row][index];
         let formatted = format!(" {:<5} ", val);
         handle.write(formatted.as_bytes()).unwrap();
       }

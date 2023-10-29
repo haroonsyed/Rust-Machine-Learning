@@ -154,6 +154,75 @@ mod simplified_cnn_tests {
     ));
   }
 
+  #[test]
+  fn test_softmax_backpropogation() {
+    // We will use 28x28 input images
+    let num_classifications = 10;
+    let input_width = 28;
+    let input_height = 28;
+    let input_depth = 1;
+    let filters_per_conv_layer = vec![8];
+    let filter_dimension = 3;
+
+    let mut cnn = SimplifiedConvolutionalNeuralNetworkRust::new(
+      num_classifications,
+      input_width,
+      input_height,
+      input_depth,
+      filters_per_conv_layer,
+      filter_dimension,
+    );
+
+    // Make the CNN FC have predictable init random weights
+    cnn.fully_connected_layer.weights = get_initial_fc_weights();
+
+    // Set the CNN neuron outputs
+    cnn.fully_connected_layer.neuron_outputs = cnn
+      .fully_connected_layer
+      .non_input_layer_sizes
+      .iter()
+      .map(|&layer_size| Matrix::no_fill(layer_size, 1))
+      .collect();
+
+    let flattened_outputs = get_expected_flattened_outputs().transpose(); // Change to have observations as columns
+
+    // Feed forward through FC
+    let label = vec![7.0];
+    let learning_rate = 1e-3;
+    let output_gradient = cnn
+      .fully_connected_layer
+      .train_classification_observation_matrix(&flattened_outputs, &label, learning_rate);
+
+    // Check the input error
+    let expected_output_gradient = get_expected_softmax_gradient();
+    assert!(matrix_are_equal(
+      &expected_output_gradient,
+      &output_gradient,
+      6
+    ));
+
+    // Check the biases
+    let observed_bias = &cnn.fully_connected_layer.biases[0];
+    let expected_bias = get_expected_post_backprop_fc_bias();
+    assert!(matrix_are_equal(&expected_bias, &observed_bias, 6));
+
+    // Check the weights
+    let observed_weights = &cnn.fully_connected_layer.weights[0];
+    let expected_weights = get_expected_post_backprop_fc_weight();
+    assert!(matrix_are_equal(&expected_weights[0], &observed_weights, 6));
+
+    // Check the gradient from the FC layer
+    let fc_input_gradient = cnn.fully_connected_layer.weights[0]
+      .transpose()
+      .matrix_multiply(&expected_output_gradient);
+    let expected_fc_gradient = get_expected_post_backprop_fc_input_gradient().transpose();
+    assert!(matrix_are_equal(
+      &expected_fc_gradient,
+      &fc_input_gradient,
+      6
+    ));
+  }
+
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
     if a.rows != b.rows || a.columns != b.columns {
       println!("Matrices are not the same shape!");

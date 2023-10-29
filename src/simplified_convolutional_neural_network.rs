@@ -96,7 +96,7 @@ pub struct SimplifiedConvolutionalNeuralNetworkRust {
   pub input_depth: usize,
   pub conv_layers: Vec<Vec<Vec<Matrix>>>, // Layer -> Filter -> Depth
   pub fully_connected_layer: BasicNeuralNetworkRust,
-  filter_output_dimensions_per_layer: Vec<(usize, usize)>, // Layer -> (width, height)
+  pub filter_output_dimensions_per_layer: Vec<(usize, usize)>, // Layer -> (width, height)
 }
 
 impl SimplifiedConvolutionalNeuralNetworkRust {
