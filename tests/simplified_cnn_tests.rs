@@ -102,7 +102,7 @@ mod simplified_cnn_tests {
     let fc_output = &cnn.fully_connected_layer.neuron_outputs[0];
     let expected_fc_output = get_expected_fc_output();
 
-    assert!(matrix_are_equal(&expected_fc_output, &fc_output, 2));
+    assert!(matrix_are_equal(&expected_fc_output, &fc_output, 6));
   }
 
   #[test]
@@ -140,16 +140,17 @@ mod simplified_cnn_tests {
     // Feed forward through FC
     cnn.fully_connected_layer.feed_forward(&flattened_outputs);
 
-    // Get the predicted probabilities
-    let predicted_probabilities =
-      BasicNeuralNetworkRust::softmax(&cnn.fully_connected_layer.neuron_outputs);
+    let expected_fc_output = get_expected_fc_output();
 
-    let expected_prediceted_probabilities = get_expected_softmax_output();
+    // Perform softmax
+    let predicted_probabilities = BasicNeuralNetworkRust::softmax(&vec![expected_fc_output]);
+
+    let expected_predicted_probabilities = get_expected_softmax_output();
 
     assert!(matrix_are_equal(
-      &expected_prediceted_probabilities,
+      &expected_predicted_probabilities,
       &predicted_probabilities,
-      2
+      6
     ));
   }
 
