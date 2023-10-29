@@ -94,14 +94,15 @@ impl BasicNeuralNetworkRust {
     // Init the matrices
     let weights = (0..non_input_layer_sizes.len())
       .map(|layer| {
+        let input_feature_count = if layer == 0 {
+          num_features
+        } else {
+          non_input_layer_sizes[layer - 1]
+        };
         Matrix::new_random(
           0.0,
-          0.68,
-          if layer == 0 {
-            num_features
-          } else {
-            non_input_layer_sizes[layer - 1]
-          },
+          0.68 / input_feature_count as f64,
+          input_feature_count,
           non_input_layer_sizes[layer],
         )
       })
@@ -403,15 +404,17 @@ impl BasicNeuralNetworkRust {
         } else {
           &self.neuron_outputs[layer - 1]
         })
-        .add_vector(&self.biases[layer])
-        .element_ReLU();
+        .add_vector(&self.biases[layer]);
+
+      // Activation for final layer is softmax not ReLU
+      if layer != num_layers - 1 {
+        self.neuron_outputs[layer] = self.neuron_outputs[layer].element_ReLU();
+      }
     }
   }
 
   pub fn softmax(neuron_outputs: &Vec<Matrix>) -> Matrix {
-    ///
     // TEMP: ADJUSTED SOFTMAX FOR NUMERICAL STABILITY
-    ///
     // Preprocess neuron outputs by subtracting the max value from each column
     let final_layer_output = neuron_outputs.last().unwrap();
 
@@ -431,9 +434,7 @@ impl BasicNeuralNetworkRust {
 
     // Create matrix from this data
     let adjusted_final_layer_output = Matrix::new_2d(&data);
-    ///
     // TEMP: ADJUSTED SOFTMAX FOR NUMERICAL STABILITY
-    ///
     let outputs_exp = adjusted_final_layer_output.element_exp_inplace();
 
     let exp_final_layer_outputs_summed = outputs_exp.sum_columns_matrix();
