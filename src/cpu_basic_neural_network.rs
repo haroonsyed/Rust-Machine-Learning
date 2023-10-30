@@ -379,8 +379,12 @@ impl BasicNeuralNetworkCPURust {
         } else {
           &neuron_outputs[layer - 1]
         })
-        .add_vector_to_columns(&self.biases[layer])
-        .element_apply(&|x| activation_function.activation_function(x));
+        .add_vector_to_columns(&self.biases[layer]);
+
+      if layer != num_layers - 1 {
+        neuron_outputs[layer] =
+          neuron_outputs[layer].element_apply(&|x| activation_function.activation_function(x));
+      }
     }
   }
 

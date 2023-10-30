@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use itertools::{izip, Itertools};
 use matrix_lib::flatten_matrix_array;
-use matrix_lib::unflatten_array_to_matrices;
+use matrix_lib::unflatten_array_strided_to_matrices;
 use matrix_lib::ConvolutionType;
 use matrix_lib::Matrix;
 use pyo3::prelude::*;
@@ -164,7 +164,14 @@ impl ConvolutionalNeuralNetworkRust {
       (0..filter_count)
         .map(|_| {
           (0..filter_depth)
-            .map(|_| Matrix::new_random(0.0, 0.068, filter_dimension, filter_dimension))
+            .map(|_| {
+              Matrix::new_random(
+                0.0,
+                f64::sqrt(2.0 / (filter_dimension * filter_dimension) as f64),
+                filter_dimension,
+                filter_dimension,
+              )
+            })
             .collect_vec()
         })
         .collect_vec()
@@ -264,18 +271,18 @@ impl ConvolutionalNeuralNetworkRust {
     // Feed to fully connected layer
     let sample_errors = izip!(flattened_sample_outputs.iter(), labels.iter())
       .map(|(flattened_output, label)| {
-        let softmax_error = self
+        let fully_connected_error = self
           .fully_connected_layer
           .train_classification_observation_matrix(flattened_output, &vec![*label], learning_rate);
 
         let output_error = self.fully_connected_layer.weights[0]
           .transpose()
-          .matrix_multiply(&softmax_error);
+          .matrix_multiply(&fully_connected_error);
 
         let (output_height, output_width) = self.filter_output_dimensions_per_layer.last().unwrap();
 
         // Now unflatten the output error
-        return unflatten_array_to_matrices(&output_error, *output_height, *output_width);
+        return unflatten_array_strided_to_matrices(&output_error, *output_height, *output_width);
       })
       .collect_vec();
 
@@ -357,9 +364,13 @@ impl ConvolutionalNeuralNetworkRust {
     // n is the filter
     // m is the channel
     let mut layer_error = Vec::new();
-    let normalization_factor = 1.0 / (self.input_width * self.input_height) as f32;
 
-    // println!("Backpropogation layer: {}", layer);
+    // Apply relu_prime
+    for sample_error in next_layer_error {
+      for filter_error in sample_error {
+        filter_error.element_ReLU_prime_inplace();
+      }
+    }
 
     // PER SAMPLE
     for (index, next_layer_sample_error) in next_layer_error.iter().enumerate() {
@@ -393,16 +404,12 @@ impl ConvolutionalNeuralNetworkRust {
 
       layer_error.push(sample_error);
 
-      // println!("Calculated error for sample: {}", index);
-
       // Update the biases
       // PER FILTER
       izip!(self.biases[layer].iter(), next_layer_sample_error.iter()).for_each(|(bias, error)| {
         // b' = b - de/dy * learning_rate
         bias.element_subtract_inplace(&error.scalar_multiply(learning_rate));
       });
-
-      // println!("Updated biases for sample: {}", index);
 
       // Update the kernels
       // PER FILTER
@@ -417,8 +424,6 @@ impl ConvolutionalNeuralNetworkRust {
           channel.element_subtract_inplace(&delta_channel.scalar_multiply(learning_rate));
         }
       }
-
-      // println!("Updated filters for sample: {}", index);
     }
 
     if layer != 0 {
