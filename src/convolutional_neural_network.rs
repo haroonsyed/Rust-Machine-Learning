@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 
 use itertools::{izip, Itertools};
-use matrix_lib::flatten_matrix_array;
-use matrix_lib::unflatten_array_strided_to_matrices;
-use matrix_lib::ConvolutionType;
-use matrix_lib::Matrix;
+use matrix_lib::*;
 use pyo3::prelude::*;
 
 use crate::{basic_neural_network::BasicNeuralNetworkRust, image_util::ImageBatchLoaderRust};

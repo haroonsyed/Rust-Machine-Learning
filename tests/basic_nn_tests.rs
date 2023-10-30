@@ -2,7 +2,7 @@
 mod basic_nn_tests {
 
   use itertools::{izip, Itertools};
-  use matrix_lib::lib_cpu::MatrixCpu;
+  use matrix_lib::matrix_cpu::MatrixCpu;
   use matrix_lib::Matrix;
   use rand::prelude::Distribution;
   use rust_machine_learning::basic_neural_network::BasicNeuralNetworkRust;
