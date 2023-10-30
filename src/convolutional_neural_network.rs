@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use itertools::{izip, Itertools};
-use matrix_lib::*;
 use pyo3::prelude::*;
+use tensor_lib::*;
 
 use crate::{basic_neural_network::BasicNeuralNetworkRust, image_util::ImageBatchLoaderRust};
 

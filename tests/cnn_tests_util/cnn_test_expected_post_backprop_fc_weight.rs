@@ -1,9 +1,9 @@
-use matrix_lib::Matrix;
 use std::{
   fs::File,
   io::{prelude::*, BufReader},
   path::Path,
 };
+use tensor_lib::Matrix;
 
 pub fn get_expected_post_backprop_fc_weight() -> Vec<Matrix> {
   // Load comma-separated f32 (with e-n) data from the cnn_test_initial_fc_weights.txt file

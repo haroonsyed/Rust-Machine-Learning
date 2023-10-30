@@ -1,4 +1,4 @@
-use matrix_lib::Matrix;
+use tensor_lib::Matrix;
 
 pub fn get_expected_flattened_outputs() -> Matrix {
   let data = vec![

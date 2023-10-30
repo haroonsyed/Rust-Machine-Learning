@@ -1,4 +1,4 @@
-use matrix_lib::Matrix;
+use tensor_lib::Matrix;
 
 pub fn get_mnist_test_matrix() -> Vec<Vec<Matrix>> {
   let test_mnist_raw: Vec<f32> = vec![

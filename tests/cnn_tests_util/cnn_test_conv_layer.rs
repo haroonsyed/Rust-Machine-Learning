@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use matrix_lib::Matrix;
+use tensor_lib::Matrix;
 
 pub fn get_conv_layer() -> Vec<Vec<Vec<Matrix>>> {
   let kernels: Vec<Vec<f32>> = vec![

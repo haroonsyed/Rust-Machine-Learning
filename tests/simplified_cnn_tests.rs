@@ -5,11 +5,11 @@ use cnn_tests_util::*;
 mod simplified_cnn_tests {
   use crate::cnn_tests_util::*;
   use itertools::{izip, Itertools};
-  use matrix_lib::{flatten_matrix_array, unflatten_array_strided_to_matrices, Matrix};
   use rust_machine_learning::{
     basic_neural_network::BasicNeuralNetworkRust,
     simplified_convolutional_neural_network::SimplifiedConvolutionalNeuralNetworkRust,
   };
+  use tensor_lib::{flatten_matrix_array, unflatten_array_strided_to_matrices, Matrix};
   // ALL EXPECTED RESULTS ARE FROM A SMALL PYTHON CNN WITH A SIMILAR ARCHITECTURE I MADE THAT IK WORKS.
 
   #[test]

@@ -1,8 +1,8 @@
 // use crate::py_util::py_print;
 use itertools::{izip, Itertools};
-use matrix_lib::Matrix;
 use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
+use tensor_lib::Matrix;
 
 #[pyclass]
 pub struct BasicNeuralNetwork {

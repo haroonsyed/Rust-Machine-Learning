@@ -1,9 +1,9 @@
-use matrix_lib::Matrix;
 use std::{
   fs::File,
   io::{prelude::*, BufReader},
   path::Path,
 };
+use tensor_lib::Matrix;
 
 pub fn get_expected_post_backprop_fc_bias() -> Matrix {
   let data = vec![

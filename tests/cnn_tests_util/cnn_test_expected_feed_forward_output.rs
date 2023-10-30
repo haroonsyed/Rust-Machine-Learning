@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use matrix_lib::Matrix;
+use tensor_lib::Matrix;
 
 pub fn get_expected_feed_forward_outputs() -> Vec<Matrix> {
   let expected_outputs: Vec<Vec<f32>> = vec![
