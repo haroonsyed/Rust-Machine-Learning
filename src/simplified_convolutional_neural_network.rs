@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use itertools::{izip, Itertools};
 use matrix_lib::flatten_matrix_array;
-use matrix_lib::unflatten_array_to_matrices;
+use matrix_lib::unflatten_array_strided_to_matrices;
 use matrix_lib::ConvolutionType;
 use matrix_lib::Matrix;
 use pyo3::prelude::*;
@@ -246,7 +246,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
         let (output_height, output_width) = self.filter_output_dimensions_per_layer.last().unwrap();
 
         // Now unflatten the output error
-        return unflatten_array_to_matrices(&output_error, *output_height, *output_width);
+        return unflatten_array_strided_to_matrices(&output_error, *output_height, *output_width);
       })
       .collect_vec();
 
@@ -278,7 +278,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
         let mut layer_outputs = Vec::new();
 
         // Filter
-        for (filter) in izip!(layer_filters) {
+        for filter in izip!(layer_filters) {
           let (output_height, output_width) = self.filter_output_dimensions_per_layer[layer_index];
           let filter_output = Matrix::zeros(output_height, output_width);
 

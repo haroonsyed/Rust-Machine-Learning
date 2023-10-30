@@ -44,7 +44,7 @@ mod simplified_cnn_tests {
       expected_outputs_matrices.iter()
     ) {
       println!("Testing output matrix:");
-      assert!(matrix_are_equal(&observed, expected, 6));
+      assert!(matrix_are_equal(&observed, expected, 6, true));
     }
   }
 
@@ -60,7 +60,8 @@ mod simplified_cnn_tests {
     assert!(matrix_are_equal(
       &flattened_sample_outputs,
       &expected_flattened_sample_outputs,
-      6
+      6,
+      true
     ));
   }
 
@@ -102,7 +103,7 @@ mod simplified_cnn_tests {
     let fc_output = &cnn.fully_connected_layer.neuron_outputs[0];
     let expected_fc_output = get_expected_fc_output();
 
-    assert!(matrix_are_equal(&expected_fc_output, &fc_output, 6));
+    assert!(matrix_are_equal(&expected_fc_output, &fc_output, 6, true));
   }
 
   #[test]
@@ -150,7 +151,8 @@ mod simplified_cnn_tests {
     assert!(matrix_are_equal(
       &expected_predicted_probabilities,
       &predicted_probabilities,
-      6
+      6,
+      true
     ));
   }
 
@@ -198,18 +200,24 @@ mod simplified_cnn_tests {
     assert!(matrix_are_equal(
       &expected_output_gradient,
       &output_gradient,
-      6
+      6,
+      true
     ));
 
     // Check the biases
     let observed_bias = &cnn.fully_connected_layer.biases[0];
     let expected_bias = get_expected_post_backprop_fc_bias();
-    assert!(matrix_are_equal(&expected_bias, &observed_bias, 6));
+    assert!(matrix_are_equal(&expected_bias, &observed_bias, 6, true));
 
     // Check the weights
     let observed_weights = &cnn.fully_connected_layer.weights[0];
     let expected_weights = get_expected_post_backprop_fc_weight();
-    assert!(matrix_are_equal(&expected_weights[0], &observed_weights, 6));
+    assert!(matrix_are_equal(
+      &expected_weights[0],
+      &observed_weights,
+      6,
+      true
+    ));
 
     // Check the gradient from the FC layer
     let fc_input_gradient = cnn.fully_connected_layer.weights[0]
@@ -219,7 +227,8 @@ mod simplified_cnn_tests {
     assert!(matrix_are_equal(
       &expected_fc_gradient,
       &fc_input_gradient,
-      6
+      6,
+      true
     ));
   }
 
@@ -262,7 +271,7 @@ mod simplified_cnn_tests {
     let expected_unflattened_fc_error = get_expected_post_backprop_unflattened_fc_gradient();
 
     for (observed, expected) in izip!(unflattened_fc_error, expected_unflattened_fc_error) {
-      assert!(matrix_are_equal(&expected, &observed, 6));
+      assert!(matrix_are_equal(&expected, &observed, 6, true));
     }
   }
 
@@ -327,11 +336,163 @@ mod simplified_cnn_tests {
     let expected_conv_weights = get_expected_post_backprop_conv_weights();
 
     for (observed, expected) in izip!(observed_conv_weights, expected_conv_weights) {
-      assert!(matrix_are_equal(&expected, observed, 6));
+      assert!(matrix_are_equal(&expected, observed, 6, true));
     }
   }
 
-  fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
+  #[test]
+  fn one_iteration_check_weights() {
+    // We will use 28x28 input images
+    let num_classifications = 10;
+    let input_width = 28;
+    let input_height = 28;
+    let input_depth = 1;
+    let filters_per_conv_layer = vec![8];
+    let filter_dimension = 3;
+
+    let mut cnn = SimplifiedConvolutionalNeuralNetworkRust::new(
+      num_classifications,
+      input_width,
+      input_height,
+      input_depth,
+      filters_per_conv_layer,
+      filter_dimension,
+    );
+
+    // Make sure CNN conv layers have predictable init random weights
+    cnn.conv_layers = get_conv_layer();
+
+    // Make the CNN FC have predictable init random weights
+    cnn.fully_connected_layer.weights = get_initial_fc_weights();
+
+    // Set the CNN neuron outputs
+    cnn.fully_connected_layer.neuron_outputs = cnn
+      .fully_connected_layer
+      .non_input_layer_sizes
+      .iter()
+      .map(|&layer_size| Matrix::no_fill(layer_size, 1))
+      .collect();
+
+    // Get the input
+    let mut observations_matrices = get_mnist_test_matrix();
+    observations_matrices[0][0].reshape(1, 28 * 28);
+    let sample_data = observations_matrices[0][0].get_data();
+    let sample_data_vec = vec![vec![sample_data[0].clone()]];
+
+    // Run a training epoch
+    let learning_rate = 1e-3;
+    let labels = vec![7.0];
+    cnn.train(&sample_data_vec, &labels, learning_rate);
+
+    // Assert the kernel weights
+    let expected_kernel_weights = get_expected_post_backprop_conv_weights();
+    let expected_fc_weights = &get_expected_post_backprop_fc_weight()[0];
+    let expected_fc_biases = get_expected_post_backprop_fc_bias();
+
+    let observed_kernel_weights = cnn.conv_layers[0]
+      .iter()
+      .map(|filter_kernels| &filter_kernels[0])
+      .collect_vec();
+    let observed_fc_weights = &cnn.fully_connected_layer.weights[0];
+    let observed_fc_biases = &cnn.fully_connected_layer.biases[0];
+
+    for (observed, expected) in izip!(observed_kernel_weights, expected_kernel_weights) {
+      assert!(matrix_are_equal(&expected, observed, 6, true));
+    }
+    assert!(matrix_are_equal(
+      &expected_fc_weights,
+      observed_fc_weights,
+      6,
+      true
+    ));
+    assert!(matrix_are_equal(
+      &expected_fc_biases,
+      observed_fc_biases,
+      6,
+      true
+    ));
+  }
+
+  #[test]
+  fn hundred_iteration_check_weights() {
+    let num_iter = 50;
+
+    // We will use 28x28 input images
+    let num_classifications = 10;
+    let input_width = 28;
+    let input_height = 28;
+    let input_depth = 1;
+    let filters_per_conv_layer = vec![8];
+    let filter_dimension = 3;
+
+    let mut cnn = SimplifiedConvolutionalNeuralNetworkRust::new(
+      num_classifications,
+      input_width,
+      input_height,
+      input_depth,
+      filters_per_conv_layer,
+      filter_dimension,
+    );
+
+    // Make sure CNN conv layers have predictable init random weights
+    cnn.conv_layers = get_conv_layer();
+
+    // Make the CNN FC have predictable init random weights
+    cnn.fully_connected_layer.weights = get_initial_fc_weights();
+
+    // Set the CNN neuron outputs
+    cnn.fully_connected_layer.neuron_outputs = cnn
+      .fully_connected_layer
+      .non_input_layer_sizes
+      .iter()
+      .map(|&layer_size| Matrix::no_fill(layer_size, 1))
+      .collect();
+
+    // Get the input
+    let mut observations_matrices = get_mnist_test_matrix();
+    observations_matrices[0][0].reshape(1, 28 * 28);
+    let sample_data = observations_matrices[0][0].get_data();
+    let sample_data_vec = vec![vec![sample_data[0].clone()]];
+
+    // Run a training epoch
+    let learning_rate = 1e-3;
+    let labels = vec![7.0];
+    for i in 0..num_iter {
+      // Print iteration if fail
+      println!("Iteration: {}", i);
+
+      cnn.train(&sample_data_vec, &labels, learning_rate);
+      // Assert the kernel weights
+      let expected_kernel_weights = get_expected_post_backprop_conv_weights_i(i);
+      let expected_fc_weights = &get_expected_post_backprop_fc_weight_i(i)[0];
+      let expected_fc_biases = get_expected_post_backprop_fc_bias_i(i);
+
+      let observed_kernel_weights = cnn.conv_layers[0]
+        .iter()
+        .map(|filter_kernels| &filter_kernels[0])
+        .collect_vec();
+      let observed_fc_weights = &cnn.fully_connected_layer.weights[0];
+      let observed_fc_biases = &cnn.fully_connected_layer.biases[0];
+
+      assert!(matrix_are_equal(
+        &expected_fc_weights,
+        observed_fc_weights,
+        5,
+        false
+      ));
+      assert!(matrix_are_equal(
+        &expected_fc_biases,
+        observed_fc_biases,
+        5,
+        false
+      ));
+      for (observed, expected) in izip!(observed_kernel_weights, expected_kernel_weights) {
+        assert!(matrix_are_equal(&expected, observed, 5, false));
+      }
+    }
+  }
+
+  fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize, should_print: bool) -> bool {
     if a.rows != b.rows || a.columns != b.columns {
       println!("Matrices are not the same shape!");
       a.print_shape();
@@ -339,8 +500,10 @@ mod simplified_cnn_tests {
       return false;
     }
 
-    a.print();
-    b.print();
+    if should_print {
+      a.print();
+      b.print();
+    }
 
     let a_data = a.get_data();
     let b_data = b.get_data();
