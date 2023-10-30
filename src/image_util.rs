@@ -23,6 +23,10 @@ impl ImageBatchLoader {
   fn batch_sample(&self, batch_size: usize) -> PyResult<(Vec<Vec<Vec<f32>>>, Vec<f32>)> {
     return Ok(self.loader.batch_sample(batch_size));
   }
+
+  fn get_classifications_map(&self) -> PyResult<HashMap<String, f32>> {
+    return Ok(self.loader.classifications_map.clone());
+  }
 }
 
 pub struct ImageBatchLoaderRust {
@@ -142,9 +146,9 @@ impl ImageBatchLoaderRust {
           {
             // Write to each depth of the image data
             // SEPRATE OUT INTO R G B IMAGES
-            pixel_data[0].push(pixel.0[0] as f32 / 255.0);
-            pixel_data[1].push(pixel.0[1] as f32 / 255.0);
-            pixel_data[2].push(pixel.0[2] as f32 / 255.0);
+            pixel_data[0].push((pixel.0[0] as f32 / 255.0) - 0.5);
+            pixel_data[1].push((pixel.0[1] as f32 / 255.0) - 0.5);
+            pixel_data[2].push((pixel.0[2] as f32 / 255.0) - 0.5);
           }
 
           // Write the image data and the metadata to the result
