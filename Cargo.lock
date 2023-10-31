@@ -1046,6 +1046,7 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "itertools",
+ "lazy_static",
  "rand",
  "rayon",
  "statrs",

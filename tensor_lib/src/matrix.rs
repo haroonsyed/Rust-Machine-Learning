@@ -2,8 +2,18 @@ use crate::cuda_bindings::*;
 use itertools::Itertools;
 use rand::prelude::Distribution;
 use statrs::distribution::Normal;
+use std::collections::HashMap;
 use std::ffi::{c_float, c_ulonglong};
 use std::io::{stdout, BufWriter, Write};
+use std::sync::Mutex;
+
+// IMPORTANT NOTE: THE UNDERLYING CUDA LIBRARY IS NOT THREAD SAFE (yet).
+
+// USED FOR MATRIX REFERENCE MANAGEMENT
+// Necessary to allow copying without deref deleting the underlying gpu memory (passing pointers around between cuda and rust is a pain)
+lazy_static! {
+  static ref MATRIX_REFERENCE_COUNT_LOCK: Mutex<HashMap<usize, usize>> = Mutex::new(HashMap::new());
+}
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -12,6 +22,11 @@ pub enum ConvolutionType {
   SAME,
   FULL,
 }
+
+// Note cloning keeps the same id, used for ownership movement in rust.
+// Does not actually copy the underlying matrix in cuda.
+// Cloning is explicit to ensure this understanding
+#[derive(Clone)]
 pub struct Matrix {
   id: usize,
   pub rows: usize,
@@ -20,8 +35,15 @@ pub struct Matrix {
 
 impl Drop for Matrix {
   fn drop(&mut self) {
-    unsafe {
-      unregister_matrix(self.id);
+    let mut ref_count_map = MATRIX_REFERENCE_COUNT_LOCK.lock().unwrap();
+    let current_ref_count = ref_count_map[&self.id];
+    if current_ref_count == 1 {
+      unsafe {
+        unregister_matrix(self.id);
+        ref_count_map.remove(&self.id);
+      }
+    } else {
+      ref_count_map.insert(self.id, current_ref_count - 1);
     }
   }
 }
@@ -29,6 +51,12 @@ impl Drop for Matrix {
 impl Matrix {
   pub fn get_data_length(&self) -> usize {
     return self.rows * self.columns;
+  }
+
+  fn new(id: usize, rows: usize, columns: usize) -> Self {
+    let mut ref_count_map = MATRIX_REFERENCE_COUNT_LOCK.lock().unwrap();
+    ref_count_map.insert(id, 1);
+    return Matrix { id, rows, columns };
   }
 
   pub fn get_data(&self) -> Vec<Vec<f32>> {
@@ -55,7 +83,7 @@ impl Matrix {
     unsafe {
       id = register_matrix(data.as_ptr(), rows, columns);
     }
-    return Matrix { id, rows, columns };
+    return Matrix::new(id, rows, columns);
   }
 
   pub fn zeros(rows: usize, columns: usize) -> Self {
@@ -64,7 +92,7 @@ impl Matrix {
     unsafe {
       id = register_matrix(data.as_ptr(), rows, columns);
     }
-    return Matrix { id, rows, columns };
+    return Matrix::new(id, rows, columns);
   }
 
   pub fn new_1d(data: &Vec<f32>, rows: usize, columns: usize) -> Self {
@@ -77,7 +105,7 @@ impl Matrix {
       id = register_matrix(data.as_ptr(), rows, columns);
     }
 
-    return Matrix { id, rows, columns };
+    return Matrix::new(id, rows, columns);
   }
 
   pub fn new_2d(data: &Vec<Vec<f32>>) -> Self {
@@ -95,7 +123,7 @@ impl Matrix {
       id = register_matrix(flattened.as_ptr(), rows, columns);
     }
 
-    return Matrix { id, rows, columns };
+    return Matrix::new(id, rows, columns);
   }
 
   pub fn new_random(mean: f64, std: f64, width: usize, height: usize) -> Self {
@@ -172,11 +200,7 @@ impl Matrix {
     let output_rows = self.rows;
     let output_columns = self.columns;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   pub fn element_add_inplace(&self, other: &Matrix) -> &Self {
@@ -213,11 +237,7 @@ impl Matrix {
     let output_rows = self.rows;
     let output_columns = self.columns;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   pub fn element_subtract_inplace(&self, other: &Matrix) -> &Self {
@@ -254,11 +274,7 @@ impl Matrix {
     let output_rows = self.rows;
     let output_columns = self.columns;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   pub fn element_multiply_inplace(&self, other: &Matrix) -> &Self {
@@ -278,11 +294,7 @@ impl Matrix {
     let output_rows = self.rows;
     let output_columns = self.columns;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   pub fn scalar_multiply_inplace(&self, scalar: f32) -> &Self {
@@ -314,11 +326,7 @@ impl Matrix {
     let output_rows = self.rows;
     let output_columns = other.columns;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   fn add_vector_impl(&self, other: &Matrix, inplace: bool) -> usize {
@@ -352,11 +360,7 @@ impl Matrix {
     let output_rows = self.rows;
     let output_columns = self.columns;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   pub fn add_vector_inplace(&self, other: &Matrix) -> &Self {
@@ -396,11 +400,7 @@ impl Matrix {
     let output_rows = self.rows;
     let output_columns = self.columns;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   pub fn divide_by_vector_inplace(&self, other: &Matrix) -> &Self {
@@ -420,11 +420,7 @@ impl Matrix {
     let output_rows = self.rows;
     let output_columns = self.columns;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   pub fn element_exp_inplace(&self) -> &Self {
@@ -447,11 +443,7 @@ impl Matrix {
     let output_rows = self.rows;
     let output_columns = self.columns;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   #[allow(non_snake_case)]
@@ -475,11 +467,7 @@ impl Matrix {
     let output_rows = self.rows;
     let output_columns = self.columns;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   #[allow(non_snake_case)]
@@ -494,11 +482,7 @@ impl Matrix {
     let output_rows = self.rows;
     let output_columns = 1;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   pub fn sum_columns_matrix(&self) -> Self {
@@ -508,13 +492,7 @@ impl Matrix {
     let output_rows = 1;
     let output_columns = self.columns;
 
-    let result_matrix = Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
-
-    return result_matrix;
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   pub fn sum_columns(&self) -> Vec<f32> {
@@ -524,11 +502,7 @@ impl Matrix {
     let output_rows = 1;
     let output_columns = self.columns;
 
-    let result_matrix = Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    let result_matrix = Matrix::new(result_id, output_rows, output_columns);
 
     let result = result_matrix.get_data()[0].to_vec();
     return result;
@@ -542,11 +516,7 @@ impl Matrix {
     let output_rows = self.columns;
     let output_columns = self.rows;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   pub fn max_pool(&self) -> Self {
@@ -557,11 +527,7 @@ impl Matrix {
     let output_rows = self.rows / 2 + self.rows % 2;
     let output_columns = self.columns / 2 + self.columns % 2;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   pub fn rotate_180(&self) -> Self {
@@ -572,11 +538,7 @@ impl Matrix {
     let output_rows = self.rows;
     let output_columns = self.columns;
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   pub fn convolution(&self, kernel: &Matrix, conv_type: ConvolutionType) -> Self {
@@ -612,11 +574,7 @@ impl Matrix {
       ConvolutionType::FULL => self.columns + kernel.columns - 1,
     };
 
-    return Matrix {
-      id: result_id,
-      rows: output_rows,
-      columns: output_columns,
-    };
+    return Matrix::new(result_id, output_rows, output_columns);
   }
 
   pub fn reshape(&mut self, new_rows: usize, new_columns: usize) -> &Self {
@@ -661,11 +619,7 @@ pub fn flatten_matrix_array(to_flatten: &Vec<Matrix>) -> Matrix {
 
   let out_rows = 1;
   let out_cols = to_flatten[0].get_data_length() * to_flatten.len();
-  return Matrix {
-    id: out_id,
-    rows: out_rows,
-    columns: out_cols,
-  };
+  return Matrix::new(out_id, out_rows, out_cols);
 }
 
 // All matrices are required to be the same shape
@@ -693,11 +647,7 @@ pub fn unflatten_array_to_matrices(
 
   return mat_ids
     .iter()
-    .map(|mat_id| Matrix {
-      id: *mat_id,
-      rows: mat_rows,
-      columns: mat_cols,
-    })
+    .map(|mat_id| Matrix::new(*mat_id, mat_rows, mat_cols))
     .collect_vec();
 }
 
@@ -726,10 +676,6 @@ pub fn unflatten_array_strided_to_matrices(
 
   return mat_ids
     .iter()
-    .map(|mat_id| Matrix {
-      id: *mat_id,
-      rows: mat_rows,
-      columns: mat_cols,
-    })
+    .map(|mat_id| Matrix::new(*mat_id, mat_rows, mat_cols))
     .collect_vec();
 }

@@ -1,3 +1,5 @@
+use std::ops::{Index, IndexMut};
+
 use crate::matrix::*;
 
 pub struct Tensor {
@@ -10,13 +12,177 @@ pub struct Tensor {
 TODO:
 1. Flatten
 2. Dot Product
-3. Indexing
 4. Transpose?
 5. Reshape?
 6. Max Pooling?
 */
 
+impl Index<usize> for Tensor {
+  type Output = Tensor;
+
+  fn index(&self, row: usize) -> &Self::Output {
+    &self.child_tensors[row]
+  }
+}
+
+impl IndexMut<usize> for Tensor {
+  fn index_mut(&mut self, row: usize) -> &mut Self {
+    &mut self.child_tensors[row]
+  }
+}
+
 impl Tensor {
+  pub fn get_tensor_at_index(&self, index: Vec<usize>) -> &Tensor {
+    // Go down until we are either 1 or 2 dimensional
+    let mut current_tensor = self;
+    let mut current_depth = 0;
+
+    while current_depth < index.len() as isize - 2 {
+      current_tensor = &current_tensor[index[current_depth as usize]];
+      current_depth += 1;
+    }
+
+    return current_tensor;
+  }
+
+  pub fn no_fill(dimensions: Vec<usize>) -> Self {
+    let mut result = Tensor {
+      dimensions: dimensions.clone(),
+      child_tensors: Box::new(Vec::new()),
+      data: None,
+    };
+
+    // Base case
+    if dimensions.len() == 1 {
+      // Create a vector here
+      let vector = Matrix::no_fill(1, dimensions[0]);
+      result.data = Some(vector);
+      return result;
+    }
+
+    if dimensions.len() < 2 {
+      // Create Matrix here
+      let matrix = Matrix::no_fill(dimensions[1], dimensions[0]);
+      result.data = Some(matrix);
+    }
+
+    // Recurively create the child tensors
+    for _ in 0..dimensions[0] {
+      let child_tensor = Tensor::no_fill(dimensions[1..].to_vec());
+      result.child_tensors.push(child_tensor);
+    }
+
+    return result;
+  }
+
+  pub fn zeros(dimensions: Vec<usize>) -> Self {
+    let mut result = Tensor {
+      dimensions: dimensions.clone(),
+      child_tensors: Box::new(Vec::new()),
+      data: None,
+    };
+
+    // Base case
+    if dimensions.len() == 1 {
+      // Create a vector here
+      let vector = Matrix::zeros(1, dimensions[0]);
+      result.data = Some(vector);
+      return result;
+    }
+
+    if dimensions.len() < 2 {
+      // Create Matrix here
+      let matrix = Matrix::zeros(dimensions[1], dimensions[0]);
+      result.data = Some(matrix);
+    }
+
+    // Recurively create the child tensors
+    for _ in 0..dimensions[0] {
+      let child_tensor = Tensor::zeros(dimensions[1..].to_vec());
+      result.child_tensors.push(child_tensor);
+    }
+
+    return result;
+  }
+
+  pub fn random(dimensions: Vec<usize>, mean: f64, std: f64) -> Self {
+    let mut result = Tensor {
+      dimensions: dimensions.clone(),
+      child_tensors: Box::new(Vec::new()),
+      data: None,
+    };
+
+    // Base case
+    if dimensions.len() == 1 {
+      // Create a vector here
+      let vector = Matrix::new_random(mean, std, 1, dimensions[0]);
+      result.data = Some(vector);
+      return result;
+    }
+
+    if dimensions.len() < 2 {
+      // Create Matrix here
+      let matrix = Matrix::new_random(mean, std, dimensions[1], dimensions[0]);
+      result.data = Some(matrix);
+    }
+
+    // Recurively create the child tensors
+    for _ in 0..dimensions[0] {
+      let child_tensor = Tensor::random(dimensions[1..].to_vec(), mean, std);
+      result.child_tensors.push(child_tensor);
+    }
+
+    return result;
+  }
+
+  pub fn from_matrices(data: &Vec<Matrix>, dimensions: Vec<usize>) -> Self {
+    // Define recursive function inside
+    fn from_matrices_helper(
+      data: &Vec<Matrix>,
+      dimensions: &Vec<usize>,
+      position: Vec<usize>,
+    ) -> Tensor {
+      let mut result = Tensor {
+        dimensions: dimensions[position.len()..].to_vec(),
+        child_tensors: Box::new(Vec::new()),
+        data: None,
+      };
+
+      let current_data_position = if dimensions.len() <= 2 {
+        0
+      } else {
+        position
+          .iter()
+          .enumerate()
+          .fold(0, |acc, (dimension_index, dimension_value)| {
+            let mut stride = 1;
+            for i in dimension_index..dimensions.len() {
+              stride *= dimensions[dimensions.len() - 3 - i]; // 3 because we are skipping the first two dimensions
+            }
+            return acc + stride * dimension_value;
+          })
+      };
+
+      let at_leaf_node = position.len() as isize >= (dimensions.len() - 2) as isize;
+
+      if at_leaf_node {
+        result.data = Some(data[current_data_position].clone());
+        return result;
+      }
+
+      // Recurively create the child tensors
+      for i in 0..dimensions[position.len()] {
+        let mut child_position = position.clone();
+        child_position.push(i);
+        let child_tensor = from_matrices_helper(data, dimensions, child_position);
+        result.child_tensors.push(child_tensor);
+      }
+      return result;
+    }
+
+    return from_matrices_helper(&data, &dimensions, Vec::new());
+  }
+
   pub fn get_rank(&self) -> usize {
     return self.dimensions.len();
   }
