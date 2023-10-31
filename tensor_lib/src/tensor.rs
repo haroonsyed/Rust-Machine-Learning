@@ -185,7 +185,7 @@ impl Tensor {
     return from_matrices_helper(&data, &dimensions, Vec::new());
   }
 
-  pub fn flatten(&self) -> Matrix {
+  pub fn flatten(&self) -> Tensor {
     let mut matrices_to_flatten = Vec::new();
 
     // Define recursive function inside
@@ -205,7 +205,25 @@ impl Tensor {
 
     flatten_helper(self, &mut matrices_to_flatten);
 
-    return flatten_matrix_array(&matrices_to_flatten);
+    let flattened = flatten_matrix_array(&matrices_to_flatten);
+    let flattened_length = flattened.get_data_length();
+
+    return Tensor::from_matrices(&vec![flattened], vec![1, flattened_length]);
+  }
+
+  pub fn unflatten(&self, dimensions: Vec<usize>) -> Tensor {
+    if self.dimensions.len() != 2 && !self.is_leaf() {
+      panic!("Cannot unflatten a tensor that is not rank 2");
+    }
+
+    let to_unflatten = self.get_data();
+    let unflattened_matrices = unflatten_array_strided_to_matrices(
+      to_unflatten,
+      dimensions[dimensions.len() - 2],
+      dimensions[dimensions.len() - 1],
+    );
+
+    return Tensor::from_matrices(&unflattened_matrices, dimensions);
   }
 
   pub fn get_rank(&self) -> usize {
