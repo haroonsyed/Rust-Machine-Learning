@@ -1221,6 +1221,88 @@ size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size
     }
 }
 
+__global__ void cuda_img2col_valid(float** mat_buffers, int input_depth, int input_rows, int input_cols, int filter_depth, int filter_rows, int filter_cols, float* out_buffer, int out_rows, int out_cols) {
+    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    const int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    // This thread will handle one patch of the image, through all the kernels
+    // This means each thread handle one column of the output
+    const int number_of_patches = out_cols;
+    const int current_patch = tidX;
+
+    if (current_patch < number_of_patches) {
+        // Go through each of the kernels
+        for (int curr_channel = 0; curr_channel < input_depth; curr_channel++) {
+            const float* current_buffer = mat_buffers[curr_channel];
+
+            // Now translate current_patch into the patch's top left corner
+            const int kernel_top_left_row = current_patch / (input_cols - filter_cols + 1);
+            const int kernel_top_left_col = current_patch % (input_cols - filter_cols + 1);
+            const int base_output_row = curr_channel * filter_rows * filter_cols;
+            const int output_col = current_patch;
+
+            // Now construct the patch
+#pragma unroll 3
+            for (int m = 0; m < filter_rows; m++) {
+#pragma unroll 3
+                for (int n = 0; n < filter_cols; n++) {
+                    const float mat_val = current_buffer[(kernel_top_left_row + m) * input_cols + (kernel_top_left_col + n)];
+                    const int output_index = base_output_row + m * filter_cols + n;
+                    out_buffer[output_index * out_cols + output_col] = mat_val;
+                }
+            }
+        }
+    }
+}
+
+size_t cuda_img2col_valid(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t kernel_rows, size_t kernel_cols) {
+    // Create output buffer
+    const int kernel_count = num_matrices;  // num_matrices is the input depth
+    const int out_rows = kernel_count * kernel_rows * kernel_cols;
+    const int out_cols = (mat_rows - kernel_rows + 1) * (mat_cols - kernel_cols + 1);
+    size_t out_mat_id = register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    std::vector<float*> mat_buffers;
+    for (size_t i = 0; i < num_matrices; i++) {
+        mat_buffers.push_back(mat_map[mat_ids[i]]);
+    }
+
+    float** gpu_mat_buffers;
+    cudaMallocAsync(&gpu_mat_buffers, sizeof(float*) * num_matrices, 0);
+    cudaMemcpy(gpu_mat_buffers, &mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+    float* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters
+    // Let's have each threads handle its own patch between all the kernels
+    // So we will calculate the number of patches == number of columns
+    // Data access should be coalesced this way
+    const int THREADS_PER_BLOCK = 1024;
+    dim3 block_dim(THREADS_PER_BLOCK, 1, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, 1, 1);
+
+    // Run the kernels
+    cuda_img2col_valid<<<grid_dim, block_dim>>>(gpu_mat_buffers, num_matrices, mat_rows, mat_cols, kernel_count, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Cleanup
+    cudaFreeAsync((void*)gpu_mat_buffers, 0);
+
+    // Return result matrix id
+    return out_mat_id;
+}
+
+// Take an image and convert it to a matrix of columns based on patches (with specified padding) the filter makes of image
+size_t cuda_img2col(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t kernel_rows, size_t kernel_cols, ConvolutionType conv_type) {
+    if (conv_type == ConvolutionType::VALID) {
+        return cuda_img2col_valid(mat_ids, num_matrices, mat_rows, mat_cols, kernel_rows, kernel_cols);
+    } else if (conv_type == ConvolutionType::SAME) {
+        return 0;
+    } else if (conv_type == ConvolutionType::FULL) {
+        return 0;
+    }
+}
+
 __global__ void cuda_flatten_array_kernel(float** mat_buffers, int mat_rows, int mat_cols, float* out_buffer, int out_rows, int out_cols) {
     const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     const int tidY = blockDim.y * blockIdx.y + threadIdx.y;
@@ -1242,21 +1324,21 @@ __global__ void cuda_flatten_array_kernel(float** mat_buffers, int mat_rows, int
 }
 
 // Take n same_dimension matrices and flatten them into an array
-size_t cuda_flatten_array(size_t* mat_ids, size_t arr_size, size_t mat_rows, size_t mat_cols) {
+size_t cuda_flatten_array(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols) {
     // Create output buffer
     int out_rows = 1;
-    int out_cols = arr_size * mat_rows * mat_cols;
+    int out_cols = num_matrices * mat_rows * mat_cols;
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
     std::vector<float*> mat_buffers;
-    for (size_t i = 0; i < arr_size; i++) {
+    for (size_t i = 0; i < num_matrices; i++) {
         mat_buffers.push_back(mat_map[mat_ids[i]]);
     }
 
     float** gpu_mat_buffers;
-    cudaMallocAsync(&gpu_mat_buffers, sizeof(float*) * arr_size, 0);
-    cudaMemcpy(gpu_mat_buffers, &mat_buffers[0], sizeof(float*) * arr_size, cudaMemcpyHostToDevice);
+    cudaMallocAsync(&gpu_mat_buffers, sizeof(float*) * num_matrices, 0);
+    cudaMemcpy(gpu_mat_buffers, &mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
     float* gpu_out_buffer = mat_map[out_mat_id];
 
     // Kernel launch parameters

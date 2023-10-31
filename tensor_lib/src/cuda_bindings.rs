@@ -102,6 +102,15 @@ extern "C" {
     kernel_cols: usize,
     conv_type: ConvolutionType,
   ) -> usize;
+  pub fn cuda_img2col(
+    mat_ids: *const c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    kernel_rows: usize,
+    kernel_cols: usize,
+    conv_type: ConvolutionType,
+  ) -> usize;
   pub fn cuda_flatten_array(
     mat_ids: *const c_ulonglong,
     arr_size: usize,

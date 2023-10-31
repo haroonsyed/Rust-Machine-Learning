@@ -26,7 +26,6 @@ pub enum ConvolutionType {
 // Note cloning keeps the same id, used for ownership movement in rust.
 // Does not actually copy the underlying matrix in cuda.
 // Cloning is explicit to ensure this understanding
-#[derive(Clone)]
 pub struct Matrix {
   id: usize,
   pub rows: usize,
@@ -48,6 +47,12 @@ impl Drop for Matrix {
   }
 }
 
+impl Clone for Matrix {
+  fn clone(&self) -> Self {
+    return Matrix::new(self.id, self.rows, self.columns);
+  }
+}
+
 impl Matrix {
   pub fn get_data_length(&self) -> usize {
     return self.rows * self.columns;
@@ -55,7 +60,8 @@ impl Matrix {
 
   fn new(id: usize, rows: usize, columns: usize) -> Self {
     let mut ref_count_map = MATRIX_REFERENCE_COUNT_LOCK.lock().unwrap();
-    ref_count_map.insert(id, 1);
+    let curr_ref_count = ref_count_map.get(&id).unwrap_or(&0).clone();
+    ref_count_map.insert(id, curr_ref_count + 1);
     return Matrix { id, rows, columns };
   }
 
@@ -577,6 +583,42 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
+  pub fn convolution_v2(&self, kernel: &Matrix, conv_type: ConvolutionType) -> Self {
+    if matches!(conv_type, ConvolutionType::SAME)
+      && (kernel.rows != kernel.columns || kernel.rows % 2 == 0)
+    {
+      panic!("Kernel must be square and odd for same convolution!");
+    }
+
+    // Fast version using matrix multiplication
+
+    // First we need to flatten the kernel
+    let flattened_kernel = flatten_matrix_array(&vec![kernel.clone()]);
+
+    // Now transform the input matrix into a matrix of columns
+    let transformed_img = img2col(&vec![self.clone()], kernel.rows, kernel.columns);
+
+    // Now perform a matrix multiplication
+    let mut result = flattened_kernel.matrix_multiply(&transformed_img);
+
+    let output_rows = match conv_type {
+      ConvolutionType::VALID => self.rows - kernel.rows + 1,
+      ConvolutionType::SAME => self.rows,
+      ConvolutionType::FULL => self.rows + kernel.rows - 1,
+    };
+
+    let output_columns = match conv_type {
+      ConvolutionType::VALID => self.columns - kernel.columns + 1,
+      ConvolutionType::SAME => self.columns,
+      ConvolutionType::FULL => self.columns + kernel.columns - 1,
+    };
+
+    // Unflatten the result
+    result.reshape(output_rows, output_columns);
+
+    return result;
+  }
+
   pub fn reshape(&mut self, new_rows: usize, new_columns: usize) -> &Self {
     if new_rows * new_columns == self.get_data_length() {
       self.rows = new_rows;
@@ -619,6 +661,33 @@ pub fn flatten_matrix_array(to_flatten: &Vec<Matrix>) -> Matrix {
 
   let out_rows = 1;
   let out_cols = to_flatten[0].get_data_length() * to_flatten.len();
+  return Matrix::new(out_id, out_rows, out_cols);
+}
+
+// Take an image and convert it to a matrix of columns based on patches (with specified padding) the filter makes of image
+pub fn img2col(image: &Vec<Matrix>, filter_rows: usize, filter_cols: usize) -> Matrix {
+  let image_depth = image.len();
+
+  let image_rows = image[0].rows;
+  let image_cols = image[0].columns;
+
+  let image_ids = image.iter().map(|image| image.id).collect_vec();
+
+  let out_id;
+  unsafe {
+    out_id = cuda_img2col(
+      image_ids.as_ptr() as *const c_ulonglong,
+      image_depth,
+      image_rows,
+      image_cols,
+      filter_rows,
+      filter_cols,
+      ConvolutionType::VALID,
+    )
+  };
+
+  let out_rows = image_depth * filter_rows * filter_cols;
+  let out_cols = (image_rows - filter_rows + 1) * (image_cols - filter_cols + 1);
   return Matrix::new(out_id, out_rows, out_cols);
 }
 

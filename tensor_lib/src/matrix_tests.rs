@@ -5,8 +5,8 @@ mod tests {
   use statrs::distribution::Normal;
 
   use crate::{
-    cuda_bindings::*, flatten_matrix_array, matrix_cpu::MatrixCpu, unflatten_array_to_matrices,
-    ConvolutionType, Matrix,
+    cuda_bindings::*, flatten_matrix_array, img2col, matrix_cpu::MatrixCpu,
+    unflatten_array_to_matrices, ConvolutionType, Matrix,
   };
 
   #[test]
@@ -737,6 +737,122 @@ mod tests {
     let mat_cpu = MatrixCpu::new_2d(&data).transpose();
 
     assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 8));
+  }
+
+  #[test]
+  fn img2col_depth_1() {
+    let input = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let expected_output = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 4.0, 5.0],
+      vec![2.0, 3.0, 5.0, 6.0],
+      vec![4.0, 5.0, 7.0, 8.0],
+      vec![5.0, 6.0, 8.0, 9.0],
+    ]);
+
+    let observed_output = img2col(&vec![input], 2, 2);
+
+    assert!(matrix_are_equal(&observed_output, &expected_output, 8));
+  }
+
+  #[test]
+  fn img2col_depth_2() {
+    let input = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let input2 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let expected_output = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 4.0, 5.0],
+      vec![2.0, 3.0, 5.0, 6.0],
+      vec![4.0, 5.0, 7.0, 8.0],
+      vec![5.0, 6.0, 8.0, 9.0],
+      vec![1.0, 2.0, 4.0, 5.0],
+      vec![2.0, 3.0, 5.0, 6.0],
+      vec![4.0, 5.0, 7.0, 8.0],
+      vec![5.0, 6.0, 8.0, 9.0],
+    ]);
+
+    let observed_output = img2col(&vec![input, input2], 2, 2);
+
+    assert!(matrix_are_equal(&observed_output, &expected_output, 8));
+  }
+
+  #[test]
+  fn img2col_kernel_size_1() {
+    let input = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let expected_output = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]]);
+
+    let observed_output = img2col(&vec![input], 1, 1);
+
+    assert!(matrix_are_equal(&observed_output, &expected_output, 8));
+  }
+
+  #[test]
+  fn convolution_v2_gpu_valid_1() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![37.0, 47.0], vec![67.0, 77.0]]);
+
+    let observed_result = test_data.convolution_v2(&kernel, ConvolutionType::VALID);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn convolution_v2_gpu_valid_2() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0],
+      vec![5.0, 6.0, 7.0, 8.0],
+      vec![9.0, 10.0, 11.0, 12.0],
+    ]);
+
+    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![106.0, 127.0], vec![190.0, 211.0]]);
+
+    let observed_result = test_data.convolution_v2(&kernel, ConvolutionType::VALID);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn convolution_v2_gpu_valid_3() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0],
+      vec![5.0, 6.0, 7.0, 8.0],
+      vec![9.0, 10.0, 11.0, 12.0],
+    ]);
+
+    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![44.0, 54.0, 64.0], vec![84.0, 94.0, 104.0]]);
+
+    let observed_result = test_data.convolution_v2(&kernel, ConvolutionType::VALID);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
