@@ -10,11 +10,9 @@ pub struct Tensor {
 
 /*
 TODO:
-1. Flatten
-2. Dot Product
-4. Transpose?
-5. Reshape?
-6. Max Pooling?
+1. Dot Product
+2. Transpose?
+3. Max Pooling?
 */
 
 impl Index<usize> for Tensor {
@@ -32,6 +30,10 @@ impl IndexMut<usize> for Tensor {
 }
 
 impl Tensor {
+  pub fn iter(&self) -> impl Iterator<Item = &Tensor> {
+    self.child_tensors.iter()
+  }
+
   pub fn get_tensor_at_index(&self, index: Vec<usize>) -> &Tensor {
     // Go down until we are either 1 or 2 dimensional
     let mut current_tensor = self;
@@ -148,7 +150,7 @@ impl Tensor {
         data: None,
       };
 
-      let current_data_position = if dimensions.len() <= 2 {
+      let current_data_position = if dimensions.len() <= 2 || position.len() <= 2 {
         0
       } else {
         position
@@ -163,7 +165,7 @@ impl Tensor {
           })
       };
 
-      let at_leaf_node = position.len() as isize >= (dimensions.len() - 2) as isize;
+      let at_leaf_node = position.len() as isize == (dimensions.len() - 2) as isize;
 
       if at_leaf_node {
         result.data = Some(data[current_data_position].clone());
@@ -181,6 +183,29 @@ impl Tensor {
     }
 
     return from_matrices_helper(&data, &dimensions, Vec::new());
+  }
+
+  pub fn flatten(&self) -> Matrix {
+    let mut matrices_to_flatten = Vec::new();
+
+    // Define recursive function inside
+    fn flatten_helper(tensor: &Tensor, matrices_to_flatten: &mut Vec<Matrix>) {
+      let at_leaf_node = tensor.is_leaf();
+
+      if at_leaf_node {
+        matrices_to_flatten.push(tensor.get_data().clone());
+        return;
+      }
+
+      // Recurively go through children
+      for child in tensor.child_tensors.iter() {
+        flatten_helper(child, matrices_to_flatten);
+      }
+    }
+
+    flatten_helper(self, &mut matrices_to_flatten);
+
+    return flatten_matrix_array(&matrices_to_flatten);
   }
 
   pub fn get_rank(&self) -> usize {
