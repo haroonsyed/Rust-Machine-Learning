@@ -1,5 +1,7 @@
 use std::ops::{Index, IndexMut};
 
+use itertools::izip;
+
 use crate::matrix::*;
 
 pub struct Tensor {
@@ -7,13 +9,6 @@ pub struct Tensor {
   child_tensors: Box<Vec<Tensor>>, // This goes all the way down to either a matrix or a vector. Meaning rank 2 or rank 1.
   data: Option<Matrix>, // For 1d tensors, it will still be a matrix, but with only one row/column.
 }
-
-/*
-TODO:
-1. Dot Product
-2. Transpose?
-3. Max Pooling?
-*/
 
 impl Index<usize> for Tensor {
   type Output = Tensor;
@@ -423,5 +418,76 @@ impl Tensor {
       a.scalar_multiply_inplace(scalar);
       return a;
     });
+  }
+
+  pub fn mat_mult(self, other: &Tensor) -> Tensor {
+    // Check that both are matrices or vectors
+    if self.get_rank() > 2 || other.get_rank() > 2 {
+      panic!("Cannot perform dot product between non 2d or 1d tensors");
+    }
+
+    let result = self.get_data().matrix_multiply(other.get_data());
+    let result_rows = result.rows;
+    let result_cols = result.columns;
+    return Tensor::from_matrices(&vec![result], vec![result_rows, result_cols]);
+  }
+
+  pub fn transpose(self) -> Tensor {
+    // Check this is a matrix
+    if self.get_rank() > 2 {
+      panic!("Cannot currently transpose a tensor with rank greater than 2");
+    }
+
+    let result = self.get_data().transpose();
+    let result_rows = result.rows;
+    let result_cols = result.columns;
+    return Tensor::from_matrices(&vec![result], vec![result_rows, result_cols]);
+  }
+
+  pub fn max_pool(self) -> Tensor {
+    // Check this is a matrix
+    if self.get_rank() > 2 {
+      panic!("Cannot currently max pool a tensor with rank greater than 2");
+    }
+
+    let result = self.get_data().max_pool();
+    let result_rows = result.rows;
+    let result_cols = result.columns;
+    return Tensor::from_matrices(&vec![result], vec![result_rows, result_cols]);
+  }
+
+  pub fn convolution(self, kernels: &Tensor, conv_type: ConvolutionType) -> Tensor {
+    // Check rank
+    if self.get_rank() > 3 || kernels.get_rank() > 3 {
+      panic!("Cannot currently convolve a tensor with rank greater than 3");
+    }
+
+    if self.get_rank() < 3 && kernels.get_rank() < 3 {
+      let conv_result = self.get_data().convolution(kernels.get_data(), conv_type);
+      let conv_result_rows = conv_result.rows;
+      let conv_result_cols = conv_result.columns;
+      return Tensor::from_matrices(&vec![conv_result], vec![conv_result_rows, conv_result_cols]);
+    }
+
+    // Ensure the number of kernels matches the number of channels
+    if self.dimensions[0] != kernels.dimensions[0] {
+      panic!("Number of kernels must match number of channels (currently for 3d convolution)");
+    }
+
+    let mut conv_results = Vec::new();
+    for (channel, kernel) in izip!(self.iter(), kernels.iter()) {
+      let result = channel.get_data().convolution(kernel.get_data(), conv_type);
+      conv_results.push(result);
+    }
+
+    let result = &conv_results[0];
+    for conv_result in &conv_results[1..] {
+      result.element_add_inplace(&conv_result);
+    }
+
+    let result_rows = result.rows;
+    let result_cols = result.columns;
+
+    return Tensor::from_matrices(&vec![result.clone()], vec![result_rows, result_cols]);
   }
 }

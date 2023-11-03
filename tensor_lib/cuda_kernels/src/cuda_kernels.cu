@@ -1052,6 +1052,7 @@ size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
 __global__ void cuda_convolution_kernel_valid_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+    int threadIdWithinBlock = threadIdx.y * blockDim.x + threadIdx.x;
 
     if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = weighted sum of kernel with input, where kernel is kept within bounds of input
@@ -1059,7 +1060,9 @@ __global__ void cuda_convolution_kernel_valid_1(float* mat1_buffer, int mat1_row
         const int kernel_top_left_row = tidY;
         const int kernel_top_left_col = tidX;
 
+#pragma unroll 3
         for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
             for (int n = 0; n < kernel_cols; n++) {
                 const float mat1_val = mat1_buffer[(kernel_top_left_row + m) * mat1_cols + (kernel_top_left_col + n)];
                 const float kernel_val = kernel_buffer[m * kernel_cols + n];
@@ -1086,7 +1089,7 @@ size_t cuda_convolution_valid(size_t mat1_id, size_t mat1_rows, size_t mat1_cols
     float* gpu_out_buffer = mat_map[out_mat_id];
 
     // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 32;
+    const int THREADS_PER_BLOCK = 16;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
     dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
@@ -1108,7 +1111,9 @@ __global__ void cuda_convolution_kernel_same_1(float* mat1_buffer, int mat1_rows
 
         float result = 0.0;
         const int apothem = kernel_rows / 2;
+#pragma unroll 3
         for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
             for (int n = 0; n < kernel_cols; n++) {
                 int input_row = m - apothem + tidY;
                 int input_col = n - apothem + tidX;
@@ -1143,7 +1148,7 @@ size_t cuda_convolution_same(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     float* gpu_out_buffer = mat_map[out_mat_id];
 
     // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 32;
+    const int THREADS_PER_BLOCK = 16;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
     dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
@@ -1199,7 +1204,7 @@ size_t cuda_convolution_full(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     float* gpu_out_buffer = mat_map[out_mat_id];
 
     // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 32;
+    const int THREADS_PER_BLOCK = 16;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
     dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
@@ -1231,7 +1236,8 @@ __global__ void cuda_img2col_valid(float** mat_buffers, int input_depth, int inp
     const int current_patch = tidX;
 
     if (current_patch < number_of_patches) {
-        // Go through each of the kernels
+// Go through each of the kernels
+#pragma unroll
         for (int curr_channel = 0; curr_channel < input_depth; curr_channel++) {
             const float* current_buffer = mat_buffers[curr_channel];
 
@@ -1241,7 +1247,7 @@ __global__ void cuda_img2col_valid(float** mat_buffers, int input_depth, int inp
             const int base_output_row = curr_channel * filter_rows * filter_cols;
             const int output_col = current_patch;
 
-            // Now construct the patch
+// Now construct the patch
 #pragma unroll 3
             for (int m = 0; m < filter_rows; m++) {
 #pragma unroll 3

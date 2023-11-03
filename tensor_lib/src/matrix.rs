@@ -517,6 +517,11 @@ impl Matrix {
   pub fn transpose(&self) -> Self {
     let result_id: usize;
 
+    // Fast transpose
+    if self.rows == 1 || self.columns == 1 {
+      return Matrix::new(self.id, self.columns, self.rows);
+    }
+
     unsafe { result_id = cuda_transpose(self.id, self.rows, self.columns) }
 
     let output_rows = self.columns;

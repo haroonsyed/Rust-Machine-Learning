@@ -855,6 +855,22 @@ mod tests {
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
+  #[test]
+  fn convolution_v2_gpu_valid_4() {
+    let test_data = vec![1.0; 64 * 64];
+    let test_data = Matrix::new_1d(&test_data, 64, 64);
+
+    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0]; 3]);
+
+    let observed_result = test_data.convolution_v2(&kernel, ConvolutionType::VALID);
+
+    observed_result.print();
+
+    unsafe { cuda_synchronize() }
+
+    assert!(1 == 1);
+  }
+
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
     if a.rows != b.rows || a.columns != b.columns {
       println!("Matrices not the same shape!");
