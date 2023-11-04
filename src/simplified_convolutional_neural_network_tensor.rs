@@ -7,13 +7,13 @@ use tensor_lib::*;
 use crate::{basic_neural_network::BasicNeuralNetworkRust, image_util::ImageBatchLoaderRust};
 
 #[pyclass]
-pub struct SimplifiedConvolutionalNeuralNetwork {
-  pub network: SimplifiedConvolutionalNeuralNetworkRust,
+pub struct SimplifiedConvolutionalNeuralNetworkTensor {
+  pub network: SimplifiedConvolutionalNeuralNetworkTensorRust,
   batch_loader: Option<ImageBatchLoaderRust>,
 }
 
 #[pymethods]
-impl SimplifiedConvolutionalNeuralNetwork {
+impl SimplifiedConvolutionalNeuralNetworkTensor {
   #[new]
   fn new(
     num_classifications: usize,
@@ -23,7 +23,7 @@ impl SimplifiedConvolutionalNeuralNetwork {
     filters_per_conv_layer: Vec<usize>,
     filter_dimension: usize, // Must be odd
   ) -> Self {
-    let network = SimplifiedConvolutionalNeuralNetworkRust::new(
+    let network = SimplifiedConvolutionalNeuralNetworkTensorRust::new(
       num_classifications,
       input_width,
       input_height,
@@ -86,17 +86,17 @@ impl SimplifiedConvolutionalNeuralNetwork {
 }
 
 // This is going to have no bias, no relU, and no max pooling
-pub struct SimplifiedConvolutionalNeuralNetworkRust {
+pub struct SimplifiedConvolutionalNeuralNetworkTensorRust {
   pub num_classifications: usize,
   pub input_width: usize,
   pub input_height: usize,
   pub input_depth: usize,
-  pub conv_layers: Vec<Vec<Vec<Matrix>>>, // Layer -> Filter -> Depth
+  pub conv_layers: Vec<Tensor>, // Layer -> Filter -> Depth
   pub fully_connected_layer: BasicNeuralNetworkRust,
   pub filter_output_dimensions_per_layer: Vec<(usize, usize)>, // Layer -> (width, height)
 }
 
-impl SimplifiedConvolutionalNeuralNetworkRust {
+impl SimplifiedConvolutionalNeuralNetworkTensorRust {
   pub fn new(
     num_classifications: usize,
     input_width: usize,
@@ -131,13 +131,16 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
       filter_depth_per_conv_layer.iter()
     )
     .map(|(&filter_count, &filter_depth)| {
-      (0..filter_count)
-        .map(|_| {
-          (0..filter_depth)
-            .map(|_| Matrix::new_random(0.0, 0.68, filter_dimension, filter_dimension))
-            .collect_vec()
-        })
-        .collect_vec()
+      Tensor::random(
+        vec![
+          filter_count,
+          filter_depth,
+          filter_dimension,
+          filter_dimension,
+        ],
+        0.0,
+        0.68,
+      )
     })
     .collect_vec();
 
@@ -150,7 +153,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
       BasicNeuralNetworkRust::new(Vec::new(), num_features, num_classifications);
 
     // Create the CNN object
-    let network = SimplifiedConvolutionalNeuralNetworkRust {
+    let network = SimplifiedConvolutionalNeuralNetworkTensorRust {
       num_classifications,
       input_width,
       input_height,
@@ -162,36 +165,49 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
     return network;
   }
 
-  pub fn classify(&mut self, features_test: &Vec<Vec<Vec<f32>>>) -> Vec<f32> {
-    // Obervations are of shape sample -> depth -> pixels
-    let observations_matrices = features_test
+  fn create_tensor_from_input(&self, input: &Vec<Vec<Vec<f32>>>) -> Vec<Tensor> {
+    // Map each sample to a tensor
+    return input
       .iter()
       .map(|sample| {
-        sample
+        let matrices = sample
           .iter()
           .map(|channel_data| Matrix::new_1d(channel_data, self.input_height, self.input_width))
-          .collect_vec()
+          .collect_vec();
+        return Tensor::from_matrices(
+          &matrices,
+          vec![self.input_depth, self.input_height, self.input_width],
+        );
       })
       .collect_vec();
+  }
+
+  pub fn classify(&mut self, features_test: &Vec<Vec<Vec<f32>>>) -> Vec<f32> {
+    let observations = self.create_tensor_from_input(features_test);
 
     // Feed forward
-    let filter_outputs = self.feed_forward(&observations_matrices);
+    let filter_outputs = self.feed_forward(&observations);
 
     // Linearize the final output
     let flattened_sample_outputs = filter_outputs
       .iter()
       .map(|sample_output| {
-        let mut flattened = flatten_matrix_array(sample_output.last().unwrap());
+        let last_layer_output = sample_output.last().unwrap();
+        let mut flattened = last_layer_output.flatten();
 
         // Take the transpose for fully connected layer
-        flattened.reshape(flattened.columns, flattened.rows);
+        flattened = flattened.transpose();
         return flattened;
       })
       .collect_vec();
 
     let classifications = flattened_sample_outputs
       .iter()
-      .map(|flattened_output| self.fully_connected_layer.classify_matrix(flattened_output)[0])
+      .map(|flattened_output| {
+        self
+          .fully_connected_layer
+          .classify_matrix(&flattened_output.get_data())[0]
+      })
       .collect_vec();
 
     return classifications;
@@ -204,27 +220,20 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
     learning_rate: f32,
   ) {
     // Convert observations to matrices
-    let observations_matrices = observations
-      .iter()
-      .map(|sample| {
-        sample
-          .iter()
-          .map(|channel_data| Matrix::new_1d(channel_data, self.input_height, self.input_width))
-          .collect_vec()
-      })
-      .collect_vec();
+    let observations = self.create_tensor_from_input(observations);
 
     // Feed forward
-    let filter_outputs = self.feed_forward(&observations_matrices);
+    let filter_outputs = self.feed_forward(&observations);
 
     // Linearize the final output
     let flattened_sample_outputs = filter_outputs
       .iter()
       .map(|sample_output| {
-        let mut flattened = flatten_matrix_array(sample_output.last().unwrap());
+        let last_layer_output = sample_output.last().unwrap();
+        let mut flattened = last_layer_output.flatten();
 
         // Take the transpose for fully connected layer
-        flattened.reshape(flattened.columns, flattened.rows);
+        flattened = flattened.transpose();
         return flattened;
       })
       .collect_vec();
@@ -234,7 +243,11 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
       .map(|(flattened_output, label)| {
         let fully_connected_error = self
           .fully_connected_layer
-          .train_classification_observation_matrix(flattened_output, &vec![*label], learning_rate);
+          .train_classification_observation_matrix(
+            &flattened_output.get_data(),
+            &vec![*label],
+            learning_rate,
+          );
 
         let output_error = self.fully_connected_layer.weights[0]
           .transpose()
@@ -243,13 +256,19 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
         let (output_height, output_width) = self.filter_output_dimensions_per_layer.last().unwrap();
 
         // Now unflatten the output error
-        return unflatten_array_strided_to_matrices(&output_error, *output_height, *output_width);
+        let unflattened_error =
+          unflatten_array_strided_to_matrices(&output_error, *output_height, *output_width);
+
+        return Tensor::from_matrices(
+          &unflattened_error,
+          vec![unflattened_error.len(), *output_height, *output_width],
+        );
       })
       .collect_vec();
 
     // Backpropogate conv layers
     self.backpropogation_hidden_layer(
-      &observations_matrices,
+      &observations,
       &filter_outputs,
       &sample_errors,
       learning_rate,
@@ -257,11 +276,11 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
     );
   }
 
-  //return Vec<Vec<Vec<Matrix>>> sample -> layer -> filters -> Matrix
+  //return Vec<Vec<Tensor>> sample -> layer -> filter outputs
   pub fn feed_forward(
     &self,
-    observations: &Vec<Vec<Matrix>>, // sample -> depth -> data
-  ) -> Vec<Vec<Vec<Matrix>>> {
+    observations: &Vec<Tensor>, // sample -> depth -> data
+  ) -> Vec<Vec<Tensor>> {
     let mut filter_outputs = Vec::new();
 
     // Sample
@@ -270,25 +289,19 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
       let mut current_layer_input = sample;
 
       // Layer
-      for (layer_index, layer_filters) in izip!(0..self.conv_layers.len(), self.conv_layers.iter(),)
+      for (layer_index, layer_filters) in izip!(0..self.conv_layers.len(), self.conv_layers.iter())
       {
         let mut layer_outputs = Vec::new();
 
         // Filter
-        for filter in izip!(layer_filters) {
-          let (output_height, output_width) = self.filter_output_dimensions_per_layer[layer_index];
-          let filter_output = Matrix::zeros(output_height, output_width);
-
-          // Channel
-          for (channel, kernel) in izip!(current_layer_input, filter) {
-            let channel_output = channel.convolution(kernel, ConvolutionType::VALID);
-            filter_output.element_add_inplace(&channel_output);
-          }
+        for filter in layer_filters.iter() {
+          let filter_output = current_layer_input.convolution(filter, ConvolutionType::VALID);
 
           layer_outputs.push(filter_output);
         }
 
-        sample_outputs.push(layer_outputs);
+        let layer_outputs_tensor = Tensor::from_children(layer_outputs);
+        sample_outputs.push(layer_outputs_tensor);
         current_layer_input = sample_outputs.last().unwrap();
       }
 
@@ -298,11 +311,28 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
     return filter_outputs;
   }
 
+  pub fn rotate_filters_180(filter: &Tensor) -> Tensor {
+    if filter.is_leaf() {
+      let rotated_filter = filter.get_data().rotate_180();
+      return Tensor::from_matrices(&vec![rotated_filter], filter.dimensions.clone());
+    }
+
+    if filter.get_rank() != 3 {
+      panic!("Filter must be rank 2 or 3");
+    }
+
+    let mut rotated_filters = Vec::new();
+    for channel in filter.iter() {
+      rotated_filters.push(channel.get_data().rotate_180());
+    }
+    return Tensor::from_matrices(&rotated_filters, filter.dimensions.clone());
+  }
+
   pub fn backpropogation_hidden_layer(
     &mut self,
-    observations: &Vec<Vec<Matrix>>,        // sample -> depth -> data
-    filter_outputs: &Vec<Vec<Vec<Matrix>>>, // sample -> layer -> filter -> data
-    next_layer_error: &Vec<Vec<Matrix>>,    // sample -> filter -> data
+    observations: &Vec<Tensor>,        // sample -> depth -> data
+    filter_outputs: &Vec<Vec<Tensor>>, // sample -> layer -> filter -> data
+    next_layer_error: &Vec<Tensor>,    // sample -> filter -> data
     learning_rate: f32,
     layer: usize,
   ) {
@@ -327,19 +357,18 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
       .map(|(filter, next_error)| {
         // Xm' = Xm - sum(de/dy * conv_full * Knm)
 
-        // PER DEPTH
-        let delta_xm = next_error.convolution(&filter[0].rotate_180(), ConvolutionType::FULL);
-        filter.iter().enumerate().for_each(|(index, channel)| {
-          if index > 0 {
-            delta_xm.element_add_inplace(
-              &next_error.convolution(&channel.rotate_180(), ConvolutionType::FULL),
-            );
-          }
-        });
+        // We can use 3D convolutions with tensors
+        // First we have to duplicate the error for each channel
+        let next_error = Tensor::from_children(vec![next_error.clone(); filter.dimensions[0]]);
+
+        let rotated_filter = Self::rotate_filters_180(filter);
+        let delta_xm = next_error.convolution(&rotated_filter, ConvolutionType::FULL);
+
         return delta_xm;
       })
       .collect_vec();
 
+      let sample_error = Tensor::from_children(sample_error);
       layer_error.push(sample_error);
 
       // Update the kernels
@@ -350,6 +379,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
       ) {
         // PER DEPTH
         for (channel, prev_channel_output) in izip!(filter.iter(), prev_layer_outputs.iter()) {
+          // Here the error is per channel. We cannot sum across the volume of filter.
           // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
           let delta_channel = prev_channel_output.convolution(error, ConvolutionType::VALID);
           channel.element_subtract_inplace(&delta_channel.scalar_multiply(learning_rate));

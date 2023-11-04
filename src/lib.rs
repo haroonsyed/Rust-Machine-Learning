@@ -13,6 +13,7 @@ pub mod naive_bayes;
 pub mod py_util;
 pub mod regression_tree;
 pub mod simplified_convolutional_neural_network;
+pub mod simplified_convolutional_neural_network_tensor;
 pub mod xgb;
 
 use pyo3::prelude::*;
@@ -38,6 +39,7 @@ fn rust_machine_learning(_py: Python, m: &PyModule) -> PyResult<()> {
   m.add_class::<cpu_basic_neural_network::BasicNeuralNetworkCPU>()?;
   m.add_class::<convolutional_neural_network::ConvolutionalNeuralNetwork>()?;
   m.add_class::<simplified_convolutional_neural_network::SimplifiedConvolutionalNeuralNetwork>()?;
+  m.add_class::<simplified_convolutional_neural_network_tensor::SimplifiedConvolutionalNeuralNetworkTensor>()?;
   m.add_class::<image_util::ImageBatchLoader>()?;
   Ok(())
 }
