@@ -102,8 +102,8 @@ impl BasicNeuralNetworkRust {
         Matrix::new_random(
           0.0,
           f64::sqrt(2.0 / input_feature_count as f64),
-          input_feature_count,
           non_input_layer_sizes[layer],
+          input_feature_count,
         )
       })
       .collect_vec();

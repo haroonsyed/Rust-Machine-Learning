@@ -132,13 +132,13 @@ impl Matrix {
     return Matrix::new(id, rows, columns);
   }
 
-  pub fn new_random(mean: f64, std: f64, width: usize, height: usize) -> Self {
+  pub fn new_random(mean: f64, std: f64, rows: usize, columns: usize) -> Self {
     let mut rng = rand::thread_rng();
     let range = Normal::new(mean, std).unwrap();
 
-    let data = (0..height)
+    let data = (0..rows)
       .map(|_| {
-        (0..width)
+        (0..columns)
           .map(|_| range.sample(&mut rng) as f32)
           .collect_vec()
       })
