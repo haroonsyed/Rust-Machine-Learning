@@ -3,7 +3,7 @@ use rand::prelude::Distribution;
 use statrs::distribution::Normal;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use matrix_lib::{bindings::cuda_synchronize, Matrix};
+use tensor_lib::{cuda_bindings::cuda_synchronize, Matrix};
 
 // Define the benchmark function
 pub fn matrix_multiply_benchmark(criterion: &mut Criterion) {

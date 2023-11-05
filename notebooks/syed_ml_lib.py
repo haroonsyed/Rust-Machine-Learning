@@ -3,6 +3,7 @@ import plotly.express as px
 import pandas as pd
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+import numpy as np
 
 # Ensure categoriical data is one-hot encoded
 # columns is list of ints
@@ -82,9 +83,22 @@ def generate_2d_data_from_function(coefficients, xStart, xEnd, numOfPoints):
         y.append(currY)
     return (x, y)
 
-def view_image(data, img_x, img_y, colorscale):
-    # Quick image viewer
+def view_image(data, img_x, img_y, colorscale=""):
+
+    img_data = []
     img_data = data.reshape(img_x, img_y)
 
+    if colorscale == "":
+        # data is channel -> list of values
+        # Convert the data from [[red_values], [green_values], [blue_values]] to [[red, green, blue]]
+        pixel_count = img_x * img_y
+        img_data = []
+        for i in range(pixel_count):
+            img_data.append([[data[0][i], data[1][i], data[2][i]]])
+        data = np.array(img_data)
+        depth = 3
+        img_data = data.reshape(img_x, img_y, depth)
+
+    # Quick image viewer
     fig = px.imshow(img_data, color_continuous_scale=colorscale)
     fig.show()

@@ -1,9 +1,8 @@
 // use crate::py_util::py_print;
 use itertools::{izip, Itertools};
-use matrix_lib::Matrix;
 use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
-use statrs::distribution::Normal;
+use tensor_lib::Matrix;
 
 #[pyclass]
 pub struct BasicNeuralNetwork {
@@ -42,13 +41,13 @@ impl BasicNeuralNetwork {
     );
   }
 
-  fn classify(&self, features_test: Vec<Vec<f32>>) -> PyResult<Vec<f32>> {
+  fn classify(&mut self, features_test: Vec<Vec<f32>>) -> PyResult<Vec<f32>> {
     let classifications = self.network.classify(&features_test);
 
     return Ok(classifications);
   }
 
-  fn regression(&self, features_test: Vec<Vec<f32>>) -> PyResult<Vec<f32>> {
+  fn regression(&mut self, features_test: Vec<Vec<f32>>) -> PyResult<Vec<f32>> {
     let predictions = self.network.regression(&features_test);
 
     return Ok(predictions);
@@ -79,6 +78,7 @@ pub struct BasicNeuralNetworkRust {
   pub non_input_layer_sizes: Vec<usize>,
   pub weights: Vec<Matrix>,
   pub biases: Vec<Matrix>,
+  pub neuron_outputs: Vec<Matrix>,
 }
 
 impl BasicNeuralNetworkRust {
@@ -92,24 +92,18 @@ impl BasicNeuralNetworkRust {
     non_input_layer_sizes.push(num_classifications);
 
     // Init the matrices
-    // Random seed for weights
-    let mut rng = rand::thread_rng();
-    let range = Normal::new(0.0, 0.68).unwrap();
-
     let weights = (0..non_input_layer_sizes.len())
       .map(|layer| {
-        Matrix::new_2d(
-          &(0..non_input_layer_sizes[layer])
-            .map(|_| {
-              (0..if layer == 0 {
-                num_features
-              } else {
-                non_input_layer_sizes[layer - 1]
-              })
-                .map(|_| range.sample(&mut rng) as f32)
-                .collect_vec()
-            })
-            .collect_vec(),
+        let input_feature_count = if layer == 0 {
+          num_features
+        } else {
+          non_input_layer_sizes[layer - 1]
+        };
+        Matrix::new_random(
+          0.0,
+          f64::sqrt(2.0 / input_feature_count as f64),
+          non_input_layer_sizes[layer],
+          input_feature_count,
         )
       })
       .collect_vec();
@@ -119,14 +113,23 @@ impl BasicNeuralNetworkRust {
       .collect_vec();
 
     // Create network
-    let mut network = BasicNeuralNetworkRust {
+    let network = BasicNeuralNetworkRust {
       non_input_layer_sizes,
       weights,
       biases,
+      neuron_outputs: Vec::new(),
     };
 
     // Cleanup and return
     return network;
+  }
+
+  pub fn print_structure(&self) {
+    println!("Number of layers in network: {}", self.weights.len());
+    println!("Layer shapes:");
+    for weight in self.weights.iter() {
+      weight.print_shape();
+    }
   }
 
   pub fn train(
@@ -140,7 +143,7 @@ impl BasicNeuralNetworkRust {
     let num_classifications = *self.non_input_layer_sizes.last().unwrap_or(&1);
     let num_observations = features_train.len();
 
-    let mut neuron_outputs: Vec<Matrix> = self
+    self.neuron_outputs = self
       .non_input_layer_sizes
       .iter()
       .map(|&layer_size| Matrix::no_fill(layer_size, num_observations))
@@ -150,7 +153,6 @@ impl BasicNeuralNetworkRust {
     if num_classifications == 1 {
       self.train_regression(
         features_train,
-        &mut neuron_outputs,
         input_labels,
         learning_rate,
         num_iterations,
@@ -159,7 +161,6 @@ impl BasicNeuralNetworkRust {
     } else {
       self.train_classification(
         features_train,
-        &mut neuron_outputs,
         input_labels,
         learning_rate,
         num_iterations,
@@ -168,37 +169,52 @@ impl BasicNeuralNetworkRust {
     }
   }
 
-  pub fn regression(&self, features_test: &Vec<Vec<f32>>) -> Vec<f32> {
+  pub fn regression(&mut self, features_test: &Vec<Vec<f32>>) -> Vec<f32> {
     let num_observations = features_test.len();
 
     // Feed forward through network
     let observations = Matrix::new_2d(&features_test).transpose();
 
-    let mut neuron_outputs: Vec<Matrix> = self
+    self.neuron_outputs = self
       .weights
       .iter()
       .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
       .collect_vec();
 
-    self.feed_forward(&observations, &mut neuron_outputs);
+    self.feed_forward(&observations);
 
-    return neuron_outputs[neuron_outputs.len() - 1].get_data()[0].to_vec();
+    return self.neuron_outputs[self.neuron_outputs.len() - 1].get_data()[0].to_vec();
   }
 
-  pub fn classify(&self, features_test: &Vec<Vec<f32>>) -> Vec<f32> {
+  pub fn classify(&mut self, features_test: &Vec<Vec<f32>>) -> Vec<f32> {
     let num_observations = features_test.len();
 
     // Feed forward through network
     let observations = Matrix::new_2d(&features_test).transpose();
 
-    let mut neuron_outputs: Vec<Matrix> = self
+    self.neuron_outputs = self
       .weights
       .iter()
       .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
       .collect_vec();
 
-    self.feed_forward(&observations, &mut neuron_outputs);
-    let predicted_probabilities = Self::softmax(&neuron_outputs);
+    self.feed_forward(&observations);
+    let predicted_probabilities = Self::softmax(&self.neuron_outputs);
+    let classifications = Self::get_classification(&predicted_probabilities);
+
+    return classifications;
+  }
+
+  pub fn classify_matrix(&mut self, observations: &Matrix) -> Vec<f32> {
+    let num_observations = observations.columns;
+    self.neuron_outputs = self
+      .weights
+      .iter()
+      .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
+      .collect_vec();
+
+    self.feed_forward(&observations);
+    let predicted_probabilities = Self::softmax(&self.neuron_outputs);
     let classifications = Self::get_classification(&predicted_probabilities);
 
     return classifications;
@@ -243,7 +259,6 @@ impl BasicNeuralNetworkRust {
   pub fn train_regression(
     &mut self,
     observations: Vec<Vec<f32>>,
-    neuron_outputs: &mut Vec<Matrix>,
     labels: Vec<f32>,
     learning_rate: f32,
     num_iterations: usize,
@@ -267,16 +282,14 @@ impl BasicNeuralNetworkRust {
       };
 
       // Feed forward
-      self.feed_forward(batch, neuron_outputs);
+      self.feed_forward(batch);
 
       // Calculate error from feed forward step
-      let output_error =
-        self.backpropogation_output_layer_regression(batch_labels, neuron_outputs, learning_rate);
+      let output_error = self.backpropogation_output_layer_regression(batch_labels, learning_rate);
 
       // Backpropogate hidden
       self.backpropogation_hidden_layer(
         batch,
-        neuron_outputs,
         &output_error,
         learning_rate,
         self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
@@ -292,7 +305,6 @@ impl BasicNeuralNetworkRust {
   pub fn train_classification(
     &mut self,
     observations: Vec<Vec<f32>>,
-    neuron_outputs: &mut Vec<Matrix>,
     labels: Vec<f32>,
     learning_rate: f32,
     num_iterations: usize,
@@ -318,21 +330,20 @@ impl BasicNeuralNetworkRust {
       };
 
       // Feed forward
-      self.feed_forward(batch, neuron_outputs);
+      self.feed_forward(batch);
 
       // Calculate error from feed forward step
-      let predicted_probabilities = Self::softmax(neuron_outputs);
+      let predicted_probabilities = Self::softmax(&self.neuron_outputs);
       let output_error = self.backpropogation_output_layer_classification(
+        &observations_matrix,
         &predicted_probabilities,
         batch_labels,
-        neuron_outputs,
         learning_rate,
       );
 
       // Backpropogate hidden
       self.backpropogation_hidden_layer(
         batch,
-        neuron_outputs,
         &output_error,
         learning_rate,
         self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
@@ -345,22 +356,86 @@ impl BasicNeuralNetworkRust {
     }
   }
 
-  pub fn feed_forward(&self, observations: &Matrix, neuron_outputs: &mut Vec<Matrix>) {
+  pub fn train_classification_observation_matrix(
+    &mut self,
+    observations: &Matrix, // Expects each sample is in a column (so like a transposed pd datatable)
+    labels: &Vec<f32>,
+    learning_rate: f32,
+  ) -> Matrix {
+    let num_observations = observations.columns;
+    self.neuron_outputs = self
+      .non_input_layer_sizes
+      .iter()
+      .map(|&layer_size| Matrix::no_fill(layer_size, num_observations))
+      .collect();
+
+    // Feed forward
+    self.feed_forward(&observations);
+
+    // Calculate error from feed forward step
+    let predicted_probabilities = Self::softmax(&self.neuron_outputs);
+    let output_error = self.backpropogation_output_layer_classification(
+      &observations,
+      &predicted_probabilities,
+      &labels,
+      learning_rate,
+    );
+
+    if self.weights.len() == 1 {
+      // Backpropogation no hidden layer
+      return output_error;
+    } else {
+      // Backpropogate hidden
+      return self.backpropogation_hidden_layer(
+        &observations,
+        &output_error,
+        learning_rate,
+        self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
+      );
+    }
+  }
+
+  pub fn feed_forward(&mut self, observations: &Matrix) {
     let num_layers = self.weights.len();
     for layer in 0..num_layers {
-      neuron_outputs[layer] = self.weights[layer]
+      self.neuron_outputs[layer] = self.weights[layer]
         .matrix_multiply(if layer == 0 {
           observations
         } else {
-          &neuron_outputs[layer - 1]
+          &self.neuron_outputs[layer - 1]
         })
-        .add_vector(&self.biases[layer])
-        .element_ReLU();
+        .add_vector(&self.biases[layer]);
+
+      // Activation for final layer is softmax not ReLU
+      if layer != num_layers - 1 {
+        self.neuron_outputs[layer].element_ReLU_inplace();
+      }
     }
   }
 
   pub fn softmax(neuron_outputs: &Vec<Matrix>) -> Matrix {
-    let outputs_exp = neuron_outputs[neuron_outputs.len() - 1].element_exp();
+    // TEMP: ADJUSTED SOFTMAX FOR NUMERICAL STABILITY
+    // Preprocess neuron outputs by subtracting the max value from each column
+    let final_layer_output = neuron_outputs.last().unwrap();
+
+    // grab the max
+    let output_data = final_layer_output.get_data();
+    let max_val_in_matrix = output_data
+      .iter()
+      .map(|row| row.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap())
+      .max_by(|a, b| a.partial_cmp(b).unwrap())
+      .unwrap();
+
+    // Subtract the max
+    let data = output_data
+      .iter()
+      .map(|row| row.iter().map(|val| val - max_val_in_matrix).collect_vec())
+      .collect_vec();
+
+    // Create matrix from this data
+    let adjusted_final_layer_output = Matrix::new_2d(&data);
+    // TEMP: ADJUSTED SOFTMAX FOR NUMERICAL STABILITY
+    let outputs_exp = adjusted_final_layer_output.element_exp_inplace();
 
     let exp_final_layer_outputs_summed = outputs_exp.sum_columns_matrix();
 
@@ -372,18 +447,17 @@ impl BasicNeuralNetworkRust {
   pub fn backpropogation_output_layer_regression(
     &mut self,
     labels: &Vec<f32>,
-    neuron_outputs: &Vec<Matrix>,
     learning_rate: f32,
   ) -> Matrix {
     let output_layer_index = self.biases.len() - 1;
-    let prev_layer_outputs = &neuron_outputs[output_layer_index - 1];
+    let prev_layer_outputs = &self.neuron_outputs[output_layer_index - 1];
     let output_biases = &self.biases[output_layer_index];
     let output_weights = &self.weights[output_layer_index];
     let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
 
     // Shared error calculations (dSSR)
     // neuron_output[output_layer_index][0] because there is only one output neuron
-    let output_layer_data = neuron_outputs[output_layer_index].get_data(); // TODO: Measure performance impact of copying to host
+    let output_layer_data = self.neuron_outputs[output_layer_index].get_data(); // TODO: Measure performance impact of copying to host
     let error = Matrix::new_2d(&vec![(0..labels.len())
       .map(|index| -2.0 * (labels[index] - output_layer_data[0][index]))
       .collect_vec()]);
@@ -406,13 +480,17 @@ impl BasicNeuralNetworkRust {
 
   pub fn backpropogation_output_layer_classification(
     &mut self,
+    observations: &Matrix,
     predicted_probabilities: &Matrix,
     labels: &Vec<f32>,
-    neuron_outputs: &Vec<Matrix>,
     learning_rate: f32,
   ) -> Matrix {
     let output_layer_index = self.biases.len() - 1;
-    let prev_layer_outputs = &neuron_outputs[output_layer_index - 1];
+    let prev_layer_outputs = if output_layer_index == 0 {
+      observations
+    } else {
+      &self.neuron_outputs[output_layer_index - 1]
+    };
     let output_biases = &self.biases[output_layer_index];
     let output_weights = &self.weights[output_layer_index];
     let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
@@ -454,16 +532,15 @@ impl BasicNeuralNetworkRust {
   pub fn backpropogation_hidden_layer(
     &mut self,
     observations: &Matrix,
-    neuron_outputs: &Vec<Matrix>,
     next_layer_error: &Matrix,
     learning_rate: f32,
     layer: usize,
-  ) {
+  ) -> Matrix {
     // Used for yin
     let prev_layer_outputs = if layer == 0 {
       observations
     } else {
-      &neuron_outputs[layer - 1]
+      &self.neuron_outputs[layer - 1]
     };
 
     let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
@@ -474,7 +551,7 @@ impl BasicNeuralNetworkRust {
     // Used for x
     // ASSUMPTION: Since using ReLU, I can just take activation_function_prime of layer output.
     // Otherwise you may have to use raw input to original activation function
-    let activation_prime_x = neuron_outputs[layer].element_ReLU_prime();
+    let activation_prime_x = self.neuron_outputs[layer].element_ReLU_prime();
 
     // Shared error calculations
     let error = wout
@@ -495,48 +572,43 @@ impl BasicNeuralNetworkRust {
       .element_subtract(&dw.scalar_multiply(learning_rate * normalization_factor));
 
     if layer != 0 {
-      self.backpropogation_hidden_layer(
-        observations,
-        neuron_outputs,
-        &error,
-        learning_rate,
-        layer - 1,
-      );
+      self.backpropogation_hidden_layer(observations, &error, learning_rate, layer - 1);
     }
+    return error;
   }
 
-  fn matrix_classify(&self, observations: &Matrix) -> Vec<f32> {
+  fn matrix_classify(&mut self, observations: &Matrix) -> Vec<f32> {
     let num_observations = observations.columns;
 
-    let mut neuron_outputs: Vec<Matrix> = self
+    self.neuron_outputs = self
       .weights
       .iter()
-      .map(|layer| Matrix::zeros(layer.get_data_length(), num_observations))
+      .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
       .collect_vec();
 
-    self.feed_forward(&observations, &mut neuron_outputs);
-    let predicted_probabilities = Self::softmax(&neuron_outputs);
+    self.feed_forward(&observations);
+    let predicted_probabilities = Self::softmax(&self.neuron_outputs);
     let classifications = Self::get_classification(&predicted_probabilities);
 
     return classifications;
   }
 
-  fn matrix_regression(&self, observations: &Matrix) -> Vec<f32> {
+  fn matrix_regression(&mut self, observations: &Matrix) -> Vec<f32> {
     let num_observations = observations.columns;
 
-    let mut neuron_outputs: Vec<Matrix> = self
+    self.neuron_outputs = self
       .weights
       .iter()
-      .map(|layer| Matrix::zeros(layer.get_data_length(), num_observations))
+      .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
       .collect_vec();
 
-    self.feed_forward(&observations, &mut neuron_outputs);
-    let classifications = neuron_outputs[neuron_outputs.len() - 1].get_data()[0].to_vec();
+    self.feed_forward(&observations);
+    let classifications = self.neuron_outputs[self.neuron_outputs.len() - 1].get_data()[0].to_vec();
 
     return classifications;
   }
 
-  fn test_train_performance_regression(&self, observations: &Matrix, labels: &Vec<f32>) {
+  fn test_train_performance_regression(&mut self, observations: &Matrix, labels: &Vec<f32>) {
     let classifications = self.matrix_regression(&observations);
     let tolerance = 0.05;
     let num_correct =
@@ -554,7 +626,7 @@ impl BasicNeuralNetworkRust {
     println!("{}", &format!("% Correct: {}", percent_correct));
   }
 
-  fn test_train_performance_classification(&self, observations: &Matrix, labels: &Vec<f32>) {
+  fn test_train_performance_classification(&mut self, observations: &Matrix, labels: &Vec<f32>) {
     let classifications = self.matrix_classify(&observations);
     let num_correct = izip!(classifications.iter(), labels.iter())
       .fold(0.0, |acc, (classification, label)| {
