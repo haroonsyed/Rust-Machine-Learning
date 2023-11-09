@@ -3,6 +3,12 @@ use std::ffi::c_ulonglong;
 
 use crate::ConvolutionType;
 
+#[repr(C)] // Used to return a tuple from C
+pub struct Tuple {
+  pub a: usize,
+  pub b: usize,
+}
+
 extern "C" {
   pub fn test();
   pub fn test_array_fill(out: *mut c_float, length: usize);
@@ -91,7 +97,7 @@ extern "C" {
   pub fn cuda_sum_rows(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_sum_columns(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_transpose(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
-  pub fn cuda_max_pool(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
+  pub fn cuda_max_pool(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> Tuple;
   pub fn cuda_nearest_neighbor_2x_upsample(
     mat1_id: usize,
     mat1_rows: usize,

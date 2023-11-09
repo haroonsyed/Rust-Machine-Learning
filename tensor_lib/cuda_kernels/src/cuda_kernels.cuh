@@ -35,6 +35,10 @@ void test_array_fill(float* buffer, size_t length);
 
 // Misc
 void cuda_synchronize();
+struct Tuple {  // Used to return tuple with interop to rust
+    size_t a;
+    size_t b;
+};
 
 // Matrix Setup API (reduces overhead of keeping matrices in ram)
 size_t register_matrix(float* data, size_t rows, size_t cols);
@@ -55,7 +59,7 @@ size_t cuda_element_ReLU_prime(size_t mat1_id, size_t mat1_rows, size_t mat1_col
 size_t cuda_sum_rows(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_sum_columns(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
-size_t cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
+Tuple cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_nearest_neighbor_2x_upsample(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, ConvolutionType conv_type);

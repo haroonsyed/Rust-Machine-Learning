@@ -366,17 +366,17 @@ void bench_unflatten_array(int mat_dim, int mat_count, int num_iter) {
 
 int main() {
     // Get the temps and frequencies up
-    // warmup();
+    warmup();
 
     // Used with ncu to profile kernels. Will expand to have all kernels, but for now just has the most time consuming ones
 
-    const int mat_dim = 2048;
+    const int mat_dim = 64;
     const int kernel_dim = 3;
-    const int num_iter = 1;
-    // bench_flatten_array(mat_dim, 256, 1);
-    // bench_unflatten_array(mat_dim, 256, 1);
+    const int num_iter = 100;
+    // bench_flatten_array(mat_dim, 256, num_iter);
+    bench_unflatten_array(mat_dim, 256, num_iter);
     // bench_img2col(mat_dim, num_iter, kernel_dim);
-    bench_convolution(mat_dim, num_iter, kernel_dim);
+    // bench_convolution(mat_dim, num_iter, kernel_dim);
     // bench_convolution_2(mat_dim, num_iter, kernel_dim);
     // bench_rotate_180(mat_dim, num_iter);
     // bench_max_pool(mat_dim, num_iter);

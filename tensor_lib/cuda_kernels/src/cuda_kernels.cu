@@ -947,7 +947,7 @@ size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     return out_mat_id;
 }
 
-__global__ void cuda_max_pool_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
+__global__ void cuda_max_pool_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols, float* gpu_max_bitmask) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
@@ -979,21 +979,37 @@ __global__ void cuda_max_pool_kernel(float* mat1_buffer, int mat1_rows, int mat1
 
         float result = max(max(block_00, block_01), max(block_10, block_11));
 
+        if (result == block_00) {
+            gpu_max_bitmask[block_start_row * mat1_cols + block_start_col] = 1.0;
+        } else if (result == block_01) {
+            gpu_max_bitmask[block_start_row * mat1_cols + block_start_col + 1] = 1.0;
+        } else if (result == block_10) {
+            gpu_max_bitmask[(block_start_row + 1) * mat1_cols + block_start_col] = 1.0;
+        } else if (result == block_11) {
+            gpu_max_bitmask[(block_start_row + 1) * mat1_cols + block_start_col + 1] = 1.0;
+        }
+
+        // Write maxpool result
         int output_index = tidY * out_cols + tidX;
         out_buffer[output_index] = result;
     }
 }
 
 // 2x2 since other reduction sizes are not really used
-size_t cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
+Tuple cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     // Create output buffer
     int out_rows = mat1_rows / 2 + mat1_rows % 2;
     int out_cols = mat1_cols / 2 + mat1_cols % 2;
     size_t out_mat_id = register_matrix(out_rows, out_cols);
+    size_t max_bitmask = register_matrix(mat1_rows, mat1_cols);
 
     // Get the gpu buffers to operate on
     float* gpu_mat1_buffer = mat_map[mat1_id];
     float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_max_bitmask = mat_map[max_bitmask];
+
+    // Zero out bitmask
+    cudaMemset(gpu_max_bitmask, 0.0, mat1_rows * mat1_cols * sizeof(float));
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -1001,11 +1017,11 @@ size_t cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
 
     // Run the kernels
-    cuda_max_pool_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    cuda_max_pool_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols, gpu_max_bitmask);
     gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
-    return out_mat_id;
+    return Tuple{out_mat_id, max_bitmask};
 }
 
 __global__ void cuda_nearest_neighbor_2x_upsample_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
@@ -1055,7 +1071,7 @@ __global__ void cuda_rotate_180_kernel(float* mat1_buffer, int mat1_rows, int ma
         // y_output = height - y_current
         int x_out = mat1_cols - tidX - 1;
         int y_out = mat1_rows - tidY - 1;
-        int input = mat1_buffer[tidY * mat1_cols + tidX];
+        float input = mat1_buffer[tidY * mat1_cols + tidX];
 
         int output_index = y_out * out_cols + x_out;
         out_buffer[output_index] = input;

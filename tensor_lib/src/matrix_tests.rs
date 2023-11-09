@@ -297,7 +297,7 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![5.0]]);
 
-    let observed_result = test_data.max_pool();
+    let (observed_result, _) = test_data.max_pool();
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -308,7 +308,7 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![5.0, 23.0]]);
 
-    let observed_result = test_data.max_pool();
+    let (observed_result, _) = test_data.max_pool();
 
     expected_result.print();
     observed_result.print();
@@ -331,10 +331,35 @@ mod tests {
       })
       .collect_vec();
 
-    let mat_gpu = Matrix::new_2d(&data).max_pool();
+    let (mat_gpu, _) = Matrix::new_2d(&data).max_pool();
     let mat_cpu = MatrixCpu::new_2d(&data).max_pool();
 
     assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 8));
+  }
+
+  #[test]
+  fn max_pool_bitmask_gpu() {
+    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0, -100.0], vec![4.0, 5.0, 23.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![0.0, 0.0, 0.0], vec![0.0, 1.0, 1.0]]);
+
+    let (_, observed_result) = test_data.max_pool();
+
+    expected_result.print();
+    observed_result.print();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn max_pool_bitmask_gpu_2() {
+    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0], vec![4.0, 5.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![0.0, 0.0], vec![0.0, 1.0]]);
+
+    let (_, observed_result) = test_data.max_pool();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   #[test]
@@ -372,11 +397,11 @@ mod tests {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
-      vec![7.0, 8.0, 9.0],
+      vec![7.7, 8.0, 9.0],
     ]);
 
     let expected_result = Matrix::new_2d(&vec![
-      vec![9.0, 8.0, 7.0],
+      vec![9.0, 8.0, 7.7],
       vec![6.0, 5.0, 4.0],
       vec![3.0, 2.0, 1.0],
     ]);
@@ -412,8 +437,8 @@ mod tests {
       })
       .collect_vec();
 
-    let mat_gpu = Matrix::new_2d(&data).max_pool();
-    let mat_cpu = MatrixCpu::new_2d(&data).max_pool();
+    let mat_gpu = Matrix::new_2d(&data).rotate_180();
+    let mat_cpu = MatrixCpu::new_2d(&data).rotate_180();
 
     assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 8));
   }

@@ -530,15 +530,18 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn max_pool(&self) -> Self {
-    let result_id: usize;
+  pub fn max_pool(&self) -> (Self, Self) {
+    let result_ids: Tuple;
 
-    unsafe { result_id = cuda_max_pool(self.id, self.rows, self.columns) }
+    unsafe { result_ids = cuda_max_pool(self.id, self.rows, self.columns) }
 
     let output_rows = self.rows / 2 + self.rows % 2;
     let output_columns = self.columns / 2 + self.columns % 2;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    let pooled_matrix = Matrix::new(result_ids.a, output_rows, output_columns);
+    let bitmask_matrix = Matrix::new(result_ids.b, self.rows, self.columns);
+
+    return (pooled_matrix, bitmask_matrix);
   }
 
   pub fn nearest_neighbor_2x_upsample(&self) -> Self {
