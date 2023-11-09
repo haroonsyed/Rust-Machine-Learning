@@ -118,9 +118,10 @@ pub trait CNN_Layer: Send {
 }
 
 struct ConvolutionalLayerRust {
-  pub filters: Vec<Vec<Matrix>>,    // Filter -> Depth
-  pub biases: Vec<Matrix>,          // Filter
-  pub prev_input: Vec<Vec<Matrix>>, // Sample -> Depth
+  pub filters: Vec<Vec<Matrix>>,     // Filter -> Depth
+  pub biases: Vec<Matrix>,           // Filter
+  pub prev_input: Vec<Vec<Matrix>>,  // Sample -> Depth
+  pub prev_output: Vec<Vec<Matrix>>, // Sample -> Depth
 }
 
 impl CNN_Layer for ConvolutionalLayerRust {
@@ -160,6 +161,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
     }
 
     self.prev_input = input.clone();
+    self.prev_output = sample_filter_outputs.clone();
     return sample_filter_outputs;
   }
 
@@ -173,10 +175,11 @@ impl CNN_Layer for ConvolutionalLayerRust {
     // n is the filter
     // m is the channel
 
-    // Apply relu prime to error
-    for sample_error in sample_output_errors {
-      for filter_error in sample_error {
-        filter_error.element_ReLU_prime_inplace();
+    // Apply relu prime
+    for (sample_error, sample_output) in izip!(sample_output_errors.iter(), self.prev_output.iter())
+    {
+      for (filter_error, filter_output) in izip!(sample_error, sample_output) {
+        filter_error.element_multiply_inplace(&filter_output.element_ReLU_prime());
       }
     }
 
@@ -229,26 +232,49 @@ impl CNN_Layer for ConvolutionalLayerRust {
 }
 
 struct MaxPoolLayerRust {
-  pub prev_input: Vec<Vec<Matrix>>, // Necessary for bitmask on backprop
+  pub prev_input_bm: Vec<Vec<Matrix>>,
 }
 
 impl CNN_Layer for MaxPoolLayerRust {
   fn feed_forward(&mut self, input: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
     let mut pooled_samples = Vec::new();
+    let mut input_bm = Vec::new();
     for sample in input {
       let mut pooled_channels = Vec::new();
+      let mut input_bm_channels = Vec::new();
       for channel in sample {
-        pooled_channels.push(channel.max_pool());
+        let (pooled_channel, bitmask) = channel.max_pool();
+        pooled_channels.push(pooled_channel);
+        input_bm_channels.push(bitmask);
       }
       pooled_samples.push(pooled_channels);
+      input_bm.push(input_bm_channels);
     }
 
-    self.prev_input = input.clone();
+    self.prev_input_bm = input_bm;
     return pooled_samples;
   }
 
   fn backpropogation(&mut self, error: &Vec<Vec<Matrix>>, learning_rate: f32) -> Vec<Vec<Matrix>> {
-    return Vec::new();
+    // Max pool is not differentiable, so we will just pass the error back to the max value
+    // Element wise multiply max mask by nearest_neighbor upscaled error
+
+    let mut sample_input_errors = Vec::new();
+
+    for (sample_error, sample_bitmasks) in izip!(error, self.prev_input_bm.iter()) {
+      let mut channel_input_errors = Vec::new();
+      for (channel_error, bitmask) in izip!(sample_error, sample_bitmasks) {
+        // Upsample the error
+        let upsampled_error = channel_error.nearest_neighbor_2x_upsample();
+
+        // Element wise multiply
+        upsampled_error.element_multiply_inplace(bitmask);
+        channel_input_errors.push(upsampled_error);
+      }
+      sample_input_errors.push(channel_input_errors);
+    }
+
+    return sample_input_errors;
   }
 }
 
