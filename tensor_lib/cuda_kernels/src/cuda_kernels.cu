@@ -1008,6 +1008,43 @@ size_t cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     return out_mat_id;
 }
 
+__global__ void cuda_nearest_neighbor_2x_upsample_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
+    // Upsample by nearest neighbor
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = mat1[i/2][j/2]
+        int mat1_index = (tidY / 2) * mat1_cols + (tidX / 2);
+
+        int output_index = tidY * out_cols + tidX;
+        out_buffer[output_index] = mat1_buffer[mat1_index];
+    }
+}
+
+size_t cuda_nearest_neighbor_2x_upsample(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
+    // Create output buffer
+    int out_rows = mat1_rows * 2;
+    int out_cols = mat1_cols * 2;
+    size_t out_mat_id = register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    float* gpu_mat1_buffer = mat_map[mat1_id];
+    float* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK_X = 16;
+    const int THREADS_PER_BLOCK_Y = 16;
+
+    dim3 block_dim(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
+    cuda_nearest_neighbor_2x_upsample_kernel<<<grid_dim, block_dim>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Return result matrix id
+    return out_mat_id;
+}
+
 __global__ void cuda_rotate_180_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;

@@ -92,6 +92,11 @@ extern "C" {
   pub fn cuda_sum_columns(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_transpose(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_max_pool(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
+  pub fn cuda_nearest_neighbor_2x_upsample(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat2_rows: usize,
+  ) -> usize;
   pub fn cuda_rotate_180(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_convolution(
     mat1_id: usize,

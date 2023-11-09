@@ -541,6 +541,17 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
+  pub fn nearest_neighbor_2x_upsample(&self) -> Self {
+    let result_id: usize;
+
+    unsafe { result_id = cuda_nearest_neighbor_2x_upsample(self.id, self.rows, self.columns) }
+
+    let output_rows = self.rows * 2;
+    let output_columns = self.columns * 2;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
   pub fn rotate_180(&self) -> Self {
     let result_id: usize;
 

@@ -871,6 +871,31 @@ mod tests {
     assert!(1 == 1);
   }
 
+  #[test]
+  fn nearest_neighbor_gpu_2x_upsample_1() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0],
+      vec![5.0, 6.0, 7.0, 8.0],
+      vec![9.0, 10.0, 11.0, 12.0],
+      vec![13.0, 14.0, 15.0, 16.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0],
+      vec![1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0],
+      vec![5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0, 8.0],
+      vec![5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0, 8.0],
+      vec![9.0, 9.0, 10.0, 10.0, 11.0, 11.0, 12.0, 12.0],
+      vec![9.0, 9.0, 10.0, 10.0, 11.0, 11.0, 12.0, 12.0],
+      vec![13.0, 13.0, 14.0, 14.0, 15.0, 15.0, 16.0, 16.0],
+      vec![13.0, 13.0, 14.0, 14.0, 15.0, 15.0, 16.0, 16.0],
+    ]);
+
+    let observed_result = test_data.nearest_neighbor_2x_upsample();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
     if a.rows != b.rows || a.columns != b.columns {
       println!("Matrices not the same shape!");
