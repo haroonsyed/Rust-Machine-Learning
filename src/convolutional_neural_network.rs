@@ -4,10 +4,7 @@ use tensor_lib::*;
 use crate::basic_neural_network::BasicNeuralNetworkRust;
 
 pub struct ConvolutionalNeuralNetworkRust {
-  num_classifications: usize,
-  input_width: usize,
-  input_height: usize,
-  input_depth: usize,
+  input_dimensions: (usize, usize, usize), // Height, Width, Depth
   layers: Vec<Box<dyn CNN_Layer>>,
   fully_connected_layer: FullyConnectedLayer,
 }
@@ -15,30 +12,22 @@ pub struct ConvolutionalNeuralNetworkRust {
 impl ConvolutionalNeuralNetworkRust {
   pub fn new(
     num_classifications: usize,
-    input_width: usize,
     input_height: usize,
+    input_width: usize,
     input_depth: usize,
     filters: Vec<Box<dyn CNN_Layer>>,
   ) -> Self {
-    let conv_layer_output_height = 10;
-    let conv_layer_output_width = 10;
-    let conv_layer_output_depth = 10;
+    let (last_filter_output_height, last_filter_output_width, last_filter_output_depth) =
+      filters.last().unwrap().get_output_dimensions();
     return Self {
-      num_classifications,
-      input_width,
-      input_height,
-      input_depth,
+      input_dimensions: (input_height, input_width, input_depth),
       layers: filters,
-      fully_connected_layer: FullyConnectedLayer {
-        // Move to new() function
-        input_width: conv_layer_output_width,
-        input_height: conv_layer_output_height,
-        fully_connected_layer: BasicNeuralNetworkRust::new(
-          Vec::new(),
-          conv_layer_output_width * conv_layer_output_height * conv_layer_output_depth,
-          num_classifications,
-        ),
-      },
+      fully_connected_layer: FullyConnectedLayer::new(
+        last_filter_output_height,
+        last_filter_output_width,
+        last_filter_output_depth,
+        num_classifications,
+      ),
     };
   }
 
@@ -46,12 +35,13 @@ impl ConvolutionalNeuralNetworkRust {
     &self,
     observations: &Vec<Vec<Vec<f32>>>,
   ) -> Vec<Vec<Matrix>> {
+    let (input_height, input_width, _) = self.input_dimensions;
     return observations
       .iter()
       .map(|sample| {
         sample
           .iter()
-          .map(|channel_data| Matrix::new_1d(channel_data, self.input_height, self.input_width))
+          .map(|channel_data| Matrix::new_1d(channel_data, input_height, input_width))
           .collect_vec()
       })
       .collect_vec();
@@ -115,16 +105,28 @@ impl ConvolutionalNeuralNetworkRust {
 pub trait CNN_Layer: Send {
   fn feed_forward(&mut self, input: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>>;
   fn backpropogation(&mut self, error: &Vec<Vec<Matrix>>, learning_rate: f32) -> Vec<Vec<Matrix>>;
+  fn get_input_dimensions(&self) -> (usize, usize, usize);
+  fn get_output_dimensions(&self) -> (usize, usize, usize);
 }
 
 struct ConvolutionalLayerRust {
-  pub filters: Vec<Vec<Matrix>>,     // Filter -> Depth
-  pub biases: Vec<Matrix>,           // Filter
-  pub prev_input: Vec<Vec<Matrix>>,  // Sample -> Depth
-  pub prev_output: Vec<Vec<Matrix>>, // Sample -> Depth
+  pub filters: Vec<Vec<Matrix>>,                // Filter -> Depth
+  pub biases: Vec<Matrix>,                      // Filter
+  pub prev_input: Vec<Vec<Matrix>>,             // Sample -> Depth
+  pub prev_output: Vec<Vec<Matrix>>,            // Sample -> Depth
+  pub input_dimensions: (usize, usize, usize),  // Height, Width, Depth
+  pub output_dimensions: (usize, usize, usize), // Height, Width, Depth
 }
 
 impl CNN_Layer for ConvolutionalLayerRust {
+  fn get_input_dimensions(&self) -> (usize, usize, usize) {
+    return self.input_dimensions;
+  }
+
+  fn get_output_dimensions(&self) -> (usize, usize, usize) {
+    return self.output_dimensions;
+  }
+
   fn feed_forward(&mut self, input: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
     let mut sample_filter_outputs = Vec::new();
 
@@ -233,9 +235,19 @@ impl CNN_Layer for ConvolutionalLayerRust {
 
 struct MaxPoolLayerRust {
   pub prev_input_bm: Vec<Vec<Matrix>>,
+  pub input_dimensions: (usize, usize, usize), // Height, Width, Depth
+  pub output_dimensions: (usize, usize, usize), // Height, Width, Depth
 }
 
 impl CNN_Layer for MaxPoolLayerRust {
+  fn get_input_dimensions(&self) -> (usize, usize, usize) {
+    return self.input_dimensions;
+  }
+
+  fn get_output_dimensions(&self) -> (usize, usize, usize) {
+    return self.output_dimensions;
+  }
+
   fn feed_forward(&mut self, input: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
     let mut pooled_samples = Vec::new();
     let mut input_bm = Vec::new();
@@ -255,7 +267,7 @@ impl CNN_Layer for MaxPoolLayerRust {
     return pooled_samples;
   }
 
-  fn backpropogation(&mut self, error: &Vec<Vec<Matrix>>, learning_rate: f32) -> Vec<Vec<Matrix>> {
+  fn backpropogation(&mut self, error: &Vec<Vec<Matrix>>, _learning_rate: f32) -> Vec<Vec<Matrix>> {
     // Max pool is not differentiable, so we will just pass the error back to the max value
     // Element wise multiply max mask by nearest_neighbor upscaled error
 
@@ -279,12 +291,27 @@ impl CNN_Layer for MaxPoolLayerRust {
 }
 
 struct FullyConnectedLayer {
-  pub input_width: usize,
-  pub input_height: usize,
+  pub input_dimensions: (usize, usize, usize), // Height, Width, Depth
   pub fully_connected_layer: BasicNeuralNetworkRust,
 }
 
 impl FullyConnectedLayer {
+  pub fn new(
+    input_height: usize,
+    input_width: usize,
+    input_depth: usize,
+    num_classifications: usize,
+  ) -> Self {
+    return Self {
+      input_dimensions: (input_height, input_width, input_depth),
+      fully_connected_layer: BasicNeuralNetworkRust::new(
+        Vec::new(),
+        input_height * input_width * input_depth,
+        num_classifications,
+      ),
+    };
+  }
+
   fn classify(&mut self, input: &Vec<Vec<Matrix>>) -> Vec<f32> {
     let flattened_input = self.flatten(input);
     return self.fully_connected_layer.classify_matrix(&flattened_input);
@@ -336,10 +363,11 @@ impl FullyConnectedLayer {
     // Now unflatten the output error row by row back to input shape
     // Because I decided not to treat each sample separately to FC I need to double unflatten (sample -> depth)
     let sample_errors = unflatten_array_strided_to_matrices(&fc_error, 1, fc_error.columns);
+    let (input_height, input_width, _) = self.input_dimensions;
     let unflattened_errors = sample_errors
       .iter()
       .map(|sample_error| {
-        unflatten_array_strided_to_matrices(&sample_error, self.input_height, self.input_width)
+        unflatten_array_strided_to_matrices(&sample_error, input_height, input_width)
       })
       .collect_vec();
 
