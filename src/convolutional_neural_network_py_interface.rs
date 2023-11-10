@@ -17,19 +17,15 @@ impl ConvolutionalNeuralNetwork {
   #[new]
   fn new(
     num_classifications: usize,
-    max_pool_stride: usize,
-    input_width: usize,
     input_height: usize,
+    input_width: usize,
     input_depth: usize,
-    filters_per_conv_layer: Vec<usize>,
-    filter_dimension: usize, // Must be odd
   ) -> Self {
     let network = ConvolutionalNeuralNetworkRust::new(
       num_classifications,
-      input_width,
       input_height,
+      input_width,
       input_depth,
-      Vec::new(),
     );
 
     // Cleanup and return
@@ -37,6 +33,25 @@ impl ConvolutionalNeuralNetwork {
       network,
       batch_loader: Option::None,
     };
+  }
+
+  fn add_convolutional_layer(
+    &mut self,
+    filter_height: usize,
+    filter_width: usize,
+    filter_count: usize,
+  ) {
+    self
+      .network
+      .add_convolutional_layer(filter_height, filter_width, filter_count);
+  }
+
+  fn add_max_pool_Layer(&mut self) {
+    self.network.add_max_pool_layer();
+  }
+
+  fn add_fully_connected_layer(&mut self) {
+    self.network.add_fully_connected_layer();
   }
 
   fn set_image_loader(&mut self, parent_folder: String, sample_width: usize, sample_height: usize) {
@@ -84,27 +99,3 @@ impl ConvolutionalNeuralNetwork {
     return Ok(HashMap::new());
   }
 }
-
-// trait ConvLayerPython {
-//   fn get_rust_layer() -> ConvolutionalLayerRust;
-// }
-
-// #[pyclass]
-// struct ConvolutionalLayer {
-//   pub layer: ConvolutionalLayerRust,
-// }
-
-// #[pyclass]
-// struct FlattenLayer {
-//   pub layer: FlattenLayerRust,
-// }
-
-// #[pyclass]
-// struct FullyConnectedLayer {
-//   pub layer: FullyConnectedLayerRust,
-// }
-
-// #[pyclass]
-// struct FullyConnectedLayer {
-//   pub layer: FullyConnectedLayerRust,
-// }

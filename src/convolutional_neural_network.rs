@@ -4,9 +4,10 @@ use tensor_lib::*;
 use crate::basic_neural_network::BasicNeuralNetworkRust;
 
 pub struct ConvolutionalNeuralNetworkRust {
-  input_dimensions: (usize, usize, usize), // Height, Width, Depth
-  layers: Vec<Box<dyn CNN_Layer>>,
-  fully_connected_layer: FullyConnectedLayer,
+  pub input_dimensions: (usize, usize, usize), // Height, Width, Depth
+  pub num_classifications: usize,
+  pub layers: Vec<Box<dyn CNN_Layer>>,
+  fully_connected_layer: Option<FullyConnectedLayer>,
 }
 
 impl ConvolutionalNeuralNetworkRust {
@@ -15,20 +16,66 @@ impl ConvolutionalNeuralNetworkRust {
     input_height: usize,
     input_width: usize,
     input_depth: usize,
-    filters: Vec<Box<dyn CNN_Layer>>,
   ) -> Self {
-    let (last_filter_output_height, last_filter_output_width, last_filter_output_depth) =
-      filters.last().unwrap().get_output_dimensions();
     return Self {
       input_dimensions: (input_height, input_width, input_depth),
-      layers: filters,
-      fully_connected_layer: FullyConnectedLayer::new(
-        last_filter_output_height,
-        last_filter_output_width,
-        last_filter_output_depth,
-        num_classifications,
-      ),
+      num_classifications,
+      layers: Vec::new(),
+      fully_connected_layer: None,
     };
+  }
+
+  pub fn add_convolutional_layer(
+    &mut self,
+    filter_height: usize,
+    filter_width: usize,
+    filter_count: usize,
+  ) {
+    let (input_height, input_width, input_depth) = self
+      .layers
+      .last()
+      .map_or(self.input_dimensions, |layer| layer.get_output_dimensions());
+
+    self.layers.push(Box::new(ConvolutionalLayerRust::new(
+      input_height,
+      input_width,
+      input_depth,
+      filter_height,
+      filter_width,
+      filter_count,
+    )));
+  }
+
+  pub fn add_max_pool_layer(&mut self) {
+    let (input_height, input_width, input_depth) = self
+      .layers
+      .last()
+      .map_or(self.input_dimensions, |layer| layer.get_output_dimensions());
+
+    self.layers.push(Box::new(MaxPoolLayerRust::new(
+      input_height,
+      input_width,
+      input_depth,
+    )));
+  }
+
+  pub fn add_fully_connected_layer(&mut self) {
+    // Check if network is finalized
+    if self.fully_connected_layer.is_some() {
+      panic!("Network is already finalized and has a fully connected layer!");
+    }
+
+    let (input_height, input_width, input_depth) = self
+      .layers
+      .last()
+      .map_or(self.input_dimensions, |layer| layer.get_output_dimensions());
+
+    self.fully_connected_layer = Some(FullyConnectedLayer::new(
+      input_height,
+      input_width,
+      input_depth,
+      self.num_classifications,
+    ));
   }
 
   fn convert_observations_to_matrices(
@@ -54,7 +101,17 @@ impl ConvolutionalNeuralNetworkRust {
     // Feed forward
     let filter_outputs = self.feed_forward(&observations_matrices);
 
-    return self.fully_connected_layer.classify(&filter_outputs);
+    // Check none
+    if self.fully_connected_layer.is_none() {
+      panic!("Fully Connected Layer Is Missing!");
+    }
+
+    // Classify
+    return self
+      .fully_connected_layer
+      .as_mut()
+      .unwrap()
+      .classify(&filter_outputs);
   }
 
   pub fn train(
@@ -70,9 +127,17 @@ impl ConvolutionalNeuralNetworkRust {
     let filter_outputs = self.feed_forward(&observations_matrices);
 
     // Train through FC
-    let fc_error = self
-      .fully_connected_layer
-      .train(&filter_outputs, labels, learning_rate);
+
+    // Check none
+    if self.fully_connected_layer.is_none() {
+      panic!("Fully Connected Layer Is Missing!");
+    }
+    let fc_error =
+      self
+        .fully_connected_layer
+        .as_mut()
+        .unwrap()
+        .train(&filter_outputs, labels, learning_rate);
 
     // Backpropogate
     self.backpropogation(fc_error, learning_rate);
@@ -109,13 +174,64 @@ pub trait CNN_Layer: Send {
   fn get_output_dimensions(&self) -> (usize, usize, usize);
 }
 
-struct ConvolutionalLayerRust {
+pub struct ConvolutionalLayerRust {
   pub filters: Vec<Vec<Matrix>>,                // Filter -> Depth
   pub biases: Vec<Matrix>,                      // Filter
   pub prev_input: Vec<Vec<Matrix>>,             // Sample -> Depth
   pub prev_output: Vec<Vec<Matrix>>,            // Sample -> Depth
   pub input_dimensions: (usize, usize, usize),  // Height, Width, Depth
   pub output_dimensions: (usize, usize, usize), // Height, Width, Depth
+}
+
+impl ConvolutionalLayerRust {
+  pub fn new(
+    input_height: usize,
+    input_width: usize,
+    input_depth: usize,
+    filter_height: usize,
+    filter_width: usize,
+    filter_count: usize,
+  ) -> Self {
+    let input_dimensions = (input_height, input_width, input_depth);
+    let output_dimensions = (
+      input_height - filter_height + 1,
+      input_width - filter_width + 1,
+      filter_count,
+    );
+
+    let mut filters = Vec::new();
+    let mut biases = Vec::new();
+    let prev_input = Vec::new();
+    let prev_output = Vec::new();
+
+    // Create the filters
+    for _ in 0..filter_count {
+      let mut filter = Vec::new();
+      for _ in 0..input_depth {
+        filter.push(Matrix::new_random(
+          0.0,
+          f64::sqrt(2.0 / (filter_height * filter_width) as f64), // He initialization
+          filter_height,
+          filter_width,
+        ));
+      }
+      filters.push(filter);
+    }
+
+    // Create the biases
+    for _ in 0..filter_count {
+      biases.push(Matrix::zeros(output_dimensions.0, output_dimensions.1));
+    }
+
+    return Self {
+      filters,
+      biases,
+      prev_input,
+      prev_output,
+      input_dimensions,
+      output_dimensions,
+    };
+  }
 }
 
 impl CNN_Layer for ConvolutionalLayerRust {
@@ -233,10 +349,23 @@ impl CNN_Layer for ConvolutionalLayerRust {
   }
 }
 
-struct MaxPoolLayerRust {
+pub struct MaxPoolLayerRust {
   pub prev_input_bm: Vec<Vec<Matrix>>,
   pub input_dimensions: (usize, usize, usize), // Height, Width, Depth
   pub output_dimensions: (usize, usize, usize), // Height, Width, Depth
+}
+
+impl MaxPoolLayerRust {
+  pub fn new(input_height: usize, input_width: usize, input_depth: usize) -> Self {
+    let input_dimensions = (input_height, input_width, input_depth);
+    let output_dimensions = (input_height / 2, input_width / 2, input_depth);
+
+    return Self {
+      prev_input_bm: Vec::new(),
+      input_dimensions,
+      output_dimensions,
+    };
+  }
 }
 
 impl CNN_Layer for MaxPoolLayerRust {
