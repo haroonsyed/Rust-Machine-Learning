@@ -70,3 +70,7 @@ docs/_build/
 
 # Pyenv
 .python-version
+
+notebook_executables
+!notebook_executables/convert_all_notebooks.py
+!notebook_executables/convert_notebooks.py
