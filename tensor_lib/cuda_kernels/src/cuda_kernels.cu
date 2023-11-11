@@ -1038,10 +1038,11 @@ __global__ void cuda_nearest_neighbor_2x_upsample_kernel(float* mat1_buffer, int
     }
 }
 
-size_t cuda_nearest_neighbor_2x_upsample(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
+// Odd upsample will leave out one row and one column from the upsampled matrix
+size_t cuda_nearest_neighbor_2x_upsample(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, bool odd_upsample) {
     // Create output buffer
-    int out_rows = mat1_rows * 2;
-    int out_cols = mat1_cols * 2;
+    int out_rows = mat1_rows * 2 - (int)odd_upsample;
+    int out_cols = mat1_cols * 2 - (int)odd_upsample;
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on

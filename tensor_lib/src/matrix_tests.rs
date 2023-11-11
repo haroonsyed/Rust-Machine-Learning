@@ -916,7 +916,31 @@ mod tests {
       vec![13.0, 13.0, 14.0, 14.0, 15.0, 15.0, 16.0, 16.0],
     ]);
 
-    let observed_result = test_data.nearest_neighbor_2x_upsample();
+    let observed_result = test_data.nearest_neighbor_2x_upsample(false);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn nearest_neighbor_gpu_2x_upsample_odd() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0],
+      vec![5.0, 6.0, 7.0, 8.0],
+      vec![9.0, 10.0, 11.0, 12.0],
+      vec![13.0, 14.0, 15.0, 16.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0],
+      vec![1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0],
+      vec![5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0],
+      vec![5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0],
+      vec![9.0, 9.0, 10.0, 10.0, 11.0, 11.0, 12.0],
+      vec![9.0, 9.0, 10.0, 10.0, 11.0, 11.0, 12.0],
+      vec![13.0, 13.0, 14.0, 14.0, 15.0, 15.0, 16.0],
+    ]);
+
+    let observed_result = test_data.nearest_neighbor_2x_upsample(true);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }

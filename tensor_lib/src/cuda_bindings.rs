@@ -102,6 +102,7 @@ extern "C" {
     mat1_id: usize,
     mat1_rows: usize,
     mat2_rows: usize,
+    odd_upsample: bool,
   ) -> usize;
   pub fn cuda_rotate_180(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_convolution(

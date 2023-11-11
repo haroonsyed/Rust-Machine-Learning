@@ -86,7 +86,6 @@ def generate_2d_data_from_function(coefficients, xStart, xEnd, numOfPoints):
 def view_image(data, img_x, img_y, colorscale=""):
 
     img_data = []
-    img_data = data.reshape(img_x, img_y)
 
     if colorscale == "":
         # data is channel -> list of values
@@ -98,6 +97,8 @@ def view_image(data, img_x, img_y, colorscale=""):
         data = np.array(img_data)
         depth = 3
         img_data = data.reshape(img_x, img_y, depth)
+    else:
+        img_data = data.reshape(img_x, img_y)
 
     # Quick image viewer
     fig = px.imshow(img_data, color_continuous_scale=colorscale)

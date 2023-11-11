@@ -358,7 +358,11 @@ pub struct MaxPoolLayerRust {
 impl MaxPoolLayerRust {
   pub fn new(input_height: usize, input_width: usize, input_depth: usize) -> Self {
     let input_dimensions = (input_height, input_width, input_depth);
-    let output_dimensions = (input_height / 2, input_width / 2, input_depth);
+    let output_dimensions = (
+      input_height / 2 + input_height % 2,
+      input_width / 2 + input_height % 2,
+      input_depth,
+    );
 
     return Self {
       prev_input_bm: Vec::new(),
@@ -400,13 +404,14 @@ impl CNN_Layer for MaxPoolLayerRust {
     // Max pool is not differentiable, so we will just pass the error back to the max value
     // Element wise multiply max mask by nearest_neighbor upscaled error
 
+    let odd_input_columns = self.input_dimensions.1 % 2 == 1;
     let mut sample_input_errors = Vec::new();
 
     for (sample_error, sample_bitmasks) in izip!(error, self.prev_input_bm.iter()) {
       let mut channel_input_errors = Vec::new();
       for (channel_error, bitmask) in izip!(sample_error, sample_bitmasks) {
         // Upsample the error
-        let upsampled_error = channel_error.nearest_neighbor_2x_upsample();
+        let upsampled_error = channel_error.nearest_neighbor_2x_upsample(odd_input_columns);
 
         // Element wise multiply
         upsampled_error.element_multiply_inplace(bitmask);

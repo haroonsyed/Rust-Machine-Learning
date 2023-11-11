@@ -544,13 +544,15 @@ impl Matrix {
     return (pooled_matrix, bitmask_matrix);
   }
 
-  pub fn nearest_neighbor_2x_upsample(&self) -> Self {
+  pub fn nearest_neighbor_2x_upsample(&self, odd_upsample: bool) -> Self {
     let result_id: usize;
 
-    unsafe { result_id = cuda_nearest_neighbor_2x_upsample(self.id, self.rows, self.columns) }
+    unsafe {
+      result_id = cuda_nearest_neighbor_2x_upsample(self.id, self.rows, self.columns, odd_upsample)
+    }
 
-    let output_rows = self.rows * 2;
-    let output_columns = self.columns * 2;
+    let output_rows = self.rows * 2 - (odd_upsample as usize);
+    let output_columns = self.columns * 2 - (odd_upsample as usize);
 
     return Matrix::new(result_id, output_rows, output_columns);
   }

@@ -46,7 +46,7 @@ impl ConvolutionalNeuralNetwork {
       .add_convolutional_layer(filter_height, filter_width, filter_count);
   }
 
-  fn add_max_pool_Layer(&mut self) {
+  fn add_max_pool_layer(&mut self) {
     self.network.add_max_pool_layer();
   }
 
@@ -54,7 +54,7 @@ impl ConvolutionalNeuralNetwork {
     self.network.add_fully_connected_layer();
   }
 
-  fn set_image_loader(&mut self, parent_folder: String, sample_width: usize, sample_height: usize) {
+  fn set_image_loader(&mut self, parent_folder: String, sample_height: usize, sample_width: usize) {
     self.batch_loader = Option::Some(ImageBatchLoaderRust::new(
       parent_folder,
       sample_width,
