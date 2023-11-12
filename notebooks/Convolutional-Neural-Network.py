@@ -37,7 +37,7 @@ CNN.add_convolutional_layer(3, 3, 32)
 CNN.add_max_pool_layer()
 CNN.add_fully_connected_layer()
 
-image_directory = "../../data/animals-10/"
+image_directory = "../data/animals-10/"
 image_directory_path = os.path.abspath(image_directory)
 CNN.set_image_loader(image_directory_path, input_height, input_width)
 
