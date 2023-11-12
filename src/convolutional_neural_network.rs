@@ -210,7 +210,7 @@ impl ConvolutionalLayerRust {
       for _ in 0..input_depth {
         filter.push(Matrix::new_random(
           0.0,
-          f64::sqrt(2.0 / (filter_height * filter_width) as f64), // He initialization
+          f64::sqrt(2.0 / (filter_height * filter_width * input_depth) as f64), // He initialization
           filter_height,
           filter_width,
         ));
