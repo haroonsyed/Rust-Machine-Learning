@@ -1,5 +1,6 @@
 #include <cublas_v2.h>
 #include <cuda.h>
+#include <stdio.h>
 
 // Experiment to make access to map thread safe.
 // For now only use one thread with this library.

@@ -19,7 +19,7 @@ for file in Path(notebooks_path).iterdir():
 # Copy the entire 'data' folder one level above working_dir
 data_folder_source = Path(working_dir).parent / "data"
 data_folder_destination = Path(working_dir) / "data"
-shutil.copytree(data_folder_source, data_folder_destination)
+shutil.copytree(data_folder_source, data_folder_destination, dirs_exist_ok=True)
 
 notebooks = [
     file
