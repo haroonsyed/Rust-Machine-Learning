@@ -165,6 +165,15 @@ impl ConvolutionalNeuralNetworkRust {
       prev_layer_error = layer.backpropogation(&prev_layer_error, learning_rate);
     }
   }
+
+  pub fn get_performance_info(&self) -> Vec<(f32, f32)> {
+    return self
+      .fully_connected_layer
+      .as_ref()
+      .unwrap()
+      .fully_connected_layer
+      .get_performance_info();
+  }
 }
 
 pub trait CNN_Layer: Send {
