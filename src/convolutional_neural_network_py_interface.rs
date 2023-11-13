@@ -98,9 +98,4 @@ impl ConvolutionalNeuralNetwork {
     }
     return Ok(HashMap::new());
   }
-
-  fn get_performance_info(&self) -> PyResult<Vec<(f32, f32)>> {
-    let performance_info = self.network.get_performance_info();
-    return Ok(performance_info);
-  }
 }

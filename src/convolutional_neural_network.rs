@@ -165,15 +165,6 @@ impl ConvolutionalNeuralNetworkRust {
       prev_layer_error = layer.backpropogation(&prev_layer_error, learning_rate);
     }
   }
-
-  pub fn get_performance_info(&self) -> Vec<(f32, f32)> {
-    return self
-      .fully_connected_layer
-      .as_ref()
-      .unwrap()
-      .fully_connected_layer
-      .get_performance_info();
-  }
 }
 
 pub trait CNN_Layer: Send {
@@ -219,7 +210,7 @@ impl ConvolutionalLayerRust {
       for _ in 0..input_depth {
         filter.push(Matrix::new_random(
           0.0,
-          f64::sqrt(2.0 / (filter_height * filter_width) as f64), // He initialization
+          f64::sqrt(2.0 / (filter_height * filter_width * input_depth) as f64), // He initialization
           filter_height,
           filter_width,
         ));
@@ -298,8 +289,6 @@ impl CNN_Layer for ConvolutionalLayerRust {
     learning_rate: f32,
   ) -> Vec<Vec<Matrix>> {
     let mut sample_input_errors = Vec::new();
-    let normalization_factor = 1.0; // sample_input_errors.len() as f32;
-    let learning_rate = learning_rate / normalization_factor;
 
     // n is the filter
     // m is the channel
