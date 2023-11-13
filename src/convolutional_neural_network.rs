@@ -298,6 +298,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
     learning_rate: f32,
   ) -> Vec<Vec<Matrix>> {
     let mut sample_input_errors = Vec::new();
+    let learning_rate = learning_rate / sample_output_errors.len() as f32;
 
     // n is the filter
     // m is the channel
