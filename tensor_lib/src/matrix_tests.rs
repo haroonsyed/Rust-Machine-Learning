@@ -5,7 +5,7 @@ mod tests {
   use statrs::distribution::Normal;
 
   use crate::{
-    cuda_bindings::*, flatten_matrix_array, img2col, matrix_cpu::MatrixCpu,
+    convolution_packed, cuda_bindings::*, flatten_matrix_array, img2col, matrix_cpu::MatrixCpu,
     unflatten_array_to_matrices, ConvolutionType, Matrix,
   };
 
@@ -592,6 +592,42 @@ mod tests {
     let observed_result = test_data.convolution(&kernel, ConvolutionType::VALID);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn packed_convolution_valid_1() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+    let kernel_2 = Matrix::new_2d(&vec![vec![1.0, 1.0], vec![1.0, 1.0]]);
+
+    let mut expected_result = vec![Matrix::new_2d(&vec![vec![37.0, 47.0], vec![67.0, 77.0]]); 16];
+    expected_result.extend(vec![
+      Matrix::new_2d(&vec![
+        vec![12.0, 16.0],
+        vec![24.0, 28.0]
+      ]);
+      16
+    ]);
+
+    let mut observed_result = convolution_packed(
+      &vec![&test_data; 16],
+      &vec![&kernel; 16],
+      ConvolutionType::VALID,
+    );
+    observed_result.extend(convolution_packed(
+      &vec![&test_data; 16],
+      &vec![&kernel_2; 16],
+      ConvolutionType::VALID,
+    ));
+
+    izip!(observed_result, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
   }
 
   #[test]

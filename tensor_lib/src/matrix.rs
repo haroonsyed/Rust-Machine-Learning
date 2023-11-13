@@ -769,3 +769,69 @@ pub fn unflatten_array_strided_to_matrices(
     .map(|mat_id| Matrix::new(*mat_id, mat_rows, mat_cols))
     .collect_vec();
 }
+
+pub fn convolution_packed(
+  matrices: &Vec<&Matrix>,
+  kernels: &Vec<&Matrix>,
+  conv_type: ConvolutionType,
+) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+  let num_kernels = kernels.len();
+
+  if num_matrices != num_kernels {
+    panic!(
+      "Number of matrices must be equal to number of kernels! {} {}",
+      num_matrices, num_kernels
+    );
+  }
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+  let kernel_rows = kernels[0].rows;
+  let kernel_cols = kernels[0].columns;
+
+  if matches!(conv_type, ConvolutionType::SAME)
+    && (kernel_rows != kernel_cols || kernel_rows % 2 == 0)
+  {
+    panic!("Kernel must be square and odd for same convolution!");
+  }
+
+  let mat_ids = matrices.iter().map(|mat| mat.id).collect_vec();
+  let kernel_ids = kernels.iter().map(|kernel| kernel.id).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_convolution_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      kernel_ids.as_ptr() as *const c_ulonglong,
+      kernel_rows,
+      kernel_cols,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      conv_type,
+    );
+  }
+
+  let output_rows = match conv_type {
+    ConvolutionType::VALID => mat_rows - kernel_rows + 1,
+    ConvolutionType::SAME => mat_rows,
+    ConvolutionType::FULL => mat_rows + kernel_rows - 1,
+  };
+
+  let output_columns = match conv_type {
+    ConvolutionType::VALID => mat_cols - kernel_cols + 1,
+    ConvolutionType::SAME => mat_cols,
+    ConvolutionType::FULL => mat_cols + kernel_cols - 1,
+  };
+
+  return result_ids
+    .iter()
+    .map(|result_id| Matrix::new(*result_id, output_rows, output_columns))
+    .collect_vec();
+}

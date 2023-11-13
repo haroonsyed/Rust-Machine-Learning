@@ -114,6 +114,17 @@ extern "C" {
     kernel_cols: usize,
     conv_type: ConvolutionType,
   ) -> usize;
+  pub fn cuda_convolution_packed(
+    mat_ids: *const c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    kernel_ids: *const c_ulonglong,
+    kernel_rows: usize,
+    kernel_cols: usize,
+    out_ids: *mut c_ulonglong,
+    conv_type: ConvolutionType,
+  );
   pub fn cuda_img2col(
     mat_ids: *const c_ulonglong,
     num_matrices: usize,
