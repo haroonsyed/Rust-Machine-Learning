@@ -1229,95 +1229,6 @@ size_t cuda_convolution_valid(size_t mat1_id, size_t mat1_rows, size_t mat1_cols
     return out_mat_id;
 }
 
-// Each block handles one matrix
-__global__ void cuda_convolution_kernel_packed_valid_1(float** mat_buffers, int num_matrices, int mat_rows, int mat_cols, float** kernel_buffers, int kernel_rows, int kernel_cols, float** out_buffers, int out_rows, int out_cols) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    if (current_matrix < num_matrices) {
-        // Grab the buffers
-        const float* mat_buffer = mat_buffers[current_matrix];
-        const float* kernel_buffer = kernel_buffers[current_matrix];
-        float* out_buffer = out_buffers[current_matrix];
-
-        // The work will be split among the threads in the block
-        // Each thread will work until of tidX or tidY is out of bounds
-#pragma unroll
-        while (tidY < out_rows) {
-#pragma unroll
-            while (tidX < out_cols) {
-                // Now perform convolution at this location
-                float result = 0.0;
-                const int kernel_top_left_row = tidY;
-                const int kernel_top_left_col = tidX;
-
-#pragma unroll 3
-                for (int m = 0; m < kernel_rows; m++) {
-#pragma unroll 3
-                    for (int n = 0; n < kernel_cols; n++) {
-                        const float mat1_val = mat_buffer[(kernel_top_left_row + m) * mat_cols + (kernel_top_left_col + n)];
-                        const float kernel_val = kernel_buffer[m * kernel_cols + n];
-                        result += mat1_val * kernel_val;
-                    }
-                }
-
-                const int out_index = tidY * out_cols + tidX;
-                out_buffer[out_index] = result;
-                tidX += blockDim.x;
-            }
-
-            tidX = threadIdx.x;
-            tidY += blockDim.y;
-        }
-    }
-}
-
-// Should be used when you have a lot of small matrices to convolve
-void cuda_convolution_valid_packed(size_t* matrices_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_mat_ids) {
-    // Create output buffer
-    // Dimension of output is input - kernel + 1
-    int out_rows = mat_rows - kernel_rows + 1;
-    int out_cols = mat_cols - kernel_cols + 1;
-
-    // Register output matrices
-    for (int i = 0; i < num_matrices; i++) {
-        size_t out_mat_id = register_matrix(out_rows, out_cols);
-        out_mat_ids[i] = out_mat_id;
-    }
-
-    // Get the gpu buffers to operate on
-    std::vector<float*> gpu_mat_buffers;
-    std::vector<float*> gpu_kernel_buffers;
-    std::vector<float*> gpu_out_buffers;
-
-    for (int i = 0; i < num_matrices; i++) {
-        gpu_mat_buffers.push_back(mat_map[matrices_ids[i]]);
-        gpu_kernel_buffers.push_back(mat_map[kernel_ids[i]]);
-        gpu_out_buffers.push_back(mat_map[out_mat_ids[i]]);
-    }
-
-    // Upload gpu buffers
-    float** gpu_mat_buffers_ptr;
-    cudaMallocAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, 0);
-    cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
-    float** gpu_kernel_buffers_ptr;
-    cudaMallocAsync(&gpu_kernel_buffers_ptr, sizeof(float*) * num_matrices, 0);
-    cudaMemcpy(gpu_kernel_buffers_ptr, &gpu_kernel_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
-    float** gpu_out_buffers_ptr;
-    cudaMallocAsync(&gpu_out_buffers_ptr, sizeof(float*) * num_matrices, 0);
-    cudaMemcpy(gpu_out_buffers_ptr, &gpu_out_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim(num_matrices, 1, 1);
-
-    // Run the kernels
-    cuda_convolution_kernel_packed_valid_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_ptr, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_ptr, kernel_rows, kernel_cols, gpu_out_buffers_ptr, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-}
-
 // Naive implementation
 __global__ void cuda_convolution_kernel_same_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
@@ -1443,13 +1354,280 @@ size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size
     }
 }
 
+// Each block handles one matrix
+__global__ void cuda_convolution_kernel_packed_valid_1(float** mat_buffers, int num_matrices, int mat_rows, int mat_cols, float** kernel_buffers, int kernel_rows, int kernel_cols, float** out_buffers, int out_rows, int out_cols) {
+    const int current_matrix = blockIdx.x;
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    if (current_matrix < num_matrices) {
+        // Grab the buffers
+        const float* mat_buffer = mat_buffers[current_matrix];
+        const float* kernel_buffer = kernel_buffers[current_matrix];
+        float* out_buffer = out_buffers[current_matrix];
+
+        // The work will be split among the threads in the block
+        // Each thread will work until of tidX or tidY is out of bounds
+        while (tidY < out_rows) {
+            while (tidX < out_cols) {
+                // Now perform convolution at this location
+                float result = 0.0;
+                const int kernel_top_left_row = tidY;
+                const int kernel_top_left_col = tidX;
+
+#pragma unroll 3
+                for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
+                    for (int n = 0; n < kernel_cols; n++) {
+                        const float mat1_val = mat_buffer[(kernel_top_left_row + m) * mat_cols + (kernel_top_left_col + n)];
+                        const float kernel_val = kernel_buffer[m * kernel_cols + n];
+                        result += mat1_val * kernel_val;
+                    }
+                }
+
+                const int out_index = tidY * out_cols + tidX;
+                out_buffer[out_index] = result;
+                tidX += blockDim.x;
+            }
+
+            tidX = threadIdx.x;
+            tidY += blockDim.y;
+        }
+    }
+}
+
+// Should be used when you have a lot of small matrices to convolve
+void cuda_convolution_valid_packed(size_t* matrices_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_mat_ids) {
+    // Create output buffer
+    // Dimension of output is input - kernel + 1
+    int out_rows = mat_rows - kernel_rows + 1;
+    int out_cols = mat_cols - kernel_cols + 1;
+
+    // Register output matrices
+    for (int i = 0; i < num_matrices; i++) {
+        size_t out_mat_id = register_matrix(out_rows, out_cols);
+        out_mat_ids[i] = out_mat_id;
+    }
+
+    // Get the gpu buffers to operate on
+    std::vector<float*> gpu_mat_buffers;
+    std::vector<float*> gpu_kernel_buffers;
+    std::vector<float*> gpu_out_buffers;
+
+    for (int i = 0; i < num_matrices; i++) {
+        gpu_mat_buffers.push_back(mat_map[matrices_ids[i]]);
+        gpu_kernel_buffers.push_back(mat_map[kernel_ids[i]]);
+        gpu_out_buffers.push_back(mat_map[out_mat_ids[i]]);
+    }
+
+    // Upload gpu buffers
+    float** gpu_mat_buffers_ptr;
+    cudaMallocAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, 0);
+    cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+    float** gpu_kernel_buffers_ptr;
+    cudaMallocAsync(&gpu_kernel_buffers_ptr, sizeof(float*) * num_matrices, 0);
+    cudaMemcpy(gpu_kernel_buffers_ptr, &gpu_kernel_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+    float** gpu_out_buffers_ptr;
+    cudaMallocAsync(&gpu_out_buffers_ptr, sizeof(float*) * num_matrices, 0);
+    cudaMemcpy(gpu_out_buffers_ptr, &gpu_out_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 16;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim(num_matrices, 1, 1);
+
+    // Run the kernels
+    cuda_convolution_kernel_packed_valid_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_ptr, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_ptr, kernel_rows, kernel_cols, gpu_out_buffers_ptr, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
+}
+
+// Each block handles one convolution
+__global__ void cuda_convolution_kernel_packed_same_1(float** mat_buffers, int num_matrices, int mat_rows, int mat_cols, float** kernel_buffers, int kernel_rows, int kernel_cols, float** out_buffers, int out_rows, int out_cols) {
+    const int current_matrix = blockIdx.x;
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    if (current_matrix < num_matrices) {
+        // Grab the buffers
+        const float* mat_buffer = mat_buffers[current_matrix];
+        const float* kernel_buffer = kernel_buffers[current_matrix];
+        float* out_buffer = out_buffers[current_matrix];
+
+        // The work will be split among the threads in the block
+        // Each thread will work until of tidX or tidY is out of bounds
+        while (tidY < out_rows) {
+            while (tidX < out_cols) {
+                float result = 0.0;
+                const int apothem = kernel_rows / 2;
+#pragma unroll 3
+                for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
+                    for (int n = 0; n < kernel_cols; n++) {
+                        int input_row = m - apothem + tidY;
+                        int input_col = n - apothem + tidX;
+                        bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
+                        bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
+
+                        if (input_row_in_bounds && input_col_in_bounds) {
+                            const int curr_mat1_index = input_row * mat_cols + input_col;
+                            const int curr_kernel_index = m * kernel_cols + n;
+                            result += mat_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
+                        }
+                    }
+                }
+
+                int output_index = tidY * out_cols + tidX;
+                out_buffer[output_index] = result;
+                tidX += blockDim.x;
+            }
+
+            tidX = threadIdx.x;
+            tidY += blockDim.y;
+        }
+    }
+}
+
+// Should be used when you have a lot of small matrices to convolve
+void cuda_convolution_same_packed(size_t* matrices_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_mat_ids) {
+    // Create output buffer
+    int out_rows = mat_rows;
+    int out_cols = mat_cols;
+
+    // Register output matrices
+    for (int i = 0; i < num_matrices; i++) {
+        size_t out_mat_id = register_matrix(out_rows, out_cols);
+        out_mat_ids[i] = out_mat_id;
+    }
+
+    // Get the gpu buffers to operate on
+    std::vector<float*> gpu_mat_buffers;
+    std::vector<float*> gpu_kernel_buffers;
+    std::vector<float*> gpu_out_buffers;
+
+    for (int i = 0; i < num_matrices; i++) {
+        gpu_mat_buffers.push_back(mat_map[matrices_ids[i]]);
+        gpu_kernel_buffers.push_back(mat_map[kernel_ids[i]]);
+        gpu_out_buffers.push_back(mat_map[out_mat_ids[i]]);
+    }
+
+    // Upload gpu buffers
+    float** gpu_mat_buffers_ptr;
+    cudaMallocAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, 0);
+    cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+    float** gpu_kernel_buffers_ptr;
+    cudaMallocAsync(&gpu_kernel_buffers_ptr, sizeof(float*) * num_matrices, 0);
+    cudaMemcpy(gpu_kernel_buffers_ptr, &gpu_kernel_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+    float** gpu_out_buffers_ptr;
+    cudaMallocAsync(&gpu_out_buffers_ptr, sizeof(float*) * num_matrices, 0);
+    cudaMemcpy(gpu_out_buffers_ptr, &gpu_out_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 16;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim(num_matrices, 1, 1);
+
+    // Run the kernels
+    cuda_convolution_kernel_packed_same_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_ptr, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_ptr, kernel_rows, kernel_cols, gpu_out_buffers_ptr, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
+}
+
+// Each block handles one convolution
+__global__ void cuda_convolution_kernel_packed_full_1(float** mat_buffers, int num_matrices, int mat_rows, int mat_cols, float** kernel_buffers, int kernel_rows, int kernel_cols, float** out_buffers, int out_rows, int out_cols) {
+    const int current_matrix = blockIdx.x;
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    if (current_matrix < num_matrices) {
+        // Grab the buffers
+        const float* mat_buffer = mat_buffers[current_matrix];
+        const float* kernel_buffer = kernel_buffers[current_matrix];
+        float* out_buffer = out_buffers[current_matrix];
+
+        // The work will be split among the threads in the block
+        // Each thread will work until of tidX or tidY is out of bounds
+        while (tidY < out_rows) {
+            while (tidX < out_cols) {
+                // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
+                float result = 0.0;
+                const int input_start_row = (-kernel_rows + 1) + tidY;
+                const int input_start_col = (-kernel_cols + 1) + tidX;
+                for (int m = 0; m < kernel_rows; m++) {
+                    for (int n = 0; n < kernel_cols; n++) {
+                        int input_row = input_start_row + m;
+                        int input_col = input_start_col + n;
+                        bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
+                        bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
+
+                        if (input_row_in_bounds && input_col_in_bounds) {
+                            const int curr_mat1_index = input_row * mat_cols + input_col;
+                            const int curr_kernel_index = m * kernel_cols + n;
+                            result += mat_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
+                        }
+                    }
+                }
+
+                int output_index = tidY * out_cols + tidX;
+                out_buffer[output_index] = result;
+                tidX += blockDim.x;
+            }
+
+            tidX = threadIdx.x;
+            tidY += blockDim.y;
+        }
+    }
+}
+
+// Should be used when you have a lot of small matrices to convolve
+void cuda_convolution_full_packed(size_t* matrices_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_mat_ids) {
+    // Create output buffer
+    // Dimension of output is input + kernel - 1
+    int out_rows = mat_rows + kernel_rows - 1;
+    int out_cols = mat_cols + kernel_cols - 1;
+
+    // Register output matrices
+    for (int i = 0; i < num_matrices; i++) {
+        size_t out_mat_id = register_matrix(out_rows, out_cols);
+        out_mat_ids[i] = out_mat_id;
+    }
+
+    // Get the gpu buffers to operate on
+    std::vector<float*> gpu_mat_buffers;
+    std::vector<float*> gpu_kernel_buffers;
+    std::vector<float*> gpu_out_buffers;
+
+    for (int i = 0; i < num_matrices; i++) {
+        gpu_mat_buffers.push_back(mat_map[matrices_ids[i]]);
+        gpu_kernel_buffers.push_back(mat_map[kernel_ids[i]]);
+        gpu_out_buffers.push_back(mat_map[out_mat_ids[i]]);
+    }
+
+    // Upload gpu buffers
+    float** gpu_mat_buffers_ptr;
+    cudaMallocAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, 0);
+    cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+    float** gpu_kernel_buffers_ptr;
+    cudaMallocAsync(&gpu_kernel_buffers_ptr, sizeof(float*) * num_matrices, 0);
+    cudaMemcpy(gpu_kernel_buffers_ptr, &gpu_kernel_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+    float** gpu_out_buffers_ptr;
+    cudaMallocAsync(&gpu_out_buffers_ptr, sizeof(float*) * num_matrices, 0);
+    cudaMemcpy(gpu_out_buffers_ptr, &gpu_out_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 16;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim(num_matrices, 1, 1);
+
+    // Run the kernels
+    cuda_convolution_kernel_packed_full_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_ptr, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_ptr, kernel_rows, kernel_cols, gpu_out_buffers_ptr, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
+}
 void cuda_convolution_packed(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_ids, ConvolutionType conv_type) {
     if (conv_type == ConvolutionType::VALID) {
         return cuda_convolution_valid_packed(mat_ids, num_matrices, mat_rows, mat_cols, kernel_ids, kernel_rows, kernel_cols, out_ids);
     } else if (conv_type == ConvolutionType::SAME) {
-        return;
+        return cuda_convolution_same_packed(mat_ids, num_matrices, mat_rows, mat_cols, kernel_ids, kernel_rows, kernel_cols, out_ids);
     } else if (conv_type == ConvolutionType::FULL) {
-        return;
+        return cuda_convolution_full_packed(mat_ids, num_matrices, mat_rows, mat_cols, kernel_ids, kernel_rows, kernel_cols, out_ids);
     }
 }
 

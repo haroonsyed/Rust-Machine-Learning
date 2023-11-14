@@ -544,6 +544,58 @@ mod tests {
   }
 
   #[test]
+  fn packed_convolution_same_1() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let kernel = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let kernel_2 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let mut expected_result = vec![
+      Matrix::new_2d(&vec![
+        vec![94.0, 154.0, 106.0],
+        vec![186.0, 285.0, 186.0],
+        vec![106.0, 154.0, 94.0],
+      ],);
+      16
+    ];
+    expected_result.extend(vec![
+      Matrix::new_2d(&vec![
+        vec![94.0, 154.0, 106.0],
+        vec![186.0, 286.0, 188.0],
+        vec![106.0, 158.0, 99.0],
+      ],);
+      16
+    ]);
+
+    let mut observed_result = convolution_packed(
+      &vec![&test_data; 16],
+      &vec![&kernel; 16],
+      ConvolutionType::SAME,
+    );
+    observed_result.extend(convolution_packed(
+      &vec![&test_data; 16],
+      &vec![&kernel_2; 16],
+      ConvolutionType::SAME,
+    ));
+
+    izip!(observed_result, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
+  }
+
+  #[test]
   fn convolution_gpu_valid_1() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
@@ -677,6 +729,62 @@ mod tests {
     let observed_result = test_data.convolution(&kernel, ConvolutionType::FULL);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn packed_convolution_full_1() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let kernel = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let kernel_2 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let mut expected_result = vec![
+      Matrix::new_2d(&vec![
+        vec![9.0, 26.0, 50.0, 38.0, 21.0],
+        vec![42.0, 94.0, 154.0, 106.0, 54.0],
+        vec![90.0, 186.0, 285.0, 186.0, 90.0],
+        vec![54.0, 106.0, 154.0, 94.0, 42.0],
+        vec![21.0, 38.0, 50.0, 26.0, 9.0],
+      ],);
+      16
+    ];
+    expected_result.extend(vec![
+      Matrix::new_2d(&vec![
+        vec![9.0, 26.0, 50.0, 38.0, 21.0],
+        vec![42.0, 94.0, 154.0, 106.0, 54.0],
+        vec![90.0, 186.0, 286.0, 188.0, 93.0],
+        vec![54.0, 106.0, 158.0, 99.0, 48.0],
+        vec![21.0, 38.0, 57.0, 34.0, 18.0],
+      ],);
+      16
+    ]);
+
+    let mut observed_result = convolution_packed(
+      &vec![&test_data; 16],
+      &vec![&kernel; 16],
+      ConvolutionType::FULL,
+    );
+    observed_result.extend(convolution_packed(
+      &vec![&test_data; 16],
+      &vec![&kernel_2; 16],
+      ConvolutionType::FULL,
+    ));
+
+    izip!(observed_result, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
   }
 
   #[test]

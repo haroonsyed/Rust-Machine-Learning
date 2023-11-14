@@ -61,6 +61,7 @@ mod basic_nn_tests {
       non_input_layer_sizes,
       weights,
       biases,
+      performance_info: Vec::new(),
     };
 
     network.feed_forward(&observations);
@@ -168,6 +169,7 @@ mod basic_nn_tests {
       non_input_layer_sizes,
       weights,
       biases,
+      performance_info: Vec::new(),
     };
 
     let predicted_probabilities = Matrix::new_2d(&vec![
@@ -293,6 +295,7 @@ mod basic_nn_tests {
       non_input_layer_sizes,
       weights,
       biases,
+      performance_info: Vec::new(),
     };
 
     let learning_rate = 0.1;
@@ -408,6 +411,7 @@ mod basic_nn_tests {
       non_input_layer_sizes,
       weights,
       biases,
+      performance_info: Vec::new(),
     };
     let learning_rate = 0.1;
     network.train_classification(observations, labels, learning_rate, 1, 0);
@@ -544,6 +548,7 @@ mod basic_nn_tests {
       non_input_layer_sizes,
       weights: weights_gpu,
       biases: biases_gpu,
+      performance_info: Vec::new(),
     };
     let mut cpu_network = BasicNeuralNetworkCPURust {
       weights: weights_cpu,
