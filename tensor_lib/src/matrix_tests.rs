@@ -1142,6 +1142,45 @@ mod tests {
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
+  #[test]
+  fn softmax_gpu() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![0.00235563, 0.00235563, 0.00235563],
+      vec![0.04731416, 0.04731416, 0.04731416],
+      vec![0.95033021, 0.95033021, 0.95033021],
+    ]);
+
+    let observed_result = test_data.softmax();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 3));
+  }
+
+  #[test]
+  fn softmax_gpu_2() {
+    // Example that would normally overflow
+    let test_data = Matrix::new_2d(&vec![
+      vec![600.0, 300.0, 170.0],
+      vec![699.0, 360.0, 200.0],
+      vec![700.0, 400.0, 100.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![2.71959346e-44, 3.72007598e-44, 9.35762297e-14],
+      vec![2.68941421e-01, 4.24835426e-18, 1.00000000e+00],
+      vec![7.31058579e-01, 1.00000000e+00, 3.72007598e-44],
+    ]);
+
+    let observed_result = test_data.softmax();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 3));
+  }
+
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
     if a.rows != b.rows || a.columns != b.columns {
       println!("Matrices not the same shape!");

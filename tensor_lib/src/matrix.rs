@@ -651,6 +651,17 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
+  pub fn softmax(&self) -> Self {
+    let result_id: usize;
+
+    unsafe { result_id = cuda_softmax(self.id, self.rows, self.columns) }
+
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
   pub fn reshape(&mut self, new_rows: usize, new_columns: usize) -> &Self {
     if new_rows * new_columns == self.get_data_length() {
       self.rows = new_rows;

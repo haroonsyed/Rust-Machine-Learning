@@ -1897,3 +1897,54 @@ size_t cuda_center_pad(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t p
     // Return result matrix id
     return out_mat_id;
 }
+
+__global__ void cuda_softmax_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
+    const int col = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (col < mat_cols) {
+        // Go down all the rows, find the max
+        float max = -INFINITY;
+#pragma unroll 10
+        for (int row = 0; row < mat_rows; row++) {
+            const float val = mat_buffer[row * mat_cols + col];
+            max = max > val ? max : val;
+        }
+
+        // Now go down all the rows and subtract the max, then exponentiate
+        float sum = 0.0;
+#pragma unroll 10
+        for (int row = mat_rows; row >= 0; row--) {
+            const float val = mat_buffer[row * mat_cols + col];
+            const float exp_val = __expf(val - max);
+            out_buffer[row * mat_cols + col] = exp_val;
+            sum += exp_val;
+        }
+
+        // Now go down all the rows and divide by the sum
+#pragma unroll 10
+        for (int row = mat_rows; row >= 0; row--) {
+            out_buffer[row * mat_cols + col] /= sum;
+        }
+    }
+}
+
+size_t cuda_softmax(size_t mat_id, size_t mat_rows, size_t mat_cols) {
+    // Create output buffer
+    size_t out_mat_id = register_matrix(mat_rows, mat_cols);
+
+    // Get the gpu buffers to operate on
+    float* gpu_mat_buffer = mat_map[mat_id];
+    float* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters, each thread handles one column
+    const int THREADS_PER_BLOCK = 128;
+    dim3 block_dim(THREADS_PER_BLOCK, 1, 1);
+    dim3 grid_dim((mat_cols / block_dim.x) + 1, 1, 1);
+
+    // Run the kernels
+    cuda_softmax_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffer, mat_rows, mat_cols, gpu_out_buffer);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Return result matrix id
+    return out_mat_id;
+}

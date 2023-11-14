@@ -161,4 +161,5 @@ extern "C" {
     pad_rows: usize,
     pad_cols: usize,
   ) -> usize;
+  pub fn cuda_softmax(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
 }
