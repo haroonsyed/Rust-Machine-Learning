@@ -154,4 +154,11 @@ extern "C" {
     mat_cols: usize,
     mat_ids: *mut c_ulonglong,
   );
+  pub fn cuda_center_pad(
+    mat_id: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    pad_rows: usize,
+    pad_cols: usize,
+  ) -> usize;
 }

@@ -1089,6 +1089,59 @@ mod tests {
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
+  #[test]
+  fn pad_matrix_gpu() {
+    let test_data = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![0.0, 0.0, 0.0, 0.0, 0.0],
+      vec![0.0, 1.0, 2.0, 3.0, 0.0],
+      vec![0.0, 4.0, 5.0, 6.0, 0.0],
+      vec![0.0, 0.0, 0.0, 0.0, 0.0],
+    ]);
+
+    let observed_result = test_data.center_pad(1, 1);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn pad_matrix_gpu_2() {
+    let test_data = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+
+    // Pad by 2
+    let expected_result = Matrix::new_2d(&vec![
+      vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+      vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+      vec![0.0, 0.0, 1.0, 2.0, 3.0, 0.0, 0.0],
+      vec![0.0, 0.0, 4.0, 5.0, 6.0, 0.0, 0.0],
+      vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+      vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    ]);
+
+    let observed_result = test_data.center_pad(2, 2);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn pad_matrix_gpu_3() {
+    let test_data = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![0.0, 0.0, 0.0, 0.0, 0.0],
+      vec![0.0, 0.0, 0.0, 0.0, 0.0],
+      vec![0.0, 1.0, 2.0, 3.0, 0.0],
+      vec![0.0, 4.0, 5.0, 6.0, 0.0],
+      vec![0.0, 0.0, 0.0, 0.0, 0.0],
+      vec![0.0, 0.0, 0.0, 0.0, 0.0],
+    ]);
+
+    let observed_result = test_data.center_pad(2, 1);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
     if a.rows != b.rows || a.columns != b.columns {
       println!("Matrices not the same shape!");

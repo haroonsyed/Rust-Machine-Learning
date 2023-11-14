@@ -1140,7 +1140,6 @@ size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
 __global__ void cuda_convolution_kernel_valid_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-    int threadIdWithinBlock = threadIdx.y * blockDim.x + threadIdx.x;
 
     if (tidX < out_cols && tidY < out_rows) {
         // O[i][j] = weighted sum of kernel with input, where kernel is kept within bounds of input
@@ -1633,7 +1632,6 @@ void cuda_convolution_packed(size_t* mat_ids, size_t num_matrices, size_t mat_ro
 
 __global__ void cuda_img2col_valid(float** mat_buffers, int input_depth, int input_rows, int input_cols, int filter_depth, int filter_rows, int filter_cols, float* out_buffer, int out_rows, int out_cols) {
     const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    const int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
     // This thread will handle one patch of the image, through all the kernels
     // This means each thread handle one column of the output
@@ -1858,4 +1856,44 @@ void cuda_unflatten_array_strided(size_t array_id, size_t arr_size, size_t mat_r
     // Run the kernels
     cuda_unflatten_array_strided_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_array_buffer, arr_size, num_matrices, mat_rows, mat_cols, gpu_mat_buffers_ptr);
     gpuErrchk(cudaPeekAtLastError());
+}
+
+__global__ void cuda_center_pad_kernel(float* mat_buffer, int mat_rows, int mat_cols, int pad_rows, int pad_cols, float* out_buffer, int out_rows, int out_cols) {
+    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    const int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = I[i - pad_rows][j - pad_cols] if in bounds, else 0
+        const int input_row = tidY - pad_rows;
+        const int input_col = tidX - pad_cols;
+        const bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
+        const bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
+        const bool in_bounds = input_row_in_bounds && input_col_in_bounds;
+
+        const float result = in_bounds ? mat_buffer[input_row * mat_cols + input_col] : 0.0;
+        out_buffer[tidY * out_cols + tidX] = result;
+    }
+}
+
+size_t cuda_center_pad(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t pad_rows, size_t pad_cols) {
+    // Create output buffer
+    int out_rows = mat_rows + 2 * pad_rows;
+    int out_cols = mat_cols + 2 * pad_cols;
+    size_t out_mat_id = register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    float* gpu_mat_buffer = mat_map[mat_id];
+    float* gpu_out_buffer = mat_map[out_mat_id];
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 16;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim((out_cols / block_dim.x) + 1, (out_rows / block_dim.y) + 1, 1);
+
+    // Run the kernels
+    cuda_center_pad_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffer, mat_rows, mat_cols, pad_rows, pad_cols, gpu_out_buffer, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Return result matrix id
+    return out_mat_id;
 }

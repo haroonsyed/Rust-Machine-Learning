@@ -640,6 +640,17 @@ impl Matrix {
     return result;
   }
 
+  pub fn center_pad(&self, pad_rows: usize, pad_cols: usize) -> Self {
+    let result_id: usize;
+
+    unsafe { result_id = cuda_center_pad(self.id, self.rows, self.columns, pad_rows, pad_cols) }
+
+    let output_rows = self.rows + 2 * pad_rows;
+    let output_columns = self.columns + 2 * pad_cols;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
   pub fn reshape(&mut self, new_rows: usize, new_columns: usize) -> &Self {
     if new_rows * new_columns == self.get_data_length() {
       self.rows = new_rows;
