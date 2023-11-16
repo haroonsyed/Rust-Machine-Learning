@@ -50,6 +50,55 @@ extern "C" {
     scalar: c_float,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_scalar_divide(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: c_float,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_scalar_add(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: c_float,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_scalar_subtract(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: c_float,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_scalar_multiply_matrix(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: usize,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_scalar_divide_matrix(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: usize,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_scalar_add_matrix(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: usize,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_scalar_subtract_matrix(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: usize,
+    inplace: bool,
+  ) -> usize;
   pub fn cuda_matrix_multiply(
     mat1_id: usize,
     mat1_rows: usize,
@@ -162,4 +211,15 @@ extern "C" {
     pad_cols: usize,
   ) -> usize;
   pub fn cuda_softmax(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
+  pub fn cuda_crop(
+    mat_id: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    crop_row_offset: usize,
+    crop_col_offset: usize,
+    crop_rows: usize,
+    crop_cols: usize,
+  ) -> usize;
+  pub fn cuda_copy(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
+  pub fn cuda_sum_all_matrix_elements(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
 }

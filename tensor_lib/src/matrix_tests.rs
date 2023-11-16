@@ -1,13 +1,13 @@
 #[cfg(test)]
 mod tests {
+  use crate::{
+    convolution_packed, cuda_bindings::*, flatten_matrix_array, img2col, matrix::*,
+    matrix_cpu::MatrixCpu, unflatten_array_strided_to_matrices, unflatten_array_to_matrices,
+    ConvolutionType,
+  };
   use itertools::{izip, Itertools};
   use rand::prelude::Distribution;
   use statrs::distribution::Normal;
-
-  use crate::{
-    convolution_packed, cuda_bindings::*, flatten_matrix_array, img2col, matrix_cpu::MatrixCpu,
-    unflatten_array_to_matrices, ConvolutionType, Matrix,
-  };
 
   #[test]
   fn element_add() {
@@ -44,7 +44,6 @@ mod tests {
     let expected_result = Matrix::new_2d(&vec![vec![5.0, 2.0, 9.9], vec![0.0, -5.0, 6000.0]]);
 
     let observed_result = test_data.element_multiply(&test_data_2);
-    observed_result.print();
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -58,6 +57,194 @@ mod tests {
 
     let observed_result = test_data.scalar_multiply(scalar);
 
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_multiply_inplace() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = 5.0;
+
+    let expected_result = Matrix::new_2d(&vec![vec![10.0, 20.0], vec![5.0, 15.0]]);
+
+    let observed_result = test_data.scalar_multiply_inplace(scalar);
+
+    assert_eq!(test_data.get_id(), observed_result.get_id());
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_divide() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = 5.0;
+
+    let expected_result = Matrix::new_2d(&vec![vec![0.4, 0.8], vec![0.2, 0.6]]);
+
+    let observed_result = test_data.scalar_divide(scalar);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_divide_inplace() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = 5.0;
+
+    let expected_result = Matrix::new_2d(&vec![vec![0.4, 0.8], vec![0.2, 0.6]]);
+
+    let observed_result = test_data.scalar_divide_inplace(scalar);
+
+    assert_eq!(test_data.get_id(), observed_result.get_id());
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_add() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = 5.0;
+
+    let expected_result = Matrix::new_2d(&vec![vec![7.0, 9.0], vec![6.0, 8.0]]);
+
+    let observed_result = test_data.scalar_add(scalar);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_add_inplace() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = 5.0;
+
+    let expected_result = Matrix::new_2d(&vec![vec![7.0, 9.0], vec![6.0, 8.0]]);
+
+    let observed_result = test_data.scalar_add_inplace(scalar);
+
+    assert_eq!(test_data.get_id(), observed_result.get_id());
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_subtract() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = 5.0;
+
+    let expected_result = Matrix::new_2d(&vec![vec![-3.0, -1.0], vec![-4.0, -2.0]]);
+
+    let observed_result = test_data.scalar_subtract(scalar);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_subtract_inplace() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = 5.0;
+
+    let expected_result = Matrix::new_2d(&vec![vec![-3.0, -1.0], vec![-4.0, -2.0]]);
+
+    let observed_result = test_data.scalar_subtract_inplace(scalar);
+
+    assert_eq!(test_data.get_id(), observed_result.get_id());
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_multiply_matrix() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
+
+    let expected_result = Matrix::new_2d(&vec![vec![10.0, 20.0], vec![5.0, 15.0]]);
+
+    let observed_result = test_data.scalar_multiply_matrix(&scalar);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_multiply_matrix_inplace() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
+
+    let expected_result = Matrix::new_2d(&vec![vec![10.0, 20.0], vec![5.0, 15.0]]);
+
+    let observed_result = test_data.scalar_multiply_matrix_inplace(&scalar);
+
+    assert_eq!(test_data.get_id(), observed_result.get_id());
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_divide_matrix() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
+
+    let expected_result = Matrix::new_2d(&vec![vec![0.4, 0.8], vec![0.2, 0.6]]);
+
+    let observed_result = test_data.scalar_divide_matrix(&scalar);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_divide_matrix_inplace() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
+
+    let expected_result = Matrix::new_2d(&vec![vec![0.4, 0.8], vec![0.2, 0.6]]);
+
+    let observed_result = test_data.scalar_divide_matrix_inplace(&scalar);
+
+    assert_eq!(test_data.get_id(), observed_result.get_id());
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_add_matrix() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
+
+    let expected_result = Matrix::new_2d(&vec![vec![7.0, 9.0], vec![6.0, 8.0]]);
+
+    let observed_result = test_data.scalar_add_matrix(&scalar);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_add_matrix_inplace() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
+
+    let expected_result = Matrix::new_2d(&vec![vec![7.0, 9.0], vec![6.0, 8.0]]);
+
+    let observed_result = test_data.scalar_add_matrix_inplace(&scalar);
+
+    assert_eq!(test_data.get_id(), observed_result.get_id());
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_subtract_matrix() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
+
+    let expected_result = Matrix::new_2d(&vec![vec![-3.0, -1.0], vec![-4.0, -2.0]]);
+
+    let observed_result = test_data.scalar_subtract_matrix(&scalar);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn scalar_subtract_matrix_inplace() {
+    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
+    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
+
+    let expected_result = Matrix::new_2d(&vec![vec![-3.0, -1.0], vec![-4.0, -2.0]]);
+
+    let observed_result = test_data.scalar_subtract_matrix_inplace(&scalar);
+
+    assert_eq!(test_data.get_id(), observed_result.get_id());
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
@@ -162,7 +349,6 @@ mod tests {
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
-  // TODO: Add tests for exp, relu, relu_prime, add_vector_rows, divide_vector_col_divide_vector_row
   #[test]
   fn element_exp() {
     let test_data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
@@ -310,9 +496,6 @@ mod tests {
 
     let (observed_result, _) = test_data.max_pool();
 
-    expected_result.print();
-    observed_result.print();
-
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
@@ -344,9 +527,6 @@ mod tests {
     let expected_result = Matrix::new_2d(&vec![vec![0.0, 0.0, 0.0], vec![0.0, 1.0, 1.0]]);
 
     let (_, observed_result) = test_data.max_pool();
-
-    expected_result.print();
-    observed_result.print();
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -1033,8 +1213,6 @@ mod tests {
 
     let observed_result = test_data.convolution_v2(&kernel, ConvolutionType::VALID);
 
-    observed_result.print();
-
     unsafe { cuda_synchronize() }
 
     assert!(1 == 1);
@@ -1158,7 +1336,7 @@ mod tests {
 
     let observed_result = test_data.softmax();
 
-    assert!(matrix_are_equal(&observed_result, &expected_result, 3));
+    assert!(matrix_are_equal(&observed_result, &expected_result, 6));
   }
 
   #[test]
@@ -1178,7 +1356,157 @@ mod tests {
 
     let observed_result = test_data.softmax();
 
-    assert!(matrix_are_equal(&observed_result, &expected_result, 3));
+    assert!(matrix_are_equal(&observed_result, &expected_result, 6));
+  }
+
+  #[test]
+  fn crop_gpu() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0, 5.0],
+      vec![6.0, 7.0, 8.0, 9.0, 10.0],
+      vec![11.0, 12.0, 13.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0, 19.0, 20.0],
+      vec![21.0, 22.0, 23.0, 24.0, 25.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![7.0, 8.0, 9.0],
+      vec![12.0, 13.0, 14.0],
+      vec![17.0, 18.0, 19.0],
+    ]);
+
+    let observed_result = test_data.crop(1, 1, 3, 3);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn crop_gpu_2() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0, 5.0],
+      vec![6.0, 7.0, 8.0, 9.0, 10.0],
+      vec![11.0, 12.0, 13.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0, 19.0, 20.0],
+      vec![21.0, 22.0, 23.0, 24.0, 25.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![7.0, 8.0, 9.0, 10.0],
+      vec![12.0, 13.0, 14.0, 15.0],
+      vec![17.0, 18.0, 19.0, 20.0],
+    ]);
+
+    let observed_result = test_data.crop(1, 1, 3, 4);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn deep_copy_gpu_1() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0, 5.0],
+      vec![6.0, 7.0, 8.0, 9.0, 10.0],
+      vec![11.0, 12.0, 13.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0, 19.0, 20.0],
+      vec![21.0, 22.0, 23.0, 24.0, 25.0],
+    ]);
+
+    let observed_result = test_data.deep_copy();
+
+    assert_ne!(observed_result.get_id(), test_data.get_id());
+    assert!(matrix_are_equal(&observed_result, &test_data, 8));
+  }
+
+  #[test]
+  fn deep_copy_gpu_2() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0],
+      vec![6.0],
+      vec![11.0],
+      vec![16.0],
+      vec![21.0],
+    ]);
+
+    let observed_result = test_data.deep_copy();
+
+    assert_ne!(observed_result.get_id(), test_data.get_id());
+    assert!(matrix_are_equal(&observed_result, &test_data, 8));
+  }
+
+  #[test]
+  fn deep_copy_gpu_3() {
+    let rows = 257;
+    let cols = 1;
+    let data = (0..rows * cols).map(|x| x as f32).collect_vec();
+    let test_data = Matrix::new_1d(&data, rows, cols);
+
+    let observed_result = test_data.deep_copy();
+
+    assert_ne!(observed_result.get_id(), test_data.get_id());
+    assert!(matrix_are_equal(&observed_result, &test_data, 8));
+  }
+
+  #[test]
+  fn sum_all_matrix_elements_1() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0, 5.0],
+      vec![6.0, 7.0, 8.0, 9.0, 10.0],
+      vec![11.0, 12.0, 13.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0, 19.0, 20.0],
+      vec![21.0, 22.0, 23.0, 24.0, 25.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![325.0]]);
+
+    let observed_result = test_data.sum_all_matrix_elements();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn sum_all_matrix_elements_2() {
+    let rows = 1;
+    let cols = 257;
+    let mut sum = 0.0;
+    let data = (0..rows)
+      .map(|row| {
+        (0..cols)
+          .map(|col| {
+            let val = (row * cols + col) as f32;
+            sum += val;
+            return val;
+          })
+          .collect_vec()
+      })
+      .collect_vec();
+
+    let test_data = Matrix::new_2d(&data);
+
+    let expected_result = Matrix::new_2d(&vec![vec![sum]]);
+    let observed_result = test_data.sum_all_matrix_elements();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn sum_all_matrix_elements_3() {
+    let rows = 256;
+    let cols = 256;
+    let data = (0..rows * cols).map(|x| x as f32).collect_vec();
+    let mut sum = 0.0;
+
+    let block_size = 256;
+    data.chunks(block_size).for_each(|block| {
+      let block_sum: f32 = block.iter().sum();
+      sum += block_sum;
+    });
+
+    let test_data = Matrix::new_1d(&data, rows, cols);
+
+    let expected_result = Matrix::new_2d(&vec![vec![sum]]);
+    let observed_result = test_data.sum_all_matrix_elements();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
@@ -1187,14 +1515,13 @@ mod tests {
       return false;
     }
 
-    a.print();
-    b.print();
-
     let a_data = a.get_data();
     let b_data = b.get_data();
     for i in 0..a.rows {
       for j in 0..a.columns {
         if !approx_equal(a_data[i][j], b_data[i][j], precision) {
+          a.print();
+          b.print();
           return false;
         }
       }
@@ -1209,14 +1536,13 @@ mod tests {
       return false;
     }
 
-    a.print();
-    b.print();
-
     let a_data = a.get_data();
     let b_data = b.get_data();
     for i in 0..a.rows {
       for j in 0..a.columns {
         if !approx_equal(a_data[i][j], b_data[i][j], precision) {
+          a.print();
+          b.print();
           return false;
         }
       }

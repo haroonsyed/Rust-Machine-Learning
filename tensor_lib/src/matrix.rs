@@ -65,6 +65,10 @@ impl Matrix {
     return Matrix { id, rows, columns };
   }
 
+  pub fn get_id(&self) -> usize {
+    return self.id;
+  }
+
   pub fn get_data(&self) -> Vec<Vec<f32>> {
     let mut data = Vec::<c_float>::with_capacity(self.get_data_length());
     unsafe {
@@ -305,6 +309,170 @@ impl Matrix {
 
   pub fn scalar_multiply_inplace(&self, scalar: f32) -> &Self {
     self.scalar_multiply_impl(scalar, true);
+    return self;
+  }
+
+  fn scalar_divide_impl(&self, scalar: f32, inplace: bool) -> usize {
+    let result_id: usize;
+    unsafe { result_id = cuda_scalar_divide(self.id, self.rows, self.columns, scalar, inplace) }
+
+    return result_id;
+  }
+
+  pub fn scalar_divide(&self, scalar: f32) -> Self {
+    let result_id = self.scalar_divide_impl(scalar, false);
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  pub fn scalar_divide_inplace(&self, scalar: f32) -> &Self {
+    self.scalar_divide_impl(scalar, true);
+    return self;
+  }
+
+  fn scalar_add_impl(&self, scalar: f32, inplace: bool) -> usize {
+    let result_id: usize;
+    unsafe { result_id = cuda_scalar_add(self.id, self.rows, self.columns, scalar, inplace) }
+
+    return result_id;
+  }
+
+  pub fn scalar_add(&self, scalar: f32) -> Self {
+    let result_id = self.scalar_add_impl(scalar, false);
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  pub fn scalar_add_inplace(&self, scalar: f32) -> &Self {
+    self.scalar_add_impl(scalar, true);
+    return self;
+  }
+
+  fn scalar_subtract_impl(&self, scalar: f32, inplace: bool) -> usize {
+    let result_id: usize;
+    unsafe { result_id = cuda_scalar_subtract(self.id, self.rows, self.columns, scalar, inplace) }
+
+    return result_id;
+  }
+
+  pub fn scalar_subtract(&self, scalar: f32) -> Self {
+    let result_id = self.scalar_subtract_impl(scalar, false);
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  pub fn scalar_subtract_inplace(&self, scalar: f32) -> &Self {
+    self.scalar_subtract_impl(scalar, true);
+    return self;
+  }
+
+  fn scalar_multiply_matrix_impl(&self, scalar: &Matrix, inplace: bool) -> usize {
+    if scalar.get_data_length() != 1 {
+      panic!("Scalar matrix must be 1x1!");
+    }
+
+    let result_id: usize;
+    unsafe {
+      result_id = cuda_scalar_multiply_matrix(self.id, self.rows, self.columns, scalar.id, inplace)
+    }
+
+    return result_id;
+  }
+
+  pub fn scalar_multiply_matrix(&self, scalar: &Matrix) -> Self {
+    let result_id = self.scalar_multiply_matrix_impl(scalar, false);
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  pub fn scalar_multiply_matrix_inplace(&self, scalar: &Matrix) -> &Self {
+    self.scalar_multiply_matrix_impl(scalar, true);
+    return self;
+  }
+
+  fn scalar_divide_matrix_impl(&self, scalar: &Matrix, inplace: bool) -> usize {
+    if scalar.get_data_length() != 1 {
+      panic!("Scalar matrix must be 1x1!");
+    }
+
+    let result_id: usize;
+    unsafe {
+      result_id = cuda_scalar_divide_matrix(self.id, self.rows, self.columns, scalar.id, inplace)
+    }
+
+    return result_id;
+  }
+
+  pub fn scalar_divide_matrix(&self, scalar: &Matrix) -> Self {
+    let result_id = self.scalar_divide_matrix_impl(scalar, false);
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  pub fn scalar_divide_matrix_inplace(&self, scalar: &Matrix) -> &Self {
+    self.scalar_divide_matrix_impl(scalar, true);
+    return self;
+  }
+
+  fn scalar_add_matrix_impl(&self, scalar: &Matrix, inplace: bool) -> usize {
+    if scalar.get_data_length() != 1 {
+      panic!("Scalar matrix must be 1x1!");
+    }
+
+    let result_id: usize;
+    unsafe {
+      result_id = cuda_scalar_add_matrix(self.id, self.rows, self.columns, scalar.id, inplace)
+    }
+
+    return result_id;
+  }
+
+  pub fn scalar_add_matrix(&self, scalar: &Matrix) -> Self {
+    let result_id = self.scalar_add_matrix_impl(scalar, false);
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  pub fn scalar_add_matrix_inplace(&self, scalar: &Matrix) -> &Self {
+    self.scalar_add_matrix_impl(scalar, true);
+    return self;
+  }
+
+  fn scalar_subtract_matrix_impl(&self, scalar: &Matrix, inplace: bool) -> usize {
+    if scalar.get_data_length() != 1 {
+      panic!("Scalar matrix must be 1x1!");
+    }
+
+    let result_id: usize;
+    unsafe {
+      result_id = cuda_scalar_subtract_matrix(self.id, self.rows, self.columns, scalar.id, inplace)
+    }
+
+    return result_id;
+  }
+
+  pub fn scalar_subtract_matrix(&self, scalar: &Matrix) -> Self {
+    let result_id = self.scalar_subtract_matrix_impl(scalar, false);
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  pub fn scalar_subtract_matrix_inplace(&self, scalar: &Matrix) -> &Self {
+    self.scalar_subtract_matrix_impl(scalar, true);
     return self;
   }
 
@@ -658,6 +826,50 @@ impl Matrix {
 
     let output_rows = self.rows;
     let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  pub fn crop(&self, row_offset: usize, column_offset: usize, rows: usize, columns: usize) -> Self {
+    let result_id: usize;
+
+    unsafe {
+      result_id = cuda_crop(
+        self.id,
+        self.rows,
+        self.columns,
+        row_offset,
+        column_offset,
+        rows,
+        columns,
+      )
+    }
+
+    let output_rows = rows;
+    let output_columns = columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  pub fn deep_copy(&self) -> Self {
+    let result_id: usize;
+
+    unsafe { result_id = cuda_copy(self.id, self.rows, self.columns) }
+
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  // pub fn cuda_sum_all_matrix_elements(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
+  pub fn sum_all_matrix_elements(&self) -> Self {
+    let result_id: usize;
+
+    unsafe { result_id = cuda_sum_all_matrix_elements(self.id, self.rows, self.columns) }
+
+    let output_rows = 1;
+    let output_columns = 1;
 
     return Matrix::new(result_id, output_rows, output_columns);
   }
