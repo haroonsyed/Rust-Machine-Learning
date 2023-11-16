@@ -70,3 +70,15 @@ docs/_build/
 
 # Pyenv
 .python-version
+
+notebook_executables
+!notebook_executables/convert_all_notebooks.py
+!notebook_executables/convert_notebooks.py
+
+data
+!data/digit-recognizer
+!data/breast-cancer-wisconsin.csv
+!data/iris.data
+!data/kmeans-dataset.csv
+!data/sort_images.py
+!data/winequality-red.csv

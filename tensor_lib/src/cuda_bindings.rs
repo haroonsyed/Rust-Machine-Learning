@@ -3,6 +3,12 @@ use std::ffi::c_ulonglong;
 
 use crate::ConvolutionType;
 
+#[repr(C)] // Used to return a tuple from C
+pub struct Tuple {
+  pub a: usize,
+  pub b: usize,
+}
+
 extern "C" {
   pub fn test();
   pub fn test_array_fill(out: *mut c_float, length: usize);
@@ -42,6 +48,55 @@ extern "C" {
     mat1_rows: usize,
     mat1_cols: usize,
     scalar: c_float,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_scalar_divide(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: c_float,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_scalar_add(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: c_float,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_scalar_subtract(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: c_float,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_scalar_multiply_matrix(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: usize,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_scalar_divide_matrix(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: usize,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_scalar_add_matrix(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: usize,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_scalar_subtract_matrix(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    scalar: usize,
     inplace: bool,
   ) -> usize;
   pub fn cuda_matrix_multiply(
@@ -91,7 +146,13 @@ extern "C" {
   pub fn cuda_sum_rows(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_sum_columns(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_transpose(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
-  pub fn cuda_max_pool(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
+  pub fn cuda_max_pool(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> Tuple;
+  pub fn cuda_nearest_neighbor_2x_upsample(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat2_rows: usize,
+    odd_upsample: bool,
+  ) -> usize;
   pub fn cuda_rotate_180(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_convolution(
     mat1_id: usize,
@@ -102,6 +163,17 @@ extern "C" {
     kernel_cols: usize,
     conv_type: ConvolutionType,
   ) -> usize;
+  pub fn cuda_convolution_packed(
+    mat_ids: *const c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    kernel_ids: *const c_ulonglong,
+    kernel_rows: usize,
+    kernel_cols: usize,
+    out_ids: *mut c_ulonglong,
+    conv_type: ConvolutionType,
+  );
   pub fn cuda_img2col(
     mat_ids: *const c_ulonglong,
     num_matrices: usize,
@@ -131,4 +203,23 @@ extern "C" {
     mat_cols: usize,
     mat_ids: *mut c_ulonglong,
   );
+  pub fn cuda_center_pad(
+    mat_id: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    pad_rows: usize,
+    pad_cols: usize,
+  ) -> usize;
+  pub fn cuda_softmax(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
+  pub fn cuda_crop(
+    mat_id: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    crop_row_offset: usize,
+    crop_col_offset: usize,
+    crop_rows: usize,
+    crop_cols: usize,
+  ) -> usize;
+  pub fn cuda_copy(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
+  pub fn cuda_sum_all_matrix_elements(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
 }

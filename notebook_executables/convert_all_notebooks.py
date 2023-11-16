@@ -11,10 +11,10 @@ for file in Path(notebooks_path).iterdir():
     if file.is_file():
         shutil.copy(file, working_dir)
 
-# Copy the entire 'data' folder one level above working_dir
+# Copy the entire 'data' folder one level above working_dir (overwrite)
 data_folder_source = Path(working_dir).parent / "data"
 data_folder_destination = Path(working_dir) / "data"
-shutil.copytree(data_folder_source, data_folder_destination)
+shutil.copytree(data_folder_source, data_folder_destination, dirs_exist_ok=True)
 
 notebooks = [
     file
@@ -42,14 +42,14 @@ for notebook_file in notebooks:
         output_file.write(output)
 
     subprocess.run(
-        pyinstaller_command=[
+        [
             "pyinstaller",
             "--onefile",
             "--clean",
             "--hidden-import",
             "syed_ml_lib",
             "--paths",
-            working_dir,  # Use the determined path
+            working_dir,
             output_file_path,
         ]
     )

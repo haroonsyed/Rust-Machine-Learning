@@ -12,17 +12,26 @@ enum ConvolutionType {
     FULL
 };
 
+// Make sure bindings are not mangled for rust
 extern "C" {
 void test();
 void test_array_fill(float* buffer, size_t length);
 
 // Misc
 void cuda_synchronize();
+struct Tuple {  // Used to return tuple with interop to rust
+    size_t a;
+    size_t b;
+};
 
 // Matrix Setup API (reduces overhead of keeping matrices in ram)
 size_t register_matrix(float* data, size_t rows, size_t cols);
 void unregister_matrix(size_t mat_id);
 void get_matrix_data(size_t mat_id, int rows, int cols, float* data_buffer);
+
+// Execution Type
+void enable_parallel_stream_execution();
+void disable_parallel_stream_execution();
 
 // Matrix operation API, Returns id of new matrix. Consumer should not release
 size_t cuda_element_add(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
@@ -38,9 +47,11 @@ size_t cuda_element_ReLU_prime(size_t mat1_id, size_t mat1_rows, size_t mat1_col
 size_t cuda_sum_rows(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_sum_columns(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
-size_t cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
+Tuple cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
+size_t cuda_nearest_neighbor_2x_upsample(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, bool odd_upsample);
 size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
 size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, ConvolutionType conv_type);
+void cuda_convolution_packed(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_ids, ConvolutionType conv_type);
 size_t cuda_img2col(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t kernel_rows, size_t kernel_cols, ConvolutionType conv_type);  // Take an image and convert it to a matrix of columns based on patches (with specified padding) the filter makes of image
 size_t cuda_flatten_array(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);                                                               // Take n same_dimension matrices and flatten them into an array
 void cuda_unflatten_array(size_t array_id, size_t arr_size, size_t mat_rows, size_t mat_cols, size_t* mat_ids);                                                  // Take an array and unflatten it into n same_dimension matrices
@@ -116,8 +127,8 @@ void bench_max_pool(int mat_dim, int num_iter) {
 
     for (int i = 0; i < num_iter; i++) {
         // Perform multiplication
-        int result_id = cuda_max_pool(mat1, mat_dim, mat_dim);
-        unregister_matrix(result_id);
+        Tuple result = cuda_max_pool(mat1, mat_dim, mat_dim);
+        unregister_matrix(result.a);
     }
     cuda_synchronize();
 
@@ -189,6 +200,85 @@ void bench_convolution(int mat_dim, int num_iter, int kernel_size) {
     auto cpu_time = duration_cast<milliseconds>(end_host - start_host);
 
     std::cout << "Including overhead bench_convolution was: " << (float)cpu_time.count() / num_iter << " ms" << std::endl;
+}
+
+void bench_multiple_convolutions(int mat_dim, int num_iter, int num_matrices, int kernel_size) {
+    // This is just for timing, assumes everything is correct.
+    // The tests already cover correctness.
+    std::vector<float> data;
+    for (int i = 0; i < mat_dim * mat_dim; i++) {
+        data.push_back(i);
+    }
+
+    std::vector<float> kernel_data;
+    for (int i = 0; i < kernel_size * kernel_size; i++) {
+        kernel_data.push_back(i);
+    }
+
+    // Register
+    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
+    int kernel = register_matrix(&kernel_data[0], kernel_size, kernel_size);
+
+    auto start_host = high_resolution_clock::now();
+
+    for (int i = 0; i < num_iter; i++) {
+        for (int i = 0; i < num_matrices; i++) {
+            int result_id = cuda_convolution(mat1, mat_dim, mat_dim, kernel, kernel_size, kernel_size, VALID);
+            unregister_matrix(result_id);
+        }
+    }
+    cuda_synchronize();
+
+    auto end_host = high_resolution_clock::now();
+    auto cpu_time = duration_cast<microseconds>(end_host - start_host);
+
+    std::cout << "Including overhead bench_multiple_convolutions was: " << (float)cpu_time.count() / num_iter << " us" << std::endl;
+}
+
+void bench_packed_convolution(int mat_dim, int num_iter, int num_matrices, int kernel_size) {
+    // This is just for timing, assumes everything is correct.
+    // The tests already cover correctness.
+    std::vector<float> data;
+    for (int i = 0; i < mat_dim * mat_dim; i++) {
+        data.push_back(i);
+    }
+
+    std::vector<float> kernel_data;
+    for (int i = 0; i < kernel_size * kernel_size; i++) {
+        kernel_data.push_back(i);
+    }
+
+    // Register
+    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
+    int kernel = register_matrix(&kernel_data[0], kernel_size, kernel_size);
+
+    // Repeat the mat ids and kernel ids to simulate multiple images and kernels
+    std::vector<size_t> mat_ids;
+    std::vector<size_t> kernel_ids;
+    std::vector<size_t> result_ids;
+    for (int i = 0; i < num_matrices; i++) {
+        mat_ids.push_back(mat1);
+        kernel_ids.push_back(kernel);
+        result_ids.push_back(0);
+    }
+
+    auto start_host = high_resolution_clock::now();
+
+    for (int i = 0; i < num_iter; i++) {
+        cuda_convolution_packed(&mat_ids[0], num_matrices, mat_dim, mat_dim, &kernel_ids[0], kernel_size, kernel_size, &result_ids[0], VALID);
+
+        // Unregister matrices
+        for (auto id : result_ids) {
+            unregister_matrix(id);
+        }
+    }
+
+    cuda_synchronize();
+
+    auto end_host = high_resolution_clock::now();
+    auto cpu_time = duration_cast<microseconds>(end_host - start_host);
+
+    std::cout << "Including overhead bench_packed_convolution was: " << (float)cpu_time.count() / num_iter << " us" << std::endl;
 }
 
 void bench_img2col(int mat_dim, int num_iter, int kernel_size) {
@@ -370,13 +460,15 @@ int main() {
 
     // Used with ncu to profile kernels. Will expand to have all kernels, but for now just has the most time consuming ones
 
-    const int mat_dim = 2048;
+    const int mat_dim = 32;
     const int kernel_dim = 3;
     const int num_iter = 1;
-    // bench_flatten_array(mat_dim, 256, 1);
-    // bench_unflatten_array(mat_dim, 256, 1);
+    // bench_flatten_array(mat_dim, 256, num_iter);
+    // bench_unflatten_array(mat_dim, 256, num_iter);
     // bench_img2col(mat_dim, num_iter, kernel_dim);
-    bench_convolution(mat_dim, num_iter, kernel_dim);
+    // bench_convolution(mat_dim, num_iter, kernel_dim);
+    // bench_multiple_convolutions(mat_dim, num_iter, 64, kernel_dim);
+    bench_packed_convolution(mat_dim, num_iter, 256, kernel_dim);  // Seems to be faster with matrices smaller than or eqal to 32x32, scaling at about 2x to 3x. Shows overhead of launches.
     // bench_convolution_2(mat_dim, num_iter, kernel_dim);
     // bench_rotate_180(mat_dim, num_iter);
     // bench_max_pool(mat_dim, num_iter);

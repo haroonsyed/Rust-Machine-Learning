@@ -483,7 +483,7 @@ impl Tensor {
       panic!("Cannot currently max pool a tensor with rank greater than 2");
     }
 
-    let result = self.get_data().max_pool();
+    let (result, _) = self.get_data().max_pool();
     let result_rows = result.rows;
     let result_cols = result.columns;
     return Tensor::from_matrices(&vec![result], vec![result_rows, result_cols]);

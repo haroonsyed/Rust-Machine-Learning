@@ -6,6 +6,10 @@ edition = "2021"
 [profile.test] 
 opt-level = 3
 
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+
 [lib]
 crate-type = ["rlib"]
 

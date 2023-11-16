@@ -79,6 +79,7 @@ pub struct BasicNeuralNetworkRust {
   pub weights: Vec<Matrix>,
   pub biases: Vec<Matrix>,
   pub neuron_outputs: Vec<Matrix>,
+  pub performance_info: Vec<(f32, f32, usize, usize, usize)>, // (accuracy, loss, num_correct, sample_count, iterations)
 }
 
 impl BasicNeuralNetworkRust {
@@ -118,6 +119,7 @@ impl BasicNeuralNetworkRust {
       weights,
       biases,
       neuron_outputs: Vec::new(),
+      performance_info: vec![(0.0, 0.0, 0, 0, 0)],
     };
 
     // Cleanup and return
@@ -302,6 +304,12 @@ impl BasicNeuralNetworkRust {
     }
   }
 
+  pub fn print_latest_performance_info(&self) {
+    let (accuracy, loss, _, _, _) = self.performance_info.last().unwrap();
+    println!("Accuracy: {}", accuracy);
+    println!("Loss: {}", loss);
+  }
+
   pub fn train_classification(
     &mut self,
     observations: Vec<Vec<f32>>,
@@ -334,6 +342,7 @@ impl BasicNeuralNetworkRust {
 
       // Calculate error from feed forward step
       let predicted_probabilities = Self::softmax(&self.neuron_outputs);
+      self.update_performance_info(&predicted_probabilities, &labels);
       let output_error = self.backpropogation_output_layer_classification(
         &observations_matrix,
         &predicted_probabilities,
@@ -374,6 +383,7 @@ impl BasicNeuralNetworkRust {
 
     // Calculate error from feed forward step
     let predicted_probabilities = Self::softmax(&self.neuron_outputs);
+    self.update_performance_info(&predicted_probabilities, &labels);
     let output_error = self.backpropogation_output_layer_classification(
       &observations,
       &predicted_probabilities,
@@ -414,34 +424,7 @@ impl BasicNeuralNetworkRust {
   }
 
   pub fn softmax(neuron_outputs: &Vec<Matrix>) -> Matrix {
-    // TEMP: ADJUSTED SOFTMAX FOR NUMERICAL STABILITY
-    // Preprocess neuron outputs by subtracting the max value from each column
-    let final_layer_output = neuron_outputs.last().unwrap();
-
-    // grab the max
-    let output_data = final_layer_output.get_data();
-    let max_val_in_matrix = output_data
-      .iter()
-      .map(|row| row.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap())
-      .max_by(|a, b| a.partial_cmp(b).unwrap())
-      .unwrap();
-
-    // Subtract the max
-    let data = output_data
-      .iter()
-      .map(|row| row.iter().map(|val| val - max_val_in_matrix).collect_vec())
-      .collect_vec();
-
-    // Create matrix from this data
-    let adjusted_final_layer_output = Matrix::new_2d(&data);
-    // TEMP: ADJUSTED SOFTMAX FOR NUMERICAL STABILITY
-    let outputs_exp = adjusted_final_layer_output.element_exp_inplace();
-
-    let exp_final_layer_outputs_summed = outputs_exp.sum_columns_matrix();
-
-    // Divide all data by col sum
-    let predictions = outputs_exp.divide_by_vector(&exp_final_layer_outputs_summed);
-    return predictions;
+    return neuron_outputs.last().unwrap().softmax();
   }
 
   pub fn backpropogation_output_layer_regression(
@@ -606,6 +589,62 @@ impl BasicNeuralNetworkRust {
     let classifications = self.neuron_outputs[self.neuron_outputs.len() - 1].get_data()[0].to_vec();
 
     return classifications;
+  }
+
+  pub fn get_performance_info(&self) -> Vec<(f32, f32)> {
+    return self
+      .performance_info
+      .iter()
+      .map(|(accuracy, loss, _, _, _)| (*accuracy, *loss))
+      .collect_vec();
+  }
+
+  pub fn update_performance_info(&mut self, predicted_probabilities: &Matrix, labels: &Vec<f32>) {
+    // Performance info is amalgamation of all samples for 50 iterations
+    let iteration_limit = 50;
+    let curr_iteration = self.performance_info.last().unwrap().4;
+
+    // Add new entry if we have reached the iteration limit
+    if curr_iteration == iteration_limit {
+      println!(
+        "Performance Info For {} Iteration:",
+        iteration_limit * self.performance_info.len()
+      );
+      self.print_latest_performance_info();
+      self.performance_info.push((0.0, 0.0, 0, 0, 0));
+    }
+
+    // (num_correct, loss, num_correct, sample_count, iterations)
+    let performance_info = self.performance_info.last_mut().unwrap();
+
+    // Calculate the accuracy
+    let classifications = Self::get_classification(&predicted_probabilities);
+    let num_correct = izip!(classifications.iter(), labels.iter())
+      .fold(0, |acc, (classification, label)| {
+        acc + if classification == label { 1 } else { 0 }
+      });
+
+    let num_correct = num_correct + performance_info.2;
+    let sample_count = labels.len() + performance_info.3;
+    let accuracy = 100.0 * num_correct as f32 / sample_count as f32;
+    performance_info.0 = accuracy;
+    performance_info.2 = num_correct;
+    performance_info.3 = sample_count;
+
+    // Calculate the loss
+    // Equal to -log(predicted probability of correct class)
+    let predicted_probabilities_data = predicted_probabilities.transpose().get_data();
+    let epsilon = 1e-8; // small constant
+    let loss = izip!(labels.iter(), predicted_probabilities_data.iter()).fold(
+      0.0,
+      |acc, (label, predicted_probabilities)| {
+        acc + -(predicted_probabilities[*label as usize] + epsilon).ln()
+      },
+    );
+    performance_info.1 = loss + performance_info.1;
+
+    // Increment iteration
+    performance_info.4 += 1;
   }
 
   fn test_train_performance_regression(&mut self, observations: &Matrix, labels: &Vec<f32>) {
