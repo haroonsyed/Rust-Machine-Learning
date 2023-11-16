@@ -95,6 +95,10 @@ impl ConvolutionalNeuralNetworkRust {
   }
 
   pub fn classify(&mut self, features_test: &Vec<Vec<Vec<f32>>>) -> Vec<f32> {
+    if features_test.len() == 0 {
+      return Vec::new();
+    }
+
     // Obervations are of shape sample -> depth -> pixels
     let observations_matrices = self.convert_observations_to_matrices(features_test);
 
@@ -120,6 +124,10 @@ impl ConvolutionalNeuralNetworkRust {
     labels: &Vec<f32>,
     learning_rate: f32,
   ) {
+    if observations.len() == 0 {
+      return;
+    }
+
     // Convert observations to matrices
     let observations_matrices = self.convert_observations_to_matrices(observations);
 
@@ -255,12 +263,6 @@ impl CNN_Layer for ConvolutionalLayerRust {
   fn feed_forward(&mut self, input: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
     let mut sample_filter_outputs = Vec::new();
     let (output_height, output_width, _) = self.output_dimensions;
-
-    // Valid Convolution
-    let input_height = input[0][0].rows;
-    let input_width = input[0][0].columns;
-    let output_height = input_height - self.filters[0][0].rows + 1;
-    let output_width = input_width - self.filters[0][0].columns + 1;
 
     // Sample
     for sample in input {
