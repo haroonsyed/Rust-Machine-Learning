@@ -1,13 +1,17 @@
 use itertools::{izip, Itertools};
 use tensor_lib::*;
 
-use crate::basic_neural_network::BasicNeuralNetworkRust;
+use crate::{
+  basic_neural_network::BasicNeuralNetworkRust,
+  optimizers::{Optimizer, StochasticGradientDescentOptimizer},
+};
 
 pub struct ConvolutionalNeuralNetworkRust {
   pub input_dimensions: (usize, usize, usize), // Height, Width, Depth
   pub num_classifications: usize,
   pub layers: Vec<Box<dyn CNN_Layer>>,
   fully_connected_layer: Option<FullyConnectedLayer>,
+  optimizer: Box<dyn Optimizer>,
 }
 
 impl ConvolutionalNeuralNetworkRust {
@@ -22,6 +26,7 @@ impl ConvolutionalNeuralNetworkRust {
       num_classifications,
       layers: Vec::new(),
       fully_connected_layer: None,
+      optimizer: Box::new(StochasticGradientDescentOptimizer::new(1e-4)),
     };
   }
 
@@ -43,6 +48,7 @@ impl ConvolutionalNeuralNetworkRust {
       filter_height,
       filter_width,
       filter_count,
+      &self.optimizer,
     )));
   }
 
@@ -148,7 +154,7 @@ impl ConvolutionalNeuralNetworkRust {
         .train(&filter_outputs, labels, learning_rate);
 
     // Backpropogate
-    self.backpropogation(fc_error, learning_rate);
+    self.backpropogation(fc_error);
   }
 
   //return Vec<Vec<Vec<Matrix>>> sample -> layer -> filters -> Matrix
@@ -166,11 +172,10 @@ impl ConvolutionalNeuralNetworkRust {
   pub fn backpropogation(
     &mut self,
     unflattened_fc_error: Vec<Vec<Matrix>>, // sample -> depth -> data
-    learning_rate: f32,
   ) {
     let mut prev_layer_error = unflattened_fc_error;
     for layer in self.layers.iter_mut().rev() {
-      prev_layer_error = layer.backpropogation(&prev_layer_error, learning_rate);
+      prev_layer_error = layer.backpropogation(&prev_layer_error);
     }
   }
 
@@ -186,18 +191,20 @@ impl ConvolutionalNeuralNetworkRust {
 
 pub trait CNN_Layer: Send {
   fn feed_forward(&mut self, input: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>>;
-  fn backpropogation(&mut self, error: &Vec<Vec<Matrix>>, learning_rate: f32) -> Vec<Vec<Matrix>>;
+  fn backpropogation(&mut self, error: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>>;
   fn get_input_dimensions(&self) -> (usize, usize, usize);
   fn get_output_dimensions(&self) -> (usize, usize, usize);
 }
 
 pub struct ConvolutionalLayerRust {
-  pub filters: Vec<Vec<Matrix>>,                // Filter -> Depth
-  pub biases: Vec<Matrix>,                      // Filter
-  pub prev_input: Vec<Vec<Matrix>>,             // Sample -> Depth
-  pub prev_output: Vec<Vec<Matrix>>,            // Sample -> Depth
-  pub input_dimensions: (usize, usize, usize),  // Height, Width, Depth
-  pub output_dimensions: (usize, usize, usize), // Height, Width, Depth
+  pub filters: Vec<Vec<Matrix>>,                       // Filter -> Depth
+  pub biases: Vec<Matrix>,                             // Filter
+  pub filter_optimizers: Vec<Vec<Box<dyn Optimizer>>>, // Filter -> Depth
+  pub bias_optimizers: Vec<Box<dyn Optimizer>>,        // Bias
+  pub prev_input: Vec<Vec<Matrix>>,                    // Sample -> Depth
+  pub prev_output: Vec<Vec<Matrix>>,                   // Sample -> Depth
+  pub input_dimensions: (usize, usize, usize),         // Height, Width, Depth
+  pub output_dimensions: (usize, usize, usize),        // Height, Width, Depth
 }
 
 impl ConvolutionalLayerRust {
@@ -208,6 +215,7 @@ impl ConvolutionalLayerRust {
     filter_height: usize,
     filter_width: usize,
     filter_count: usize,
+    optimizer: &Box<dyn Optimizer>,
   ) -> Self {
     let input_dimensions = (input_height, input_width, input_depth);
     let output_dimensions = (
@@ -217,13 +225,16 @@ impl ConvolutionalLayerRust {
     );
 
     let mut filters = Vec::new();
+    let mut filter_optimizers = Vec::new();
     let mut biases = Vec::new();
+    let mut bias_optimizers = Vec::new();
     let prev_input = Vec::new();
     let prev_output = Vec::new();
 
     // Create the filters
     for _ in 0..filter_count {
       let mut filter = Vec::new();
+      let mut channel_optimizers = Vec::new();
       for _ in 0..input_depth {
         filter.push(Matrix::new_random(
           0.0,
@@ -231,18 +242,23 @@ impl ConvolutionalLayerRust {
           filter_height,
           filter_width,
         ));
+        channel_optimizers.push(optimizer.clone());
       }
       filters.push(filter);
+      filter_optimizers.push(channel_optimizers);
     }
 
     // Create the biases
     for _ in 0..filter_count {
       biases.push(Matrix::zeros(output_dimensions.0, output_dimensions.1));
+      bias_optimizers.push(optimizer.clone());
     }
 
     return Self {
       filters,
       biases,
+      filter_optimizers,
+      bias_optimizers,
       prev_input,
       prev_output,
       input_dimensions,
@@ -295,13 +311,8 @@ impl CNN_Layer for ConvolutionalLayerRust {
     return sample_filter_outputs;
   }
 
-  fn backpropogation(
-    &mut self,
-    sample_output_errors: &Vec<Vec<Matrix>>,
-    learning_rate: f32,
-  ) -> Vec<Vec<Matrix>> {
+  fn backpropogation(&mut self, sample_output_errors: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
     let mut sample_input_errors = Vec::new();
-    let learning_rate = learning_rate / sample_output_errors.len() as f32;
 
     // n is the filter
     // m is the channel
@@ -338,20 +349,33 @@ impl CNN_Layer for ConvolutionalLayerRust {
 
       // Update the biases
       // PER FILTER
-      for (filter_output_error, bias) in izip!(sample_output_error.iter(), self.biases.iter_mut()) {
+      for (filter_output_error, bias, optimizer) in izip!(
+        sample_output_error.iter(),
+        self.biases.iter_mut(),
+        self.bias_optimizers.iter_mut()
+      ) {
         // b' = b - de/dy * learning_rate
-        bias.element_subtract_inplace(&filter_output_error.scalar_multiply(learning_rate));
+        let bias_gradient = filter_output_error;
+        let bias_step = optimizer.calculate_step(&bias_gradient);
+        bias.element_subtract_inplace(&bias_step);
       }
 
       // Update the filters
       // PER FILTER
-      for (filter_output_error, filter) in izip!(sample_output_error, self.filters.iter()) {
+      for (filter_output_error, filter, filter_optimizer) in izip!(
+        sample_output_error,
+        self.filters.iter(),
+        self.filter_optimizers.iter_mut()
+      ) {
         // PER CHANNEL
-        for (prev_channel_input, channel) in izip!(sample_prev_input, filter) {
+        for (prev_channel_input, channel, optimizer) in
+          izip!(sample_prev_input, filter, filter_optimizer)
+        {
           // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
           let delta_channel =
             prev_channel_input.convolution(filter_output_error, ConvolutionType::VALID);
-          channel.element_subtract_inplace(&delta_channel.scalar_multiply(learning_rate));
+          let channel_step = optimizer.calculate_step(&delta_channel);
+          channel.element_subtract_inplace(&channel_step);
         }
       }
 
@@ -413,7 +437,7 @@ impl CNN_Layer for MaxPoolLayerRust {
     return pooled_samples;
   }
 
-  fn backpropogation(&mut self, error: &Vec<Vec<Matrix>>, _learning_rate: f32) -> Vec<Vec<Matrix>> {
+  fn backpropogation(&mut self, error: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
     // Max pool is not differentiable, so we will just pass the error back to the max value
     // Element wise multiply max mask by nearest_neighbor upscaled error
 
