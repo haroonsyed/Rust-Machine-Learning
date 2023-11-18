@@ -1,7 +1,7 @@
 use tensor_lib::Matrix;
 
 pub trait Optimizer: Send {
-  fn calculate_step(&self, curr_gradient: &Matrix) -> Matrix;
+  fn calculate_step(&mut self, curr_gradient: &Matrix) -> Matrix;
   fn clone_box(&self) -> Box<dyn Optimizer>;
 }
 
@@ -23,7 +23,7 @@ impl StochasticGradientDescentOptimizer {
 }
 
 impl Optimizer for StochasticGradientDescentOptimizer {
-  fn calculate_step(&self, curr_gradient: &Matrix) -> Matrix {
+  fn calculate_step(&mut self, curr_gradient: &Matrix) -> Matrix {
     return curr_gradient.scalar_multiply(self.learning_rate);
   }
   fn clone_box(&self) -> Box<dyn Optimizer> {
@@ -34,16 +34,38 @@ impl Optimizer for StochasticGradientDescentOptimizer {
 #[derive(Clone)]
 pub struct MomentumOptimizer {
   learning_rate: f32,
-  momentum: f32,
-  prev_step: Matrix,
+  beta: f32,
+  prev_step: Option<Matrix>,
 }
 
 impl MomentumOptimizer {
-  pub fn new(learning_rate: f32, momentum: f32) -> MomentumOptimizer {
+  pub fn new(learning_rate: f32, beta: f32) -> MomentumOptimizer {
     MomentumOptimizer {
       learning_rate,
-      momentum,
-      prev_step: Matrix::zeros(0, 0),
+      beta,
+      prev_step: None,
     }
+  }
+}
+
+impl Optimizer for MomentumOptimizer {
+  fn calculate_step(&mut self, curr_gradient: &Matrix) -> Matrix {
+    let step = match &self.prev_step {
+      Some(prev_step) => {
+        // Step = (beta * prev_step + (1 - beta) * curr_gradient) * learning_rate
+        prev_step
+          .scalar_multiply(self.beta)
+          .element_add(&(curr_gradient.scalar_multiply(1.0 - self.beta)))
+          .scalar_multiply(self.learning_rate)
+      }
+      None => curr_gradient.scalar_multiply(self.learning_rate),
+    };
+
+    self.prev_step = Some(step.clone());
+
+    return step;
+  }
+  fn clone_box(&self) -> Box<dyn Optimizer> {
+    Box::new(self.clone())
   }
 }

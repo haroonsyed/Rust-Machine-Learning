@@ -3,7 +3,7 @@ use tensor_lib::*;
 
 use crate::{
   basic_neural_network::BasicNeuralNetworkRust,
-  optimizers::{Optimizer, StochasticGradientDescentOptimizer},
+  optimizers::{MomentumOptimizer, Optimizer, StochasticGradientDescentOptimizer},
 };
 
 pub struct ConvolutionalNeuralNetworkRust {
@@ -104,6 +104,10 @@ impl ConvolutionalNeuralNetworkRust {
     self.set_optimizer(Box::new(StochasticGradientDescentOptimizer::new(
       learning_rate,
     )));
+  }
+
+  pub fn set_optimizer_momentum(&mut self, learning_rate: f32, beta: f32) {
+    self.set_optimizer(Box::new(MomentumOptimizer::new(learning_rate, beta)));
   }
 
   fn convert_observations_to_matrices(

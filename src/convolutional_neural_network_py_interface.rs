@@ -41,6 +41,10 @@ impl ConvolutionalNeuralNetwork {
       .set_optimizer_stochastic_gradient_descent(learning_rate);
   }
 
+  fn set_optimizer_momentum(&mut self, learning_rate: f32, beta: f32) {
+    self.network.set_optimizer_momentum(learning_rate, beta);
+  }
+
   fn add_convolutional_layer(
     &mut self,
     filter_height: usize,

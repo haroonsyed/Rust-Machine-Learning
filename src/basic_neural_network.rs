@@ -4,7 +4,7 @@ use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
 use tensor_lib::Matrix;
 
-use crate::optimizers::{Optimizer, StochasticGradientDescentOptimizer};
+use crate::optimizers::{MomentumOptimizer, Optimizer, StochasticGradientDescentOptimizer};
 
 #[pyclass]
 pub struct BasicNeuralNetwork {
@@ -30,6 +30,10 @@ impl BasicNeuralNetwork {
     self
       .network
       .set_optimizer_stochastic_gradient_descent(learning_rate);
+  }
+
+  fn set_optimizer_momentum(&mut self, learning_rate: f32, beta: f32) {
+    self.network.set_optimizer_momentum(learning_rate, beta);
   }
 
   fn train(
@@ -165,6 +169,11 @@ impl BasicNeuralNetworkRust {
 
   pub fn set_optimizer_stochastic_gradient_descent(&mut self, learning_rate: f32) {
     let optimizer = Box::new(StochasticGradientDescentOptimizer::new(learning_rate));
+    self.set_optimizer(optimizer);
+  }
+
+  pub fn set_optimizer_momentum(&mut self, learning_rate: f32, beta: f32) {
+    let optimizer = Box::new(MomentumOptimizer::new(learning_rate, beta));
     self.set_optimizer(optimizer);
   }
 
@@ -505,8 +514,8 @@ impl BasicNeuralNetworkRust {
     let prev_layer_outputs = &self.neuron_outputs[output_layer_index - 1];
     let output_biases = &self.biases[output_layer_index];
     let output_weights = &self.weights[output_layer_index];
-    let weight_optimizer = &self.weight_optimizers[output_layer_index];
-    let bias_optimizer = &self.bias_optimizers[output_layer_index];
+    let weight_optimizer = &mut self.weight_optimizers[output_layer_index];
+    let bias_optimizer = &mut self.bias_optimizers[output_layer_index];
     let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
 
     // Shared error calculations (dSSR)
@@ -548,8 +557,8 @@ impl BasicNeuralNetworkRust {
     };
     let output_biases = &self.biases[output_layer_index];
     let output_weights = &self.weights[output_layer_index];
-    let weight_optimizer = &self.weight_optimizers[output_layer_index];
-    let bias_optimizer = &self.bias_optimizers[output_layer_index];
+    let weight_optimizer = &mut self.weight_optimizers[output_layer_index];
+    let bias_optimizer = &mut self.bias_optimizers[output_layer_index];
     let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
 
     // Shared error calculations (dCE * dSoftmax)
@@ -601,8 +610,8 @@ impl BasicNeuralNetworkRust {
       &self.neuron_outputs[layer - 1]
     };
 
-    let weight_optimizer = &self.weight_optimizers[layer];
-    let bias_optimizer = &self.bias_optimizers[layer];
+    let weight_optimizer = &mut self.weight_optimizers[layer];
+    let bias_optimizer = &mut self.bias_optimizers[layer];
 
     let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
 
