@@ -4,6 +4,8 @@ use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
 use tensor_lib::Matrix;
 
+use crate::optimizers::{Optimizer, StochasticGradientDescentOptimizer};
+
 #[pyclass]
 pub struct BasicNeuralNetwork {
   pub network: BasicNeuralNetworkRust,
@@ -24,21 +26,22 @@ impl BasicNeuralNetwork {
     return Self { network };
   }
 
+  fn set_optimizer_stochastic_gradient_descent(&mut self, learning_rate: f32) {
+    self
+      .network
+      .set_optimizer_stochastic_gradient_descent(learning_rate);
+  }
+
   fn train(
     &mut self,
     features_train: Vec<Vec<f32>>,
     input_labels: Vec<f32>,
-    learning_rate: f32,
     num_iterations: usize,
     batch_size: usize,
   ) {
-    self.network.train(
-      features_train,
-      input_labels,
-      learning_rate,
-      num_iterations,
-      batch_size,
-    );
+    self
+      .network
+      .train(features_train, input_labels, num_iterations, batch_size);
   }
 
   fn classify(&mut self, features_test: Vec<Vec<f32>>) -> PyResult<Vec<f32>> {
@@ -72,14 +75,28 @@ impl BasicNeuralNetwork {
       .for_each(|a| biases.push(a.get_data()));
     return Ok(biases);
   }
+
+  fn set_collect_performance_info(&mut self, collect_performance_info: bool) {
+    self
+      .network
+      .set_collect_performance_info(collect_performance_info);
+  }
+
+  fn get_performance_info(&self) -> PyResult<Vec<(f32, f32)>> {
+    let performance_info = self.network.get_performance_info();
+    return Ok(performance_info);
+  }
 }
 
 pub struct BasicNeuralNetworkRust {
   pub non_input_layer_sizes: Vec<usize>,
   pub weights: Vec<Matrix>,
   pub biases: Vec<Matrix>,
+  pub weight_optimizers: Vec<Box<dyn Optimizer>>,
+  pub bias_optimizers: Vec<Box<dyn Optimizer>>,
   pub neuron_outputs: Vec<Matrix>,
   pub performance_info: Vec<(f32, f32, usize, usize, usize)>, // (accuracy, loss, num_correct, sample_count, iterations)
+  pub collect_performance_info: bool,
 }
 
 impl BasicNeuralNetworkRust {
@@ -109,8 +126,16 @@ impl BasicNeuralNetworkRust {
       })
       .collect_vec();
 
+    let weight_optimizers = (0..non_input_layer_sizes.len())
+      .map(|_| Box::new(StochasticGradientDescentOptimizer::new(1e-3)) as Box<dyn Optimizer>)
+      .collect_vec();
+
     let biases = (0..non_input_layer_sizes.len())
       .map(|layer| Matrix::zeros(non_input_layer_sizes[layer], 1))
+      .collect_vec();
+
+    let bias_optimizers = (0..non_input_layer_sizes.len())
+      .map(|_| Box::new(StochasticGradientDescentOptimizer::new(1e-3)) as Box<dyn Optimizer>)
       .collect_vec();
 
     // Create network
@@ -118,12 +143,29 @@ impl BasicNeuralNetworkRust {
       non_input_layer_sizes,
       weights,
       biases,
+      weight_optimizers,
+      bias_optimizers,
       neuron_outputs: Vec::new(),
       performance_info: vec![(0.0, 0.0, 0, 0, 0)],
+      collect_performance_info: true,
     };
 
     // Cleanup and return
     return network;
+  }
+
+  pub fn set_optimizer(&mut self, optimizer: Box<dyn Optimizer>) {
+    self.weight_optimizers = (0..self.non_input_layer_sizes.len())
+      .map(|_| optimizer.clone())
+      .collect_vec();
+    self.bias_optimizers = (0..self.non_input_layer_sizes.len())
+      .map(|_| optimizer.clone())
+      .collect_vec();
+  }
+
+  pub fn set_optimizer_stochastic_gradient_descent(&mut self, learning_rate: f32) {
+    let optimizer = Box::new(StochasticGradientDescentOptimizer::new(learning_rate));
+    self.set_optimizer(optimizer);
   }
 
   pub fn print_structure(&self) {
@@ -134,11 +176,14 @@ impl BasicNeuralNetworkRust {
     }
   }
 
+  pub fn set_collect_performance_info(&mut self, collect_performance_info: bool) {
+    self.collect_performance_info = collect_performance_info;
+  }
+
   pub fn train(
     &mut self,
     features_train: Vec<Vec<f32>>,
     input_labels: Vec<f32>,
-    learning_rate: f32,
     num_iterations: usize,
     batch_size: usize,
   ) {
@@ -153,21 +198,9 @@ impl BasicNeuralNetworkRust {
 
     // Train model, choose regression or classification
     if num_classifications == 1 {
-      self.train_regression(
-        features_train,
-        input_labels,
-        learning_rate,
-        num_iterations,
-        batch_size,
-      );
+      self.train_regression(features_train, input_labels, num_iterations, batch_size);
     } else {
-      self.train_classification(
-        features_train,
-        input_labels,
-        learning_rate,
-        num_iterations,
-        batch_size,
-      );
+      self.train_classification(features_train, input_labels, num_iterations, batch_size);
     }
   }
 
@@ -262,13 +295,12 @@ impl BasicNeuralNetworkRust {
     &mut self,
     observations: Vec<Vec<f32>>,
     labels: Vec<f32>,
-    learning_rate: f32,
     num_iterations: usize,
     batch_size: usize,
   ) {
     let observations_matrix = Matrix::new_2d(&observations).transpose();
 
-    for i in 0..num_iterations {
+    for _ in 0..num_iterations {
       // Batch
       let batch_data = BasicNeuralNetworkRust::mini_batch(&observations, &labels, batch_size);
 
@@ -287,41 +319,92 @@ impl BasicNeuralNetworkRust {
       self.feed_forward(batch);
 
       // Calculate error from feed forward step
-      let output_error = self.backpropogation_output_layer_regression(batch_labels, learning_rate);
+      let output_error = self.backpropogation_output_layer_regression(batch_labels);
 
       // Backpropogate hidden
       self.backpropogation_hidden_layer(
         batch,
         &output_error,
-        learning_rate,
         self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
       );
-
-      // Print progress
-      if i % 50 == 0 {
-        self.test_train_performance_regression(&observations_matrix, &labels);
-      }
     }
   }
 
-  pub fn print_latest_performance_info(&self) {
-    let (accuracy, loss, _, _, _) = self.performance_info.last().unwrap();
-    println!("Accuracy: {}", accuracy);
-    println!("Loss: {}", loss);
+  pub fn print_performance_info(&self, sample_index: usize, display_index: usize) {
+    let (accuracy, loss, _, _, _) = self.performance_info[sample_index];
+    println!(
+      "Iteration {}: Accuracy: {} Loss: {}",
+      display_index, accuracy, loss
+    );
+  }
+
+  pub fn get_performance_info(&self) -> Vec<(f32, f32)> {
+    return self
+      .performance_info
+      .iter()
+      .map(|(accuracy, loss, _, _, _)| (*accuracy, *loss))
+      .collect_vec();
+  }
+
+  pub fn update_performance_info(&mut self, predicted_probabilities: &Matrix, labels: &Vec<f32>) {
+    if !self.collect_performance_info {
+      return;
+    }
+
+    // Performance info is amalgamation of all samples for 50 iterations
+    let iteration_limit = 50;
+    let curr_iteration = self.performance_info.last().unwrap().4;
+
+    // Add new entry if we have reached the iteration limit
+    if curr_iteration == iteration_limit {
+      self.print_performance_info(
+        self.performance_info.len() - 1,
+        iteration_limit * self.performance_info.len(),
+      );
+      self.performance_info.push((0.0, 0.0, 0, 0, 0));
+    }
+
+    let (accuracy, loss, num_correct, sample_count, curr_iteration) =
+      self.performance_info.last_mut().unwrap();
+
+    // Calculate the accuracy
+    let classifications = Self::get_classification(&predicted_probabilities);
+    let curr_iter_num_correct = izip!(classifications.iter(), labels.iter())
+      .fold(0, |acc, (classification, label)| {
+        acc + if classification == label { 1 } else { 0 }
+      });
+
+    *num_correct += curr_iter_num_correct;
+    *sample_count += labels.len();
+    *accuracy = 100.0 * (*num_correct as f32) / (*sample_count as f32);
+
+    // Calculate the loss
+    // Equal to -log(predicted probability of correct class)
+    let predicted_probabilities_data = predicted_probabilities.transpose().get_data();
+    let epsilon = 1e-8; // small constant
+    let curr_iter_loss = izip!(labels.iter(), predicted_probabilities_data.iter()).fold(
+      0.0,
+      |acc, (label, predicted_probabilities)| {
+        acc + -(predicted_probabilities[*label as usize] + epsilon).ln()
+      },
+    );
+    *loss += curr_iter_loss;
+
+    // Increment iteration
+    *curr_iteration += 1;
   }
 
   pub fn train_classification(
     &mut self,
     observations: Vec<Vec<f32>>,
     labels: Vec<f32>,
-    learning_rate: f32,
     num_iterations: usize,
     batch_size: usize,
   ) {
     let observations_matrix = Matrix::new_2d(&observations).transpose();
 
     // For now we will make the number of iterations a constant
-    for i in 0..num_iterations {
+    for _ in 0..num_iterations {
       // Batch
       let batch_data: (Matrix, Vec<f32>) =
         BasicNeuralNetworkRust::mini_batch(&observations, &labels, batch_size);
@@ -342,26 +425,19 @@ impl BasicNeuralNetworkRust {
 
       // Calculate error from feed forward step
       let predicted_probabilities = Self::softmax(&self.neuron_outputs);
-      self.update_performance_info(&predicted_probabilities, &labels);
+      self.update_performance_info(&predicted_probabilities, &batch_labels);
       let output_error = self.backpropogation_output_layer_classification(
         &observations_matrix,
         &predicted_probabilities,
         batch_labels,
-        learning_rate,
       );
 
       // Backpropogate hidden
       self.backpropogation_hidden_layer(
         batch,
         &output_error,
-        learning_rate,
         self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
       );
-
-      // Comment out for tests (pyo3 doesn't like test mode idk why)
-      if i % 50 == 0 {
-        self.test_train_performance_classification(&observations_matrix, &labels);
-      }
     }
   }
 
@@ -369,7 +445,6 @@ impl BasicNeuralNetworkRust {
     &mut self,
     observations: &Matrix, // Expects each sample is in a column (so like a transposed pd datatable)
     labels: &Vec<f32>,
-    learning_rate: f32,
   ) -> Matrix {
     let num_observations = observations.columns;
     self.neuron_outputs = self
@@ -388,7 +463,6 @@ impl BasicNeuralNetworkRust {
       &observations,
       &predicted_probabilities,
       &labels,
-      learning_rate,
     );
 
     if self.weights.len() == 1 {
@@ -399,7 +473,6 @@ impl BasicNeuralNetworkRust {
       return self.backpropogation_hidden_layer(
         &observations,
         &output_error,
-        learning_rate,
         self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
       );
     }
@@ -427,15 +500,13 @@ impl BasicNeuralNetworkRust {
     return neuron_outputs.last().unwrap().softmax();
   }
 
-  pub fn backpropogation_output_layer_regression(
-    &mut self,
-    labels: &Vec<f32>,
-    learning_rate: f32,
-  ) -> Matrix {
+  pub fn backpropogation_output_layer_regression(&mut self, labels: &Vec<f32>) -> Matrix {
     let output_layer_index = self.biases.len() - 1;
     let prev_layer_outputs = &self.neuron_outputs[output_layer_index - 1];
     let output_biases = &self.biases[output_layer_index];
     let output_weights = &self.weights[output_layer_index];
+    let weight_optimizer = &self.weight_optimizers[output_layer_index];
+    let bias_optimizer = &self.bias_optimizers[output_layer_index];
     let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
 
     // Shared error calculations (dSSR)
@@ -448,14 +519,16 @@ impl BasicNeuralNetworkRust {
     // Update biases first
     // b' = b - learning_rate * batch_sum( if label==Output bias codes for {predicted coded for -1} else {predicted coded for} )
     let db = error.sum_rows_matrix();
-    self.biases[output_layer_index] =
-      output_biases.element_subtract(&db.scalar_multiply(learning_rate * normalization_factor));
+    let step_db = bias_optimizer.calculate_step(&db);
+    step_db.scalar_multiply_inplace(normalization_factor);
+    self.biases[output_layer_index] = output_biases.element_subtract(&step_db);
 
     // Update weights
     // w' = w - learning_rate * batch_sum( Output bias codes for Yin * {predicted coded for -1} else Yin * {predicted coded for} )
     let dw = error.matrix_multiply(&prev_layer_outputs.transpose());
-    self.weights[output_layer_index] =
-      output_weights.element_subtract(&dw.scalar_multiply(learning_rate * normalization_factor));
+    let step_dw = weight_optimizer.calculate_step(&dw);
+    step_dw.scalar_multiply_inplace(normalization_factor);
+    self.weights[output_layer_index] = output_weights.element_subtract(&step_dw);
 
     // Return error for use in other backpropogation
     return error;
@@ -466,7 +539,6 @@ impl BasicNeuralNetworkRust {
     observations: &Matrix,
     predicted_probabilities: &Matrix,
     labels: &Vec<f32>,
-    learning_rate: f32,
   ) -> Matrix {
     let output_layer_index = self.biases.len() - 1;
     let prev_layer_outputs = if output_layer_index == 0 {
@@ -476,6 +548,8 @@ impl BasicNeuralNetworkRust {
     };
     let output_biases = &self.biases[output_layer_index];
     let output_weights = &self.weights[output_layer_index];
+    let weight_optimizer = &self.weight_optimizers[output_layer_index];
+    let bias_optimizer = &self.bias_optimizers[output_layer_index];
     let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
 
     // Shared error calculations (dCE * dSoftmax)
@@ -499,14 +573,16 @@ impl BasicNeuralNetworkRust {
     // Update biases first
     // b' = b - learning_rate * batch_sum( if label==Output bias codes for {predicted coded for -1} else {predicted coded for} )
     let db = error.sum_rows_matrix();
-    self.biases[output_layer_index] =
-      output_biases.element_subtract(&db.scalar_multiply(learning_rate * normalization_factor));
+    let step_db = bias_optimizer.calculate_step(&db);
+    step_db.scalar_multiply_inplace(normalization_factor);
+    self.biases[output_layer_index] = output_biases.element_subtract(&step_db);
 
     // Update weights
     // w' = w - learning_rate * batch_sum( Output bias codes for Yin * {predicted coded for -1} else Yin * {predicted coded for} )
     let dw = error.matrix_multiply(&prev_layer_outputs.transpose());
-    self.weights[output_layer_index] =
-      output_weights.element_subtract(&dw.scalar_multiply(learning_rate * normalization_factor));
+    let step_dw = weight_optimizer.calculate_step(&dw);
+    step_dw.scalar_multiply_inplace(normalization_factor);
+    self.weights[output_layer_index] = output_weights.element_subtract(&step_dw);
 
     // Return error for use in other backpropogation
     return error;
@@ -516,7 +592,6 @@ impl BasicNeuralNetworkRust {
     &mut self,
     observations: &Matrix,
     next_layer_error: &Matrix,
-    learning_rate: f32,
     layer: usize,
   ) -> Matrix {
     // Used for yin
@@ -525,6 +600,9 @@ impl BasicNeuralNetworkRust {
     } else {
       &self.neuron_outputs[layer - 1]
     };
+
+    let weight_optimizer = &self.weight_optimizers[layer];
+    let bias_optimizer = &self.bias_optimizers[layer];
 
     let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
 
@@ -545,135 +623,20 @@ impl BasicNeuralNetworkRust {
     // Update biases
     // b' = b - learning_rate * batch_sum(wout * activation'(x) * next_layer_error)
     let db = error.sum_rows_matrix();
-    self.biases[layer] = self.biases[layer]
-      .element_subtract(&db.scalar_multiply(learning_rate * normalization_factor));
+    let step_db = bias_optimizer.calculate_step(&db);
+    step_db.scalar_multiply_inplace(normalization_factor);
+    self.biases[layer] = self.biases[layer].element_subtract(&step_db);
 
     // Update weights
     // w' = w - learning_rate * batch_sum(wout * activation'(x) * next_layer_error * yin)
     let dw = error.matrix_multiply(&prev_layer_outputs.transpose());
-    self.weights[layer] = self.weights[layer]
-      .element_subtract(&dw.scalar_multiply(learning_rate * normalization_factor));
+    let step_dw = weight_optimizer.calculate_step(&dw);
+    step_dw.scalar_multiply_inplace(normalization_factor);
+    self.weights[layer] = self.weights[layer].element_subtract(&step_dw);
 
     if layer != 0 {
-      self.backpropogation_hidden_layer(observations, &error, learning_rate, layer - 1);
+      self.backpropogation_hidden_layer(observations, &error, layer - 1);
     }
     return error;
-  }
-
-  fn matrix_classify(&mut self, observations: &Matrix) -> Vec<f32> {
-    let num_observations = observations.columns;
-
-    self.neuron_outputs = self
-      .weights
-      .iter()
-      .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
-      .collect_vec();
-
-    self.feed_forward(&observations);
-    let predicted_probabilities = Self::softmax(&self.neuron_outputs);
-    let classifications = Self::get_classification(&predicted_probabilities);
-
-    return classifications;
-  }
-
-  fn matrix_regression(&mut self, observations: &Matrix) -> Vec<f32> {
-    let num_observations = observations.columns;
-
-    self.neuron_outputs = self
-      .weights
-      .iter()
-      .map(|layer| Matrix::no_fill(layer.get_data_length(), num_observations))
-      .collect_vec();
-
-    self.feed_forward(&observations);
-    let classifications = self.neuron_outputs[self.neuron_outputs.len() - 1].get_data()[0].to_vec();
-
-    return classifications;
-  }
-
-  pub fn get_performance_info(&self) -> Vec<(f32, f32)> {
-    return self
-      .performance_info
-      .iter()
-      .map(|(accuracy, loss, _, _, _)| (*accuracy, *loss))
-      .collect_vec();
-  }
-
-  pub fn update_performance_info(&mut self, predicted_probabilities: &Matrix, labels: &Vec<f32>) {
-    // Performance info is amalgamation of all samples for 50 iterations
-    let iteration_limit = 50;
-    let curr_iteration = self.performance_info.last().unwrap().4;
-
-    // Add new entry if we have reached the iteration limit
-    if curr_iteration == iteration_limit {
-      println!(
-        "Performance Info For {} Iteration:",
-        iteration_limit * self.performance_info.len()
-      );
-      self.print_latest_performance_info();
-      self.performance_info.push((0.0, 0.0, 0, 0, 0));
-    }
-
-    // (num_correct, loss, num_correct, sample_count, iterations)
-    let performance_info = self.performance_info.last_mut().unwrap();
-
-    // Calculate the accuracy
-    let classifications = Self::get_classification(&predicted_probabilities);
-    let num_correct = izip!(classifications.iter(), labels.iter())
-      .fold(0, |acc, (classification, label)| {
-        acc + if classification == label { 1 } else { 0 }
-      });
-
-    let num_correct = num_correct + performance_info.2;
-    let sample_count = labels.len() + performance_info.3;
-    let accuracy = 100.0 * num_correct as f32 / sample_count as f32;
-    performance_info.0 = accuracy;
-    performance_info.2 = num_correct;
-    performance_info.3 = sample_count;
-
-    // Calculate the loss
-    // Equal to -log(predicted probability of correct class)
-    let predicted_probabilities_data = predicted_probabilities.transpose().get_data();
-    let epsilon = 1e-8; // small constant
-    let loss = izip!(labels.iter(), predicted_probabilities_data.iter()).fold(
-      0.0,
-      |acc, (label, predicted_probabilities)| {
-        acc + -(predicted_probabilities[*label as usize] + epsilon).ln()
-      },
-    );
-    performance_info.1 = loss + performance_info.1;
-
-    // Increment iteration
-    performance_info.4 += 1;
-  }
-
-  fn test_train_performance_regression(&mut self, observations: &Matrix, labels: &Vec<f32>) {
-    let classifications = self.matrix_regression(&observations);
-    let tolerance = 0.05;
-    let num_correct =
-      izip!(classifications.iter(), labels.iter()).fold(0.0, |acc, (classification, label)| {
-        acc
-          + if (classification - label).abs() <= (label * tolerance).abs() {
-            1.0
-          } else {
-            0.0
-          }
-      });
-
-    let percent_correct = 100.0 * num_correct / labels.len() as f32;
-
-    println!("{}", &format!("% Correct: {}", percent_correct));
-  }
-
-  fn test_train_performance_classification(&mut self, observations: &Matrix, labels: &Vec<f32>) {
-    let classifications = self.matrix_classify(&observations);
-    let num_correct = izip!(classifications.iter(), labels.iter())
-      .fold(0.0, |acc, (classification, label)| {
-        acc + if classification == label { 1.0 } else { 0.0 }
-      });
-
-    let percent_correct = 100.0 * num_correct / labels.len() as f32;
-
-    println!("{}", &format!("% Correct: {}", percent_correct));
   }
 }

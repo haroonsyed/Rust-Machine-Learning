@@ -26,7 +26,7 @@ impl ConvolutionalNeuralNetworkRust {
       num_classifications,
       layers: Vec::new(),
       fully_connected_layer: None,
-      optimizer: Box::new(StochasticGradientDescentOptimizer::new(1e-4)),
+      optimizer: Box::new(StochasticGradientDescentOptimizer::new(1e-4)), // Default optimizer
     };
   }
 
@@ -82,6 +82,28 @@ impl ConvolutionalNeuralNetworkRust {
       input_depth,
       self.num_classifications,
     ));
+
+    self
+      .fully_connected_layer
+      .as_mut()
+      .unwrap()
+      .fully_connected_layer
+      .set_optimizer(self.optimizer.clone());
+  }
+
+  fn set_optimizer(&mut self, optimizer: Box<dyn Optimizer>) {
+    self.optimizer = optimizer;
+
+    // TODO: Work out nice way to set optimizer after adding layers (although this is not really needed, but it would be nice)
+    if self.layers.len() > 0 {
+      panic!("Please set optimizer before adding layers!");
+    }
+  }
+
+  pub fn set_optimizer_stochastic_gradient_descent(&mut self, learning_rate: f32) {
+    self.set_optimizer(Box::new(StochasticGradientDescentOptimizer::new(
+      learning_rate,
+    )));
   }
 
   fn convert_observations_to_matrices(
@@ -128,7 +150,6 @@ impl ConvolutionalNeuralNetworkRust {
     &mut self,
     observations: &Vec<Vec<Vec<f32>>>, // sample -> depth -> pixels
     labels: &Vec<f32>,
-    learning_rate: f32,
   ) {
     if observations.len() == 0 {
       return;
@@ -146,12 +167,11 @@ impl ConvolutionalNeuralNetworkRust {
     if self.fully_connected_layer.is_none() {
       panic!("Fully Connected Layer Is Missing!");
     }
-    let fc_error =
-      self
-        .fully_connected_layer
-        .as_mut()
-        .unwrap()
-        .train(&filter_outputs, labels, learning_rate);
+    let fc_error = self
+      .fully_connected_layer
+      .as_mut()
+      .unwrap()
+      .train(&filter_outputs, labels);
 
     // Backpropogate
     self.backpropogation(fc_error);
@@ -488,16 +508,11 @@ impl FullyConnectedLayer {
     return self.fully_connected_layer.classify_matrix(&flattened_input);
   }
 
-  fn train(
-    &mut self,
-    input: &Vec<Vec<Matrix>>,
-    labels: &Vec<f32>,
-    learning_rate: f32,
-  ) -> Vec<Vec<Matrix>> {
+  fn train(&mut self, input: &Vec<Vec<Matrix>>, labels: &Vec<f32>) -> Vec<Vec<Matrix>> {
     let flattened_input = self.flatten(input);
     let fc_error = self
       .fully_connected_layer
-      .train_classification_observation_matrix(&flattened_input, labels, learning_rate);
+      .train_classification_observation_matrix(&flattened_input, labels);
     return self.unflatten(fc_error);
   }
 

@@ -35,6 +35,12 @@ impl ConvolutionalNeuralNetwork {
     };
   }
 
+  fn set_optimizer_stochastic_gradient_descent(&mut self, learning_rate: f32) {
+    self
+      .network
+      .set_optimizer_stochastic_gradient_descent(learning_rate);
+  }
+
   fn add_convolutional_layer(
     &mut self,
     filter_height: usize,
@@ -62,27 +68,17 @@ impl ConvolutionalNeuralNetwork {
     ));
   }
 
-  fn train_using_image_loader(
-    &mut self,
-    learning_rate: f32,
-    batch_size: usize,
-    num_iterations: usize,
-  ) {
+  fn train_using_image_loader(&mut self, batch_size: usize, num_iterations: usize) {
     if let Some(batch_loader) = self.batch_loader.as_ref() {
       for _ in 0..num_iterations {
         let (observations, labels) = batch_loader.batch_sample(batch_size);
-        self.network.train(&observations, &labels, learning_rate);
+        self.network.train(&observations, &labels);
       }
     }
   }
 
-  fn train_raw_data(
-    &mut self,
-    observations: Vec<Vec<Vec<f32>>>,
-    labels: Vec<f32>,
-    learning_rate: f32,
-  ) {
-    self.network.train(&observations, &labels, learning_rate);
+  fn train_raw_data(&mut self, observations: Vec<Vec<Vec<f32>>>, labels: Vec<f32>) {
+    self.network.train(&observations, &labels);
   }
 
   fn classify(&mut self, features_test: Vec<Vec<Vec<f32>>>) -> PyResult<Vec<f32>> {
