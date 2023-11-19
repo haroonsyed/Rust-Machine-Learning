@@ -7,7 +7,8 @@ use crate::{
   convolutional_neural_network::ConvolutionalNeuralNetworkRust,
   image_util::ImageBatchLoaderRust,
   optimizers::{
-    AdagradOptimizer, MomentumOptimizer, RMSPropOptimizer, StochasticGradientDescentOptimizer,
+    AdagradOptimizer, AdamOptimizer, MomentumOptimizer, RMSPropOptimizer,
+    StochasticGradientDescentOptimizer,
   },
 };
 
@@ -57,6 +58,11 @@ impl ConvolutionalNeuralNetwork {
 
   fn set_optimizer_RMSProp(&mut self, learning_rate: f32, beta: f32) {
     let optimizer = Box::new(RMSPropOptimizer::new(learning_rate, beta));
+    self.network.set_optimizer(optimizer);
+  }
+
+  fn set_optimizer_adam(&mut self, learning_rate: f32, beta1: f32, beta2: f32) {
+    let optimizer = Box::new(AdamOptimizer::new(learning_rate, beta1, beta2));
     self.network.set_optimizer(optimizer);
   }
 

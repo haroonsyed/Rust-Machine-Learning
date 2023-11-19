@@ -3,7 +3,7 @@ use tensor_lib::*;
 
 use crate::{
   basic_neural_network::BasicNeuralNetworkRust,
-  optimizers::{MomentumOptimizer, Optimizer, StochasticGradientDescentOptimizer},
+  optimizers::{Optimizer, StochasticGradientDescentOptimizer},
 };
 
 pub struct ConvolutionalNeuralNetworkRust {
@@ -327,6 +327,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
 
   fn backpropogation(&mut self, sample_output_errors: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
     let mut sample_input_errors = Vec::new();
+    let normalization_factor = 1.0 / sample_output_errors.len() as f32;
 
     // n is the filter
     // m is the channel
@@ -371,7 +372,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
         // b' = b - de/dy * learning_rate
         let bias_gradient = filter_output_error;
         let bias_step = optimizer.calculate_step(&bias_gradient);
-        bias.element_subtract_inplace(&bias_step);
+        bias.element_subtract_inplace(&bias_step.scalar_multiply(normalization_factor));
       }
 
       // Update the filters
@@ -389,7 +390,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
           let delta_channel =
             prev_channel_input.convolution(filter_output_error, ConvolutionType::VALID);
           let channel_step = optimizer.calculate_step(&delta_channel);
-          channel.element_subtract_inplace(&channel_step);
+          channel.element_subtract_inplace(&channel_step.scalar_multiply(normalization_factor));
         }
       }
 

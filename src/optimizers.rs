@@ -182,3 +182,78 @@ impl Optimizer for RMSPropOptimizer {
     Box::new(self.clone())
   }
 }
+
+#[derive(Clone)]
+pub struct AdamOptimizer {
+  learning_rate: f32,
+  beta1: f32,
+  beta2: f32,
+  epsilon: f32,
+  d_v: Option<Matrix>,
+  d_s: Option<Matrix>,
+}
+
+impl AdamOptimizer {
+  pub fn new(learning_rate: f32, beta1: f32, beta2: f32) -> AdamOptimizer {
+    AdamOptimizer {
+      learning_rate,
+      beta1,
+      beta2,
+      epsilon: 1e-8,
+      d_v: None,
+      d_s: None,
+    }
+  }
+}
+
+impl Optimizer for AdamOptimizer {
+  fn calculate_step(&mut self, curr_gradient: &Matrix) -> Matrix {
+    let momentum_gradient = match &mut self.d_v {
+      Some(prev_d_v) => {
+        // dv = (beta * prev_grad + (1 - beta) * curr_gradient)
+        let d_v = prev_d_v
+          .scalar_multiply(self.beta1)
+          .element_add(&(curr_gradient.scalar_multiply(1.0 - self.beta1)));
+        self.d_v = Some(d_v.clone());
+        d_v
+      }
+      None => {
+        let d_v = curr_gradient.scalar_multiply(1.0 - self.beta1);
+        self.d_v = Some(d_v.clone());
+        d_v
+      }
+    };
+
+    let rms_prop_gradient = match &mut self.d_s {
+      Some(prev_d_s) => {
+        // adjusted_gradient = 1/sqrt(accumulated_gradient)
+        // accumulated_gradient = (beta * prev_accumulated_gradient + (1 - beta) * curr_gradient ^ 2)
+        let d_s = prev_d_s.scalar_multiply(self.beta2).element_add(
+          &(curr_gradient
+            .element_multiply(&curr_gradient)
+            .scalar_multiply(1.0 - self.beta2)),
+        );
+
+        self.d_s = Some(d_s.clone());
+
+        d_s.element_sqrt().scalar_add(self.epsilon)
+      }
+      None => {
+        let d_s = curr_gradient
+          .element_multiply(&curr_gradient)
+          .scalar_multiply(1.0 - self.beta2);
+        self.d_s = Some(d_s.clone());
+        d_s.element_sqrt().scalar_add(self.epsilon)
+      }
+    };
+
+    // adjusted_gradient = momentum_gradient / rms_prop_gradient
+    let adjusted_gradient = momentum_gradient.element_divide(&rms_prop_gradient);
+
+    return adjusted_gradient.scalar_multiply(self.learning_rate);
+  }
+
+  fn clone_box(&self) -> Box<dyn Optimizer> {
+    Box::new(self.clone())
+  }
+}

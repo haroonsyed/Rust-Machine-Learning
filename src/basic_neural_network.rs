@@ -2,10 +2,11 @@
 use itertools::{izip, Itertools};
 use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
+use statrs::function::beta;
 use tensor_lib::{cuda_bindings::cuda_synchronize, Matrix};
 
 use crate::optimizers::{
-  AdagradOptimizer, MomentumOptimizer, Optimizer, RMSPropOptimizer,
+  AdagradOptimizer, AdamOptimizer, MomentumOptimizer, Optimizer, RMSPropOptimizer,
   StochasticGradientDescentOptimizer,
 };
 
@@ -46,6 +47,11 @@ impl BasicNeuralNetwork {
 
   fn set_optimizer_RMSProp(&mut self, learning_rate: f32, beta: f32) {
     let optimizer = Box::new(RMSPropOptimizer::new(learning_rate, beta));
+    self.network.set_optimizer(optimizer);
+  }
+
+  fn set_optimizer_adam(&mut self, learning_rate: f32, beta1: f32, beta2: f32) {
+    let optimizer = Box::new(AdamOptimizer::new(learning_rate, beta1, beta2));
     self.network.set_optimizer(optimizer);
   }
 
