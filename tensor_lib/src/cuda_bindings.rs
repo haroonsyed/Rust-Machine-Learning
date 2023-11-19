@@ -43,6 +43,15 @@ extern "C" {
     mat2_cols: usize,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_element_divide(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    mat2_buffer: usize,
+    mat2_rows: usize,
+    mat2_cols: usize,
+    inplace: bool,
+  ) -> usize;
   pub fn cuda_scalar_multiply(
     mat1_id: usize,
     mat1_rows: usize,
@@ -123,6 +132,12 @@ extern "C" {
     mat2_buffer: usize,
     mat2_rows: usize,
     mat2_cols: usize,
+    inplace: bool,
+  ) -> usize;
+  pub fn cuda_element_sqrt(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
     inplace: bool,
   ) -> usize;
   pub fn cuda_element_exp(

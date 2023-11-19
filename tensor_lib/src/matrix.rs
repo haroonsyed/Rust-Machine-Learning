@@ -292,6 +292,43 @@ impl Matrix {
     return self.clone();
   }
 
+  fn element_divide_impl(&self, other: &Matrix, inplace: bool) -> usize {
+    if !self.same_shape(other) {
+      panic!(
+        "Matrices not the same shape for element_divide! A: {} {} B: {} {}",
+        self.rows, self.columns, other.rows, other.columns
+      );
+    }
+
+    let result_id: usize;
+    unsafe {
+      result_id = cuda_element_divide(
+        self.id,
+        self.rows,
+        self.columns,
+        other.id,
+        other.rows,
+        other.columns,
+        inplace,
+      )
+    }
+
+    return result_id;
+  }
+
+  pub fn element_divide(&self, other: &Matrix) -> Self {
+    let result_id = self.element_divide_impl(other, false);
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  pub fn element_divide_inplace(&self, other: &Matrix) -> Self {
+    self.element_divide_impl(other, true);
+    return self.clone();
+  }
+
   fn scalar_multiply_impl(&self, scalar: f32, inplace: bool) -> usize {
     let result_id: usize;
     unsafe { result_id = cuda_scalar_multiply(self.id, self.rows, self.columns, scalar, inplace) }
@@ -579,6 +616,26 @@ impl Matrix {
 
   pub fn divide_by_vector_inplace(&self, other: &Matrix) -> Self {
     self.divide_by_vector_impl(other, true);
+
+    return self.clone();
+  }
+
+  fn element_sqrt_impl(&self, inplace: bool) -> usize {
+    let result_id: usize;
+    unsafe { result_id = cuda_element_sqrt(self.id, self.rows, self.columns, inplace) }
+    return result_id;
+  }
+
+  pub fn element_sqrt(&self) -> Self {
+    let result_id = self.element_sqrt_impl(false);
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  pub fn element_sqrt_inplace(&self) -> Self {
+    self.element_sqrt_impl(true);
 
     return self.clone();
   }

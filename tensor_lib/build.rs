@@ -9,6 +9,7 @@ fn main() {
     .cudart("static")
     .flag("-gencode")
     .flag("arch=compute_86,code=sm_86")
+    .flag("--use_fast_math")
     .file("cuda_kernels/src/cuda_kernels.cu")
     .compile("cuda_kernels");
 

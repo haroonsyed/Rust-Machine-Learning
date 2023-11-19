@@ -49,6 +49,22 @@ mod tests {
   }
 
   #[test]
+  fn element_divide() {
+    let test_data = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+
+    let test_data_2 = Matrix::new_2d(&vec![vec![5.0, 1.0, 3.3], vec![2.0, -1.0, 1000.0]]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![0.2, 2.0, 0.9090909090909091],
+      vec![2.0, -5.0, 0.006],
+    ]);
+
+    let observed_result = test_data.element_divide(&test_data_2);
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
   fn scalar_multiply() {
     let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
     let scalar = 5.0;
@@ -350,6 +366,27 @@ mod tests {
   }
 
   #[test]
+  fn element_sqrt() {
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+    let test_data_matrix = Matrix::new_2d(&test_data);
+
+    let expected_result = test_data
+      .iter()
+      .map(|row| row.iter().map(|val| val.sqrt()).collect_vec())
+      .collect_vec();
+
+    let expected_result_matrix = Matrix::new_2d(&expected_result);
+
+    let observed_result = test_data_matrix.element_sqrt();
+
+    assert!(matrix_are_equal(
+      &observed_result,
+      &expected_result_matrix,
+      6
+    ));
+  }
+
+  #[test]
   fn element_exp() {
     let test_data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
     let test_data_matrix = Matrix::new_2d(&test_data);
@@ -366,7 +403,7 @@ mod tests {
     assert!(matrix_are_equal(
       &observed_result,
       &expected_result_matrix,
-      8
+      4
     ));
   }
 

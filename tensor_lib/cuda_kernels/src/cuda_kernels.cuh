@@ -54,6 +54,7 @@ void disable_parallel_stream_execution();
 size_t cuda_element_add(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
 size_t cuda_element_subtract(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
 size_t cuda_element_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
+size_t cuda_element_divide(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
 size_t cuda_scalar_multiply(size_t mat_id, size_t mat_rows, size_t mat_cols, float scalar, bool inplace);
 size_t cuda_scalar_divide(size_t mat_id, size_t mat_rows, size_t mat_cols, float scalar, bool inplace);
 size_t cuda_scalar_add(size_t mat_id, size_t mat_rows, size_t mat_cols, float scalar, bool inplace);
@@ -65,6 +66,7 @@ size_t cuda_scalar_subtract_matrix(size_t mat_id, size_t mat_rows, size_t mat_co
 size_t cuda_matrix_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols);
 size_t cuda_add_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
 size_t cuda_divide_by_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
+size_t cuda_element_sqrt(size_t mat_id, size_t mat_rows, size_t mat_cols, bool inplace);
 size_t cuda_element_exp(size_t mat_id, size_t mat_rows, size_t mat_cols, bool inplace);
 size_t cuda_element_ReLU(size_t mat_id, size_t mat_rows, size_t mat_col, bool inplace);
 size_t cuda_element_ReLU_prime(size_t mat_id, size_t mat_rows, size_t mat_cols, bool inplace);
