@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use pyo3::prelude::*;
+use tensor_lib::cuda_bindings::cuda_synchronize;
 
 use crate::{
   convolutional_neural_network::ConvolutionalNeuralNetworkRust, image_util::ImageBatchLoaderRust,
@@ -78,11 +79,13 @@ impl ConvolutionalNeuralNetwork {
         let (observations, labels) = batch_loader.batch_sample(batch_size);
         self.network.train(&observations, &labels);
       }
+      unsafe { cuda_synchronize() }
     }
   }
 
   fn train_raw_data(&mut self, observations: Vec<Vec<Vec<f32>>>, labels: Vec<f32>) {
     self.network.train(&observations, &labels);
+    unsafe { cuda_synchronize() }
   }
 
   fn classify(&mut self, features_test: Vec<Vec<Vec<f32>>>) -> PyResult<Vec<f32>> {

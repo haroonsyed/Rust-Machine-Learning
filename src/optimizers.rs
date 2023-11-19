@@ -35,7 +35,7 @@ impl Optimizer for StochasticGradientDescentOptimizer {
 pub struct MomentumOptimizer {
   learning_rate: f32,
   beta: f32,
-  prev_step: Option<Matrix>,
+  prev_gradient: Option<Matrix>,
 }
 
 impl MomentumOptimizer {
@@ -43,27 +43,26 @@ impl MomentumOptimizer {
     MomentumOptimizer {
       learning_rate,
       beta,
-      prev_step: None,
+      prev_gradient: None,
     }
   }
 }
 
 impl Optimizer for MomentumOptimizer {
   fn calculate_step(&mut self, curr_gradient: &Matrix) -> Matrix {
-    let step = match &self.prev_step {
-      Some(prev_step) => {
-        // Step = (beta * prev_step + (1 - beta) * curr_gradient) * learning_rate
-        prev_step
+    let adjusted_gradient = match &self.prev_gradient {
+      Some(prev_gradient) => {
+        // dW = (beta * prev_grad + (1 - beta) * curr_gradient)
+        prev_gradient
           .scalar_multiply(self.beta)
           .element_add(&(curr_gradient.scalar_multiply(1.0 - self.beta)))
-          .scalar_multiply(self.learning_rate)
       }
-      None => curr_gradient.scalar_multiply(self.learning_rate),
+      None => curr_gradient.deep_copy(),
     };
 
-    self.prev_step = Some(step.clone());
+    self.prev_gradient = Some(adjusted_gradient.clone());
 
-    return step;
+    return adjusted_gradient.scalar_multiply(self.learning_rate);
   }
   fn clone_box(&self) -> Box<dyn Optimizer> {
     Box::new(self.clone())

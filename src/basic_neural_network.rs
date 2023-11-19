@@ -2,7 +2,7 @@
 use itertools::{izip, Itertools};
 use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
-use tensor_lib::Matrix;
+use tensor_lib::{cuda_bindings::cuda_synchronize, Matrix};
 
 use crate::optimizers::{MomentumOptimizer, Optimizer, StochasticGradientDescentOptimizer};
 
@@ -46,6 +46,7 @@ impl BasicNeuralNetwork {
     self
       .network
       .train(features_train, input_labels, num_iterations, batch_size);
+    unsafe { cuda_synchronize() }
   }
 
   fn classify(&mut self, features_test: Vec<Vec<f32>>) -> PyResult<Vec<f32>> {
@@ -56,6 +57,7 @@ impl BasicNeuralNetwork {
 
   fn regression(&mut self, features_test: Vec<Vec<f32>>) -> PyResult<Vec<f32>> {
     let predictions = self.network.regression(&features_test);
+    unsafe { cuda_synchronize() }
 
     return Ok(predictions);
   }
@@ -528,15 +530,17 @@ impl BasicNeuralNetworkRust {
     // Update biases first
     // b' = b - learning_rate * batch_sum( if label==Output bias codes for {predicted coded for -1} else {predicted coded for} )
     let db = error.sum_rows_matrix();
-    let step_db = bias_optimizer.calculate_step(&db);
-    step_db.scalar_multiply_inplace(normalization_factor);
+    let step_db = bias_optimizer
+      .calculate_step(&db)
+      .scalar_multiply(normalization_factor);
     self.biases[output_layer_index] = output_biases.element_subtract(&step_db);
 
     // Update weights
     // w' = w - learning_rate * batch_sum( Output bias codes for Yin * {predicted coded for -1} else Yin * {predicted coded for} )
     let dw = error.matrix_multiply(&prev_layer_outputs.transpose());
-    let step_dw = weight_optimizer.calculate_step(&dw);
-    step_dw.scalar_multiply_inplace(normalization_factor);
+    let step_dw = weight_optimizer
+      .calculate_step(&dw)
+      .scalar_multiply(normalization_factor);
     self.weights[output_layer_index] = output_weights.element_subtract(&step_dw);
 
     // Return error for use in other backpropogation
@@ -582,15 +586,17 @@ impl BasicNeuralNetworkRust {
     // Update biases first
     // b' = b - learning_rate * batch_sum( if label==Output bias codes for {predicted coded for -1} else {predicted coded for} )
     let db = error.sum_rows_matrix();
-    let step_db = bias_optimizer.calculate_step(&db);
-    step_db.scalar_multiply_inplace(normalization_factor);
+    let step_db = bias_optimizer
+      .calculate_step(&db)
+      .scalar_multiply(normalization_factor);
     self.biases[output_layer_index] = output_biases.element_subtract(&step_db);
 
     // Update weights
     // w' = w - learning_rate * batch_sum( Output bias codes for Yin * {predicted coded for -1} else Yin * {predicted coded for} )
     let dw = error.matrix_multiply(&prev_layer_outputs.transpose());
-    let step_dw = weight_optimizer.calculate_step(&dw);
-    step_dw.scalar_multiply_inplace(normalization_factor);
+    let step_dw = weight_optimizer
+      .calculate_step(&dw)
+      .scalar_multiply(normalization_factor);
     self.weights[output_layer_index] = output_weights.element_subtract(&step_dw);
 
     // Return error for use in other backpropogation
@@ -632,15 +638,17 @@ impl BasicNeuralNetworkRust {
     // Update biases
     // b' = b - learning_rate * batch_sum(wout * activation'(x) * next_layer_error)
     let db = error.sum_rows_matrix();
-    let step_db = bias_optimizer.calculate_step(&db);
-    step_db.scalar_multiply_inplace(normalization_factor);
+    let step_db = bias_optimizer
+      .calculate_step(&db)
+      .scalar_multiply(normalization_factor);
     self.biases[layer] = self.biases[layer].element_subtract(&step_db);
 
     // Update weights
     // w' = w - learning_rate * batch_sum(wout * activation'(x) * next_layer_error * yin)
     let dw = error.matrix_multiply(&prev_layer_outputs.transpose());
-    let step_dw = weight_optimizer.calculate_step(&dw);
-    step_dw.scalar_multiply_inplace(normalization_factor);
+    let step_dw = weight_optimizer
+      .calculate_step(&dw)
+      .scalar_multiply(normalization_factor);
     self.weights[layer] = self.weights[layer].element_subtract(&step_dw);
 
     if layer != 0 {
