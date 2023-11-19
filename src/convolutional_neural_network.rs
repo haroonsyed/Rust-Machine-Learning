@@ -3,7 +3,7 @@ use tensor_lib::*;
 
 use crate::{
   basic_neural_network::BasicNeuralNetworkRust,
-  optimizers::{Optimizer, StochasticGradientDescentOptimizer},
+  optimizers::{AdamOptimizer, Optimizer},
 };
 
 pub struct ConvolutionalNeuralNetworkRust {
@@ -26,7 +26,7 @@ impl ConvolutionalNeuralNetworkRust {
       num_classifications,
       layers: Vec::new(),
       fully_connected_layer: None,
-      optimizer: Box::new(StochasticGradientDescentOptimizer::new(1e-4)), // Default optimizer
+      optimizer: Box::new(AdamOptimizer::new(1e-2, 0.9, 0.999)), // Default optimizer
     };
   }
 

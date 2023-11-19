@@ -152,7 +152,7 @@ impl BasicNeuralNetworkRust {
       .collect_vec();
 
     let weight_optimizers = (0..non_input_layer_sizes.len())
-      .map(|_| Box::new(StochasticGradientDescentOptimizer::new(1e-3)) as Box<dyn Optimizer>)
+      .map(|_| Box::new(AdamOptimizer::new(1e-2, 0.9, 0.999)) as Box<dyn Optimizer>)
       .collect_vec();
 
     let biases = (0..non_input_layer_sizes.len())
@@ -160,7 +160,7 @@ impl BasicNeuralNetworkRust {
       .collect_vec();
 
     let bias_optimizers = (0..non_input_layer_sizes.len())
-      .map(|_| Box::new(StochasticGradientDescentOptimizer::new(1e-3)) as Box<dyn Optimizer>)
+      .map(|_| Box::new(AdamOptimizer::new(1e-2, 0.9, 0.999)) as Box<dyn Optimizer>)
       .collect_vec();
 
     // Create network
