@@ -6,7 +6,9 @@ use tensor_lib::cuda_bindings::cuda_synchronize;
 use crate::{
   convolutional_neural_network::ConvolutionalNeuralNetworkRust,
   image_util::ImageBatchLoaderRust,
-  optimizers::{AdagradOptimizer, MomentumOptimizer, StochasticGradientDescentOptimizer},
+  optimizers::{
+    AdagradOptimizer, MomentumOptimizer, RMSPropOptimizer, StochasticGradientDescentOptimizer,
+  },
 };
 
 #[pyclass]
@@ -50,6 +52,11 @@ impl ConvolutionalNeuralNetwork {
 
   fn set_optimizer_adagrad(&mut self, learning_rate: f32) {
     let optimizer = Box::new(AdagradOptimizer::new(learning_rate));
+    self.network.set_optimizer(optimizer);
+  }
+
+  fn set_optimizer_RMSProp(&mut self, learning_rate: f32, beta: f32) {
+    let optimizer = Box::new(RMSPropOptimizer::new(learning_rate, beta));
     self.network.set_optimizer(optimizer);
   }
 

@@ -5,7 +5,8 @@ use rand::{distributions::Uniform, prelude::Distribution};
 use tensor_lib::{cuda_bindings::cuda_synchronize, Matrix};
 
 use crate::optimizers::{
-  AdagradOptimizer, MomentumOptimizer, Optimizer, StochasticGradientDescentOptimizer,
+  AdagradOptimizer, MomentumOptimizer, Optimizer, RMSPropOptimizer,
+  StochasticGradientDescentOptimizer,
 };
 
 #[pyclass]
@@ -40,6 +41,11 @@ impl BasicNeuralNetwork {
 
   fn set_optimizer_adagrad(&mut self, learning_rate: f32) {
     let optimizer = Box::new(AdagradOptimizer::new(learning_rate));
+    self.network.set_optimizer(optimizer);
+  }
+
+  fn set_optimizer_RMSProp(&mut self, learning_rate: f32, beta: f32) {
+    let optimizer = Box::new(RMSPropOptimizer::new(learning_rate, beta));
     self.network.set_optimizer(optimizer);
   }
 
