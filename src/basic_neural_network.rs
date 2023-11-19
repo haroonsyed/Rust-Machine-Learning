@@ -4,7 +4,9 @@ use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
 use tensor_lib::{cuda_bindings::cuda_synchronize, Matrix};
 
-use crate::optimizers::{MomentumOptimizer, Optimizer, StochasticGradientDescentOptimizer};
+use crate::optimizers::{
+  AdagradOptimizer, MomentumOptimizer, Optimizer, StochasticGradientDescentOptimizer,
+};
 
 #[pyclass]
 pub struct BasicNeuralNetwork {
@@ -27,13 +29,18 @@ impl BasicNeuralNetwork {
   }
 
   fn set_optimizer_stochastic_gradient_descent(&mut self, learning_rate: f32) {
-    self
-      .network
-      .set_optimizer_stochastic_gradient_descent(learning_rate);
+    let optimizer = Box::new(StochasticGradientDescentOptimizer::new(learning_rate));
+    self.network.set_optimizer(optimizer);
   }
 
   fn set_optimizer_momentum(&mut self, learning_rate: f32, beta: f32) {
-    self.network.set_optimizer_momentum(learning_rate, beta);
+    let optimizer = Box::new(MomentumOptimizer::new(learning_rate, beta));
+    self.network.set_optimizer(optimizer);
+  }
+
+  fn set_optimizer_adagrad(&mut self, learning_rate: f32) {
+    let optimizer = Box::new(AdagradOptimizer::new(learning_rate));
+    self.network.set_optimizer(optimizer);
   }
 
   fn train(
@@ -167,16 +174,6 @@ impl BasicNeuralNetworkRust {
     self.bias_optimizers = (0..self.non_input_layer_sizes.len())
       .map(|_| optimizer.clone())
       .collect_vec();
-  }
-
-  pub fn set_optimizer_stochastic_gradient_descent(&mut self, learning_rate: f32) {
-    let optimizer = Box::new(StochasticGradientDescentOptimizer::new(learning_rate));
-    self.set_optimizer(optimizer);
-  }
-
-  pub fn set_optimizer_momentum(&mut self, learning_rate: f32, beta: f32) {
-    let optimizer = Box::new(MomentumOptimizer::new(learning_rate, beta));
-    self.set_optimizer(optimizer);
   }
 
   pub fn print_structure(&self) {

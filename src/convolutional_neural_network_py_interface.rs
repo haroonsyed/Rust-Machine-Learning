@@ -4,7 +4,9 @@ use pyo3::prelude::*;
 use tensor_lib::cuda_bindings::cuda_synchronize;
 
 use crate::{
-  convolutional_neural_network::ConvolutionalNeuralNetworkRust, image_util::ImageBatchLoaderRust,
+  convolutional_neural_network::ConvolutionalNeuralNetworkRust,
+  image_util::ImageBatchLoaderRust,
+  optimizers::{AdagradOptimizer, MomentumOptimizer, StochasticGradientDescentOptimizer},
 };
 
 #[pyclass]
@@ -37,13 +39,18 @@ impl ConvolutionalNeuralNetwork {
   }
 
   fn set_optimizer_stochastic_gradient_descent(&mut self, learning_rate: f32) {
-    self
-      .network
-      .set_optimizer_stochastic_gradient_descent(learning_rate);
+    let optimizer = Box::new(StochasticGradientDescentOptimizer::new(learning_rate));
+    self.network.set_optimizer(optimizer);
   }
 
   fn set_optimizer_momentum(&mut self, learning_rate: f32, beta: f32) {
-    self.network.set_optimizer_momentum(learning_rate, beta);
+    let optimizer = Box::new(MomentumOptimizer::new(learning_rate, beta));
+    self.network.set_optimizer(optimizer);
+  }
+
+  fn set_optimizer_adagrad(&mut self, learning_rate: f32) {
+    let optimizer = Box::new(AdagradOptimizer::new(learning_rate));
+    self.network.set_optimizer(optimizer);
   }
 
   fn add_convolutional_layer(

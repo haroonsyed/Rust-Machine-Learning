@@ -91,23 +91,13 @@ impl ConvolutionalNeuralNetworkRust {
       .set_optimizer(self.optimizer.clone());
   }
 
-  fn set_optimizer(&mut self, optimizer: Box<dyn Optimizer>) {
+  pub fn set_optimizer(&mut self, optimizer: Box<dyn Optimizer>) {
     self.optimizer = optimizer;
 
     // TODO: Work out nice way to set optimizer after adding layers (although this is not really needed, but it would be nice)
     if self.layers.len() > 0 {
       panic!("Please set optimizer before adding layers!");
     }
-  }
-
-  pub fn set_optimizer_stochastic_gradient_descent(&mut self, learning_rate: f32) {
-    self.set_optimizer(Box::new(StochasticGradientDescentOptimizer::new(
-      learning_rate,
-    )));
-  }
-
-  pub fn set_optimizer_momentum(&mut self, learning_rate: f32, beta: f32) {
-    self.set_optimizer(Box::new(MomentumOptimizer::new(learning_rate, beta)));
   }
 
   fn convert_observations_to_matrices(
