@@ -103,3 +103,35 @@ def view_image(data, img_x, img_y, colorscale=""):
     # Quick image viewer
     fig = px.imshow(img_data, color_continuous_scale=colorscale)
     fig.show()
+
+
+def graph_accuracy_loss(performance_info):
+    # Graph the accuracy and loss
+    # Get the loss and accuracy and plot it
+    accuracy = [x[0] for x in performance_info]
+    loss = [x[1] for x in performance_info]
+
+    # Normalize the accuracy and loss
+    accuracy = [x / 100.0 for x in accuracy]
+    loss = [x / max(loss) for x in loss]
+
+    # Use plotly
+    import plotly
+    import plotly.graph_objs as go
+    plotly.offline.init_notebook_mode(connected=True)
+
+    trace0 = go.Scatter(
+        x = list(range(len(accuracy))),
+        y = accuracy,
+        mode = 'lines',
+        name = 'accuracy'
+    )
+    trace1 = go.Scatter(
+        x = list(range(len(loss))),
+        y = loss,
+        mode = 'lines',
+        name = 'loss'
+    )
+
+    data = [trace0, trace1]
+    plotly.offline.iplot(data, filename='basic-line')

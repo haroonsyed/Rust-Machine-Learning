@@ -243,11 +243,7 @@ impl SimplifiedConvolutionalNeuralNetworkTensorRust {
       .map(|(flattened_output, label)| {
         let fully_connected_error = self
           .fully_connected_layer
-          .train_classification_observation_matrix(
-            &flattened_output.get_data(),
-            &vec![*label],
-            learning_rate,
-          );
+          .train_classification_observation_matrix(&flattened_output.get_data(), &vec![*label]);
 
         let output_error = self.fully_connected_layer.weights[0]
           .transpose()

@@ -11,6 +11,7 @@ pub mod image_util;
 pub mod k_means;
 pub mod k_nearest_neighbor;
 pub mod naive_bayes;
+pub mod optimizers;
 pub mod py_util;
 pub mod regression_tree;
 pub mod simplified_convolutional_neural_network;

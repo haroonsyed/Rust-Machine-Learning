@@ -1,9 +1,15 @@
 use std::collections::HashMap;
 
 use pyo3::prelude::*;
+use tensor_lib::cuda_bindings::cuda_synchronize;
 
 use crate::{
-  convolutional_neural_network::ConvolutionalNeuralNetworkRust, image_util::ImageBatchLoaderRust,
+  convolutional_neural_network::ConvolutionalNeuralNetworkRust,
+  image_util::ImageBatchLoaderRust,
+  optimizers::{
+    AdagradOptimizer, AdamOptimizer, MomentumOptimizer, RMSPropOptimizer,
+    StochasticGradientDescentOptimizer,
+  },
 };
 
 #[pyclass]
@@ -35,6 +41,31 @@ impl ConvolutionalNeuralNetwork {
     };
   }
 
+  fn set_optimizer_stochastic_gradient_descent(&mut self, learning_rate: f32) {
+    let optimizer = Box::new(StochasticGradientDescentOptimizer::new(learning_rate));
+    self.network.set_optimizer(optimizer);
+  }
+
+  fn set_optimizer_momentum(&mut self, learning_rate: f32, beta: f32) {
+    let optimizer = Box::new(MomentumOptimizer::new(learning_rate, beta));
+    self.network.set_optimizer(optimizer);
+  }
+
+  fn set_optimizer_adagrad(&mut self, learning_rate: f32) {
+    let optimizer = Box::new(AdagradOptimizer::new(learning_rate));
+    self.network.set_optimizer(optimizer);
+  }
+
+  fn set_optimizer_RMSProp(&mut self, learning_rate: f32, beta: f32) {
+    let optimizer = Box::new(RMSPropOptimizer::new(learning_rate, beta));
+    self.network.set_optimizer(optimizer);
+  }
+
+  fn set_optimizer_adam(&mut self, learning_rate: f32, beta1: f32, beta2: f32) {
+    let optimizer = Box::new(AdamOptimizer::new(learning_rate, beta1, beta2));
+    self.network.set_optimizer(optimizer);
+  }
+
   fn add_convolutional_layer(
     &mut self,
     filter_height: usize,
@@ -62,27 +93,19 @@ impl ConvolutionalNeuralNetwork {
     ));
   }
 
-  fn train_using_image_loader(
-    &mut self,
-    learning_rate: f32,
-    batch_size: usize,
-    num_iterations: usize,
-  ) {
+  fn train_using_image_loader(&mut self, batch_size: usize, num_iterations: usize) {
     if let Some(batch_loader) = self.batch_loader.as_ref() {
       for _ in 0..num_iterations {
         let (observations, labels) = batch_loader.batch_sample(batch_size);
-        self.network.train(&observations, &labels, learning_rate);
+        self.network.train(&observations, &labels);
       }
+      unsafe { cuda_synchronize() }
     }
   }
 
-  fn train_raw_data(
-    &mut self,
-    observations: Vec<Vec<Vec<f32>>>,
-    labels: Vec<f32>,
-    learning_rate: f32,
-  ) {
-    self.network.train(&observations, &labels, learning_rate);
+  fn train_raw_data(&mut self, observations: Vec<Vec<Vec<f32>>>, labels: Vec<f32>) {
+    self.network.train(&observations, &labels);
+    unsafe { cuda_synchronize() }
   }
 
   fn classify(&mut self, features_test: Vec<Vec<Vec<f32>>>) -> PyResult<Vec<f32>> {

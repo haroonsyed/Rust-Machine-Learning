@@ -190,10 +190,9 @@ mod simplified_cnn_tests {
 
     // Feed forward through FC
     let label = vec![7.0];
-    let learning_rate = 1e-3;
     let output_gradient = cnn
       .fully_connected_layer
-      .train_classification_observation_matrix(&flattened_outputs, &label, learning_rate);
+      .train_classification_observation_matrix(&flattened_outputs, &label);
 
     // Check the input error
     let expected_output_gradient = get_expected_softmax_gradient();

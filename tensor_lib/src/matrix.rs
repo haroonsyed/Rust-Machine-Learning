@@ -213,9 +213,9 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn element_add_inplace(&self, other: &Matrix) -> &Self {
+  pub fn element_add_inplace(&self, other: &Matrix) -> Self {
     self.element_add_impl(other, true);
-    return self;
+    return self.clone();
   }
 
   fn element_subtract_impl(&self, other: &Matrix, inplace: bool) -> usize {
@@ -250,9 +250,9 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn element_subtract_inplace(&self, other: &Matrix) -> &Self {
+  pub fn element_subtract_inplace(&self, other: &Matrix) -> Self {
     self.element_subtract_impl(other, true);
-    return self;
+    return self.clone();
   }
 
   fn element_multiply_impl(&self, other: &Matrix, inplace: bool) -> usize {
@@ -287,9 +287,46 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn element_multiply_inplace(&self, other: &Matrix) -> &Self {
+  pub fn element_multiply_inplace(&self, other: &Matrix) -> Self {
     self.element_multiply_impl(other, true);
-    return self;
+    return self.clone();
+  }
+
+  fn element_divide_impl(&self, other: &Matrix, inplace: bool) -> usize {
+    if !self.same_shape(other) {
+      panic!(
+        "Matrices not the same shape for element_divide! A: {} {} B: {} {}",
+        self.rows, self.columns, other.rows, other.columns
+      );
+    }
+
+    let result_id: usize;
+    unsafe {
+      result_id = cuda_element_divide(
+        self.id,
+        self.rows,
+        self.columns,
+        other.id,
+        other.rows,
+        other.columns,
+        inplace,
+      )
+    }
+
+    return result_id;
+  }
+
+  pub fn element_divide(&self, other: &Matrix) -> Self {
+    let result_id = self.element_divide_impl(other, false);
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  pub fn element_divide_inplace(&self, other: &Matrix) -> Self {
+    self.element_divide_impl(other, true);
+    return self.clone();
   }
 
   fn scalar_multiply_impl(&self, scalar: f32, inplace: bool) -> usize {
@@ -307,9 +344,9 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn scalar_multiply_inplace(&self, scalar: f32) -> &Self {
+  pub fn scalar_multiply_inplace(&self, scalar: f32) -> Self {
     self.scalar_multiply_impl(scalar, true);
-    return self;
+    return self.clone();
   }
 
   fn scalar_divide_impl(&self, scalar: f32, inplace: bool) -> usize {
@@ -327,9 +364,9 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn scalar_divide_inplace(&self, scalar: f32) -> &Self {
+  pub fn scalar_divide_inplace(&self, scalar: f32) -> Self {
     self.scalar_divide_impl(scalar, true);
-    return self;
+    return self.clone();
   }
 
   fn scalar_add_impl(&self, scalar: f32, inplace: bool) -> usize {
@@ -347,9 +384,9 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn scalar_add_inplace(&self, scalar: f32) -> &Self {
+  pub fn scalar_add_inplace(&self, scalar: f32) -> Self {
     self.scalar_add_impl(scalar, true);
-    return self;
+    return self.clone();
   }
 
   fn scalar_subtract_impl(&self, scalar: f32, inplace: bool) -> usize {
@@ -367,9 +404,9 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn scalar_subtract_inplace(&self, scalar: f32) -> &Self {
+  pub fn scalar_subtract_inplace(&self, scalar: f32) -> Self {
     self.scalar_subtract_impl(scalar, true);
-    return self;
+    return self.clone();
   }
 
   fn scalar_multiply_matrix_impl(&self, scalar: &Matrix, inplace: bool) -> usize {
@@ -393,9 +430,9 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn scalar_multiply_matrix_inplace(&self, scalar: &Matrix) -> &Self {
+  pub fn scalar_multiply_matrix_inplace(&self, scalar: &Matrix) -> Self {
     self.scalar_multiply_matrix_impl(scalar, true);
-    return self;
+    return self.clone();
   }
 
   fn scalar_divide_matrix_impl(&self, scalar: &Matrix, inplace: bool) -> usize {
@@ -419,9 +456,9 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn scalar_divide_matrix_inplace(&self, scalar: &Matrix) -> &Self {
+  pub fn scalar_divide_matrix_inplace(&self, scalar: &Matrix) -> Self {
     self.scalar_divide_matrix_impl(scalar, true);
-    return self;
+    return self.clone();
   }
 
   fn scalar_add_matrix_impl(&self, scalar: &Matrix, inplace: bool) -> usize {
@@ -445,9 +482,9 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn scalar_add_matrix_inplace(&self, scalar: &Matrix) -> &Self {
+  pub fn scalar_add_matrix_inplace(&self, scalar: &Matrix) -> Self {
     self.scalar_add_matrix_impl(scalar, true);
-    return self;
+    return self.clone();
   }
 
   fn scalar_subtract_matrix_impl(&self, scalar: &Matrix, inplace: bool) -> usize {
@@ -471,9 +508,9 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn scalar_subtract_matrix_inplace(&self, scalar: &Matrix) -> &Self {
+  pub fn scalar_subtract_matrix_inplace(&self, scalar: &Matrix) -> Self {
     self.scalar_subtract_matrix_impl(scalar, true);
-    return self;
+    return self.clone();
   }
 
   pub fn matrix_multiply(&self, other: &Matrix) -> Self {
@@ -537,10 +574,10 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn add_vector_inplace(&self, other: &Matrix) -> &Self {
+  pub fn add_vector_inplace(&self, other: &Matrix) -> Self {
     self.add_vector_impl(other, true);
 
-    return self;
+    return self.clone();
   }
 
   fn divide_by_vector_impl(&self, other: &Matrix, inplace: bool) -> usize {
@@ -577,10 +614,30 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn divide_by_vector_inplace(&self, other: &Matrix) -> &Self {
+  pub fn divide_by_vector_inplace(&self, other: &Matrix) -> Self {
     self.divide_by_vector_impl(other, true);
 
-    return self;
+    return self.clone();
+  }
+
+  fn element_sqrt_impl(&self, inplace: bool) -> usize {
+    let result_id: usize;
+    unsafe { result_id = cuda_element_sqrt(self.id, self.rows, self.columns, inplace) }
+    return result_id;
+  }
+
+  pub fn element_sqrt(&self) -> Self {
+    let result_id = self.element_sqrt_impl(false);
+    let output_rows = self.rows;
+    let output_columns = self.columns;
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
+  pub fn element_sqrt_inplace(&self) -> Self {
+    self.element_sqrt_impl(true);
+
+    return self.clone();
   }
 
   fn element_exp_impl(&self, inplace: bool) -> usize {
@@ -597,10 +654,10 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn element_exp_inplace(&self) -> &Self {
+  pub fn element_exp_inplace(&self) -> Self {
     self.element_exp_impl(true);
 
-    return self;
+    return self.clone();
   }
 
   #[allow(non_snake_case)]
@@ -621,10 +678,10 @@ impl Matrix {
   }
 
   #[allow(non_snake_case)]
-  pub fn element_ReLU_inplace(&self) -> &Self {
+  pub fn element_ReLU_inplace(&self) -> Self {
     self.element_ReLU_impl(true);
 
-    return self;
+    return self.clone();
   }
 
   #[allow(non_snake_case)]
