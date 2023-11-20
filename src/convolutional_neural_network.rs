@@ -292,7 +292,6 @@ impl CNN_Layer for ConvolutionalLayerRust {
 
   fn feed_forward(&mut self, input: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
     let mut sample_filter_outputs = Vec::new();
-    let (output_height, output_width, _) = self.output_dimensions;
 
     // Sample
     for sample in input {
@@ -300,10 +299,10 @@ impl CNN_Layer for ConvolutionalLayerRust {
 
       // Filter
       for (filter, bias) in izip!(self.filters.iter(), self.biases.iter()) {
-        let filter_output = Matrix::zeros(output_height, output_width);
+        let filter_output = sample[0].convolution(&filter[0], ConvolutionType::VALID);
 
         // Channel
-        for (channel, kernel) in izip!(sample, filter) {
+        for (channel, kernel) in izip!(sample[1..].iter(), filter[1..].iter()) {
           let channel_output = channel.convolution(kernel, ConvolutionType::VALID);
           filter_output.element_add_inplace(&channel_output);
         }
@@ -336,7 +335,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
     for (sample_error, sample_output) in izip!(sample_output_errors.iter(), self.prev_output.iter())
     {
       for (filter_error, filter_output) in izip!(sample_error, sample_output) {
-        filter_error.element_multiply_inplace(&filter_output.element_ReLU_prime());
+        filter_error.element_multiply_inplace(&filter_output.element_ReLU_prime_inplace());
       }
     }
 
@@ -347,20 +346,20 @@ impl CNN_Layer for ConvolutionalLayerRust {
       // Calculate the input error
       // PER FILTER
       let mut sample_input_error = Vec::new();
-      for (filter_output_error, filter) in izip!(sample_output_error.iter(), self.filters.iter()) {
-        // Xm' = Xm - sum(de/dy * conv_full * Knm)
-        let delta_xm =
-          filter_output_error.convolution(&filter[0].rotate_180(), ConvolutionType::FULL);
+      for (filter_error, filter) in izip!(sample_output_error.iter(), self.filters.iter()) {
+        // deltaXm = sum(de/dy * conv_full * Knm)
+        let delta_xm = filter_error.convolution(&filter[0].rotate_180(), ConvolutionType::FULL);
 
         // PER CHANNEL
         for channel in filter[1..].iter() {
           delta_xm.element_add_inplace(
-            &filter_output_error.convolution(&channel.rotate_180(), ConvolutionType::FULL),
+            &filter_error.convolution(&channel.rotate_180(), ConvolutionType::FULL),
           );
         }
 
         sample_input_error.push(delta_xm);
       }
+      sample_input_errors.push(sample_input_error);
 
       // Update the biases
       // PER FILTER
@@ -372,7 +371,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
         // b' = b - de/dy * learning_rate
         let bias_gradient = filter_output_error;
         let bias_step = optimizer.calculate_step(&bias_gradient);
-        bias.element_subtract_inplace(&bias_step.scalar_multiply(normalization_factor));
+        bias.element_subtract_inplace(&bias_step.scalar_multiply_inplace(normalization_factor));
       }
 
       // Update the filters
@@ -390,11 +389,10 @@ impl CNN_Layer for ConvolutionalLayerRust {
           let delta_channel =
             prev_channel_input.convolution(filter_output_error, ConvolutionType::VALID);
           let channel_step = optimizer.calculate_step(&delta_channel);
-          channel.element_subtract_inplace(&channel_step.scalar_multiply(normalization_factor));
+          channel
+            .element_subtract_inplace(&channel_step.scalar_multiply_inplace(normalization_factor));
         }
       }
-
-      sample_input_errors.push(sample_input_error);
     }
 
     return sample_input_errors;

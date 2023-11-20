@@ -702,8 +702,10 @@ impl Matrix {
   }
 
   #[allow(non_snake_case)]
-  pub fn element_ReLU_prime_inplace(&self) {
+  pub fn element_ReLU_prime_inplace(&self) -> Self {
     self.element_ReLU_prime_impl(true);
+
+    return self.clone();
   }
 
   pub fn sum_rows_matrix(&self) -> Self {

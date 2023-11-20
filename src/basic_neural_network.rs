@@ -2,7 +2,6 @@
 use itertools::{izip, Itertools};
 use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
-use statrs::function::beta;
 use tensor_lib::{cuda_bindings::cuda_synchronize, Matrix};
 
 use crate::optimizers::{
@@ -541,16 +540,16 @@ impl BasicNeuralNetworkRust {
     let db = error.sum_rows_matrix();
     let step_db = bias_optimizer
       .calculate_step(&db)
-      .scalar_multiply(normalization_factor);
-    self.biases[output_layer_index] = output_biases.element_subtract(&step_db);
+      .scalar_multiply_inplace(normalization_factor);
+    self.biases[output_layer_index] = output_biases.element_subtract_inplace(&step_db);
 
     // Update weights
     // w' = w - learning_rate * batch_sum( Output bias codes for Yin * {predicted coded for -1} else Yin * {predicted coded for} )
     let dw = error.matrix_multiply(&prev_layer_outputs.transpose());
     let step_dw = weight_optimizer
       .calculate_step(&dw)
-      .scalar_multiply(normalization_factor);
-    self.weights[output_layer_index] = output_weights.element_subtract(&step_dw);
+      .scalar_multiply_inplace(normalization_factor);
+    self.weights[output_layer_index] = output_weights.element_subtract_inplace(&step_dw);
 
     // Return error for use in other backpropogation
     return error;
@@ -597,16 +596,16 @@ impl BasicNeuralNetworkRust {
     let db = error.sum_rows_matrix();
     let step_db = bias_optimizer
       .calculate_step(&db)
-      .scalar_multiply(normalization_factor);
-    self.biases[output_layer_index] = output_biases.element_subtract(&step_db);
+      .scalar_multiply_inplace(normalization_factor);
+    self.biases[output_layer_index] = output_biases.element_subtract_inplace(&step_db);
 
     // Update weights
     // w' = w - learning_rate * batch_sum( Output bias codes for Yin * {predicted coded for -1} else Yin * {predicted coded for} )
     let dw = error.matrix_multiply(&prev_layer_outputs.transpose());
     let step_dw = weight_optimizer
       .calculate_step(&dw)
-      .scalar_multiply(normalization_factor);
-    self.weights[output_layer_index] = output_weights.element_subtract(&step_dw);
+      .scalar_multiply_inplace(normalization_factor);
+    self.weights[output_layer_index] = output_weights.element_subtract_inplace(&step_dw);
 
     // Return error for use in other backpropogation
     return error;
@@ -642,23 +641,23 @@ impl BasicNeuralNetworkRust {
     let error = wout
       .transpose()
       .matrix_multiply(next_layer_error)
-      .element_multiply(&activation_prime_x);
+      .element_multiply_inplace(&activation_prime_x);
 
     // Update biases
     // b' = b - learning_rate * batch_sum(wout * activation'(x) * next_layer_error)
     let db = error.sum_rows_matrix();
     let step_db = bias_optimizer
       .calculate_step(&db)
-      .scalar_multiply(normalization_factor);
-    self.biases[layer] = self.biases[layer].element_subtract(&step_db);
+      .scalar_multiply_inplace(normalization_factor);
+    self.biases[layer] = self.biases[layer].element_subtract_inplace(&step_db);
 
     // Update weights
     // w' = w - learning_rate * batch_sum(wout * activation'(x) * next_layer_error * yin)
     let dw = error.matrix_multiply(&prev_layer_outputs.transpose());
     let step_dw = weight_optimizer
       .calculate_step(&dw)
-      .scalar_multiply(normalization_factor);
-    self.weights[layer] = self.weights[layer].element_subtract(&step_dw);
+      .scalar_multiply_inplace(normalization_factor);
+    self.weights[layer] = self.weights[layer].element_subtract_inplace(&step_dw);
 
     if layer != 0 {
       self.backpropogation_hidden_layer(observations, &error, layer - 1);

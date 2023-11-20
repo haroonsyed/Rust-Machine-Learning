@@ -86,7 +86,7 @@ void init_min_pool_size() {
     cudaGetDevice(&device);
     cudaMemPool_t mempool;
     cudaDeviceGetDefaultMemPool(&mempool, device);
-    size_t threshold = sizeof(float) * 2048 * 2048;  // Around 68 Mb reserved
+    size_t threshold = UINT64_MAX;  // Since exclusive to one process, we can max out threshold
     cudaMemPoolSetAttribute(mempool, cudaMemPoolAttrReleaseThreshold, &threshold);
 }
 void init_library() {
