@@ -2,18 +2,11 @@ use crate::cuda_bindings::*;
 use itertools::Itertools;
 use rand::prelude::Distribution;
 use statrs::distribution::Normal;
-use std::collections::HashMap;
 use std::ffi::{c_float, c_ulonglong};
 use std::io::{stdout, BufWriter, Write};
-use std::sync::Mutex;
+use std::sync::Arc;
 
-// IMPORTANT NOTE: THE UNDERLYING CUDA LIBRARY IS NOT THREAD SAFE (yet).
-
-// USED FOR MATRIX REFERENCE MANAGEMENT
-// Necessary to allow copying without deref deleting the underlying gpu memory (passing pointers around between cuda and rust is a pain)
-lazy_static! {
-  static ref MATRIX_REFERENCE_COUNT_LOCK: Mutex<HashMap<usize, usize>> = Mutex::new(HashMap::new());
-}
+// IMPORTANT NOTE: THIS API IS THREADSAFE, BUT THE UNDERLYING CUDA LIBRARY IS NOT THREAD SAFE (yet).
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -23,34 +16,31 @@ pub enum ConvolutionType {
   FULL,
 }
 
-// Note cloning keeps the same id, used for ownership movement in rust.
-// Does not actually copy the underlying matrix in cuda.
-// Cloning is explicit to ensure this understanding
-pub struct Matrix {
-  id: usize,
-  pub rows: usize,
-  pub columns: usize,
+// Use newtype for id to ensure drop arc<id> does not apply to all usize
+struct MatrixId(usize);
+
+impl MatrixId {
+  fn new(id: usize) -> Self {
+    return MatrixId(id);
+  }
 }
 
-impl Drop for Matrix {
+impl Drop for MatrixId {
   fn drop(&mut self) {
-    let mut ref_count_map = MATRIX_REFERENCE_COUNT_LOCK.lock().unwrap();
-    let current_ref_count = ref_count_map[&self.id];
-    if current_ref_count == 1 {
-      unsafe {
-        unregister_matrix(self.id);
-        ref_count_map.remove(&self.id);
-      }
-    } else {
-      ref_count_map.insert(self.id, current_ref_count - 1);
+    unsafe {
+      unregister_matrix(self.0);
     }
   }
 }
 
-impl Clone for Matrix {
-  fn clone(&self) -> Self {
-    return Matrix::new(self.id, self.rows, self.columns);
-  }
+// Note cloning keeps the same id, used for ownership movement in rust.
+// Does not actually copy the underlying matrix in cuda.
+// Cloning is explicit to ensure this understanding
+#[derive(Clone)]
+pub struct Matrix {
+  id: Arc<MatrixId>,
+  pub rows: usize,
+  pub columns: usize,
 }
 
 impl Matrix {
@@ -59,20 +49,21 @@ impl Matrix {
   }
 
   fn new(id: usize, rows: usize, columns: usize) -> Self {
-    let mut ref_count_map = MATRIX_REFERENCE_COUNT_LOCK.lock().unwrap();
-    let curr_ref_count = ref_count_map.get(&id).unwrap_or(&0).clone();
-    ref_count_map.insert(id, curr_ref_count + 1);
-    return Matrix { id, rows, columns };
+    return Matrix {
+      id: Arc::new(MatrixId::new(id)),
+      rows,
+      columns,
+    };
   }
 
   pub fn get_id(&self) -> usize {
-    return self.id;
+    return (*self.id).0;
   }
 
   pub fn get_data(&self) -> Vec<Vec<f32>> {
     let mut data = Vec::<c_float>::with_capacity(self.get_data_length());
     unsafe {
-      get_matrix_data(self.id, self.rows, self.columns, data.as_mut_ptr());
+      get_matrix_data(self.get_id(), self.rows, self.columns, data.as_mut_ptr());
       data.set_len(self.get_data_length());
     }
 
@@ -192,10 +183,10 @@ impl Matrix {
     let result_id: usize;
     unsafe {
       result_id = cuda_element_add(
-        self.id,
+        self.get_id(),
         self.rows,
         self.columns,
-        other.id,
+        other.get_id(),
         other.rows,
         other.columns,
         inplace,
@@ -229,10 +220,10 @@ impl Matrix {
     let result_id: usize;
     unsafe {
       result_id = cuda_element_subtract(
-        self.id,
+        self.get_id(),
         self.rows,
         self.columns,
-        other.id,
+        other.get_id(),
         other.rows,
         other.columns,
         inplace,
@@ -266,10 +257,10 @@ impl Matrix {
     let result_id: usize;
     unsafe {
       result_id = cuda_element_multiply(
-        self.id,
+        self.get_id(),
         self.rows,
         self.columns,
-        other.id,
+        other.get_id(),
         other.rows,
         other.columns,
         inplace,
@@ -303,10 +294,10 @@ impl Matrix {
     let result_id: usize;
     unsafe {
       result_id = cuda_element_divide(
-        self.id,
+        self.get_id(),
         self.rows,
         self.columns,
-        other.id,
+        other.get_id(),
         other.rows,
         other.columns,
         inplace,
@@ -331,7 +322,9 @@ impl Matrix {
 
   fn scalar_multiply_impl(&self, scalar: f32, inplace: bool) -> usize {
     let result_id: usize;
-    unsafe { result_id = cuda_scalar_multiply(self.id, self.rows, self.columns, scalar, inplace) }
+    unsafe {
+      result_id = cuda_scalar_multiply(self.get_id(), self.rows, self.columns, scalar, inplace)
+    }
 
     return result_id;
   }
@@ -351,7 +344,9 @@ impl Matrix {
 
   fn scalar_divide_impl(&self, scalar: f32, inplace: bool) -> usize {
     let result_id: usize;
-    unsafe { result_id = cuda_scalar_divide(self.id, self.rows, self.columns, scalar, inplace) }
+    unsafe {
+      result_id = cuda_scalar_divide(self.get_id(), self.rows, self.columns, scalar, inplace)
+    }
 
     return result_id;
   }
@@ -371,7 +366,7 @@ impl Matrix {
 
   fn scalar_add_impl(&self, scalar: f32, inplace: bool) -> usize {
     let result_id: usize;
-    unsafe { result_id = cuda_scalar_add(self.id, self.rows, self.columns, scalar, inplace) }
+    unsafe { result_id = cuda_scalar_add(self.get_id(), self.rows, self.columns, scalar, inplace) }
 
     return result_id;
   }
@@ -391,7 +386,9 @@ impl Matrix {
 
   fn scalar_subtract_impl(&self, scalar: f32, inplace: bool) -> usize {
     let result_id: usize;
-    unsafe { result_id = cuda_scalar_subtract(self.id, self.rows, self.columns, scalar, inplace) }
+    unsafe {
+      result_id = cuda_scalar_subtract(self.get_id(), self.rows, self.columns, scalar, inplace)
+    }
 
     return result_id;
   }
@@ -416,7 +413,13 @@ impl Matrix {
 
     let result_id: usize;
     unsafe {
-      result_id = cuda_scalar_multiply_matrix(self.id, self.rows, self.columns, scalar.id, inplace)
+      result_id = cuda_scalar_multiply_matrix(
+        self.get_id(),
+        self.rows,
+        self.columns,
+        scalar.get_id(),
+        inplace,
+      )
     }
 
     return result_id;
@@ -442,7 +445,13 @@ impl Matrix {
 
     let result_id: usize;
     unsafe {
-      result_id = cuda_scalar_divide_matrix(self.id, self.rows, self.columns, scalar.id, inplace)
+      result_id = cuda_scalar_divide_matrix(
+        self.get_id(),
+        self.rows,
+        self.columns,
+        scalar.get_id(),
+        inplace,
+      )
     }
 
     return result_id;
@@ -468,7 +477,13 @@ impl Matrix {
 
     let result_id: usize;
     unsafe {
-      result_id = cuda_scalar_add_matrix(self.id, self.rows, self.columns, scalar.id, inplace)
+      result_id = cuda_scalar_add_matrix(
+        self.get_id(),
+        self.rows,
+        self.columns,
+        scalar.get_id(),
+        inplace,
+      )
     }
 
     return result_id;
@@ -494,7 +509,13 @@ impl Matrix {
 
     let result_id: usize;
     unsafe {
-      result_id = cuda_scalar_subtract_matrix(self.id, self.rows, self.columns, scalar.id, inplace)
+      result_id = cuda_scalar_subtract_matrix(
+        self.get_id(),
+        self.rows,
+        self.columns,
+        scalar.get_id(),
+        inplace,
+      )
     }
 
     return result_id;
@@ -525,10 +546,10 @@ impl Matrix {
     let result_id: usize;
     unsafe {
       result_id = cuda_matrix_multiply(
-        self.id,
+        self.get_id(),
         self.rows,
         self.columns,
-        other.id,
+        other.get_id(),
         other.rows,
         other.columns,
       )
@@ -553,10 +574,10 @@ impl Matrix {
     let result_id: usize;
     unsafe {
       result_id = cuda_add_vector(
-        self.id,
+        self.get_id(),
         self.rows,
         self.columns,
-        other.id,
+        other.get_id(),
         other.rows,
         other.columns,
         inplace,
@@ -593,10 +614,10 @@ impl Matrix {
     let result_id: usize;
     unsafe {
       result_id = cuda_divide_by_vector(
-        self.id,
+        self.get_id(),
         self.rows,
         self.columns,
-        other.id,
+        other.get_id(),
         other.rows,
         other.columns,
         inplace,
@@ -622,7 +643,7 @@ impl Matrix {
 
   fn element_sqrt_impl(&self, inplace: bool) -> usize {
     let result_id: usize;
-    unsafe { result_id = cuda_element_sqrt(self.id, self.rows, self.columns, inplace) }
+    unsafe { result_id = cuda_element_sqrt(self.get_id(), self.rows, self.columns, inplace) }
     return result_id;
   }
 
@@ -642,7 +663,7 @@ impl Matrix {
 
   fn element_exp_impl(&self, inplace: bool) -> usize {
     let result_id: usize;
-    unsafe { result_id = cuda_element_exp(self.id, self.rows, self.columns, inplace) }
+    unsafe { result_id = cuda_element_exp(self.get_id(), self.rows, self.columns, inplace) }
     return result_id;
   }
 
@@ -663,7 +684,7 @@ impl Matrix {
   #[allow(non_snake_case)]
   fn element_ReLU_impl(&self, inplace: bool) -> usize {
     let result_id: usize;
-    unsafe { result_id = cuda_element_ReLU(self.id, self.rows, self.columns, inplace) }
+    unsafe { result_id = cuda_element_ReLU(self.get_id(), self.rows, self.columns, inplace) }
 
     return result_id;
   }
@@ -687,7 +708,7 @@ impl Matrix {
   #[allow(non_snake_case)]
   fn element_ReLU_prime_impl(&self, inplace: bool) -> usize {
     let result_id: usize;
-    unsafe { result_id = cuda_element_ReLU_prime(self.id, self.rows, self.columns, inplace) }
+    unsafe { result_id = cuda_element_ReLU_prime(self.get_id(), self.rows, self.columns, inplace) }
 
     return result_id;
   }
@@ -710,7 +731,7 @@ impl Matrix {
 
   pub fn sum_rows_matrix(&self) -> Self {
     let result_id: usize;
-    unsafe { result_id = cuda_sum_rows(self.id, self.rows, self.columns) }
+    unsafe { result_id = cuda_sum_rows(self.get_id(), self.rows, self.columns) }
 
     let output_rows = self.rows;
     let output_columns = 1;
@@ -720,7 +741,7 @@ impl Matrix {
 
   pub fn sum_columns_matrix(&self) -> Self {
     let result_id: usize;
-    unsafe { result_id = cuda_sum_columns(self.id, self.rows, self.columns) }
+    unsafe { result_id = cuda_sum_columns(self.get_id(), self.rows, self.columns) }
 
     let output_rows = 1;
     let output_columns = self.columns;
@@ -730,7 +751,7 @@ impl Matrix {
 
   pub fn sum_columns(&self) -> Vec<f32> {
     let result_id: usize;
-    unsafe { result_id = cuda_sum_columns(self.id, self.rows, self.columns) }
+    unsafe { result_id = cuda_sum_columns(self.get_id(), self.rows, self.columns) }
 
     let output_rows = 1;
     let output_columns = self.columns;
@@ -746,10 +767,14 @@ impl Matrix {
 
     // Fast transpose
     if self.rows == 1 || self.columns == 1 {
-      return Matrix::new(self.id, self.columns, self.rows);
+      // Be very careful here, we need to clone the arc or we would delete the memory associated with this
+      let mut result = self.clone();
+      result.rows = self.columns;
+      result.columns = self.rows;
+      return result;
     }
 
-    unsafe { result_id = cuda_transpose(self.id, self.rows, self.columns) }
+    unsafe { result_id = cuda_transpose(self.get_id(), self.rows, self.columns) }
 
     let output_rows = self.columns;
     let output_columns = self.rows;
@@ -760,7 +785,7 @@ impl Matrix {
   pub fn max_pool(&self) -> (Self, Self) {
     let result_ids: Tuple;
 
-    unsafe { result_ids = cuda_max_pool(self.id, self.rows, self.columns) }
+    unsafe { result_ids = cuda_max_pool(self.get_id(), self.rows, self.columns) }
 
     let output_rows = self.rows / 2 + self.rows % 2;
     let output_columns = self.columns / 2 + self.columns % 2;
@@ -775,7 +800,8 @@ impl Matrix {
     let result_id: usize;
 
     unsafe {
-      result_id = cuda_nearest_neighbor_2x_upsample(self.id, self.rows, self.columns, odd_upsample)
+      result_id =
+        cuda_nearest_neighbor_2x_upsample(self.get_id(), self.rows, self.columns, odd_upsample)
     }
 
     let output_rows = self.rows * 2 - (odd_upsample as usize);
@@ -787,7 +813,7 @@ impl Matrix {
   pub fn rotate_180(&self) -> Self {
     let result_id: usize;
 
-    unsafe { result_id = cuda_rotate_180(self.id, self.rows, self.columns) }
+    unsafe { result_id = cuda_rotate_180(self.get_id(), self.rows, self.columns) }
 
     let output_rows = self.rows;
     let output_columns = self.columns;
@@ -806,10 +832,10 @@ impl Matrix {
 
     unsafe {
       result_id = cuda_convolution(
-        self.id,
+        self.get_id(),
         self.rows,
         self.columns,
-        kernel.id,
+        kernel.get_id(),
         kernel.rows,
         kernel.columns,
         conv_type,
@@ -870,7 +896,9 @@ impl Matrix {
   pub fn center_pad(&self, pad_rows: usize, pad_cols: usize) -> Self {
     let result_id: usize;
 
-    unsafe { result_id = cuda_center_pad(self.id, self.rows, self.columns, pad_rows, pad_cols) }
+    unsafe {
+      result_id = cuda_center_pad(self.get_id(), self.rows, self.columns, pad_rows, pad_cols)
+    }
 
     let output_rows = self.rows + 2 * pad_rows;
     let output_columns = self.columns + 2 * pad_cols;
@@ -881,7 +909,7 @@ impl Matrix {
   pub fn softmax(&self) -> Self {
     let result_id: usize;
 
-    unsafe { result_id = cuda_softmax(self.id, self.rows, self.columns) }
+    unsafe { result_id = cuda_softmax(self.get_id(), self.rows, self.columns) }
 
     let output_rows = self.rows;
     let output_columns = self.columns;
@@ -894,7 +922,7 @@ impl Matrix {
 
     unsafe {
       result_id = cuda_crop(
-        self.id,
+        self.get_id(),
         self.rows,
         self.columns,
         row_offset,
@@ -913,7 +941,7 @@ impl Matrix {
   pub fn deep_copy(&self) -> Self {
     let result_id: usize;
 
-    unsafe { result_id = cuda_copy(self.id, self.rows, self.columns) }
+    unsafe { result_id = cuda_copy(self.get_id(), self.rows, self.columns) }
 
     let output_rows = self.rows;
     let output_columns = self.columns;
@@ -925,7 +953,7 @@ impl Matrix {
   pub fn sum_all_matrix_elements(&self) -> Self {
     let result_id: usize;
 
-    unsafe { result_id = cuda_sum_all_matrix_elements(self.id, self.rows, self.columns) }
+    unsafe { result_id = cuda_sum_all_matrix_elements(self.get_id(), self.rows, self.columns) }
 
     let output_rows = 1;
     let output_columns = 1;
@@ -958,7 +986,7 @@ pub fn flatten_matrix_array(to_flatten: &Vec<Matrix>) -> Matrix {
     return Matrix::zeros(0, 0);
   }
 
-  let mat_ids = to_flatten.iter().map(|mat| mat.id).collect_vec();
+  let mat_ids = to_flatten.iter().map(|mat| mat.get_id()).collect_vec();
 
   let mat_rows = to_flatten[0].rows;
   let mat_cols = to_flatten[0].columns;
@@ -985,7 +1013,7 @@ pub fn img2col(image: &Vec<Matrix>, filter_rows: usize, filter_cols: usize) -> M
   let image_rows = image[0].rows;
   let image_cols = image[0].columns;
 
-  let image_ids = image.iter().map(|image| image.id).collect_vec();
+  let image_ids = image.iter().map(|image| image.get_id()).collect_vec();
 
   let out_id;
   unsafe {
@@ -1020,7 +1048,7 @@ pub fn unflatten_array_to_matrices(
 
   unsafe {
     cuda_unflatten_array(
-      to_unflatten.id,
+      to_unflatten.get_id(),
       to_unflatten.get_data_length(),
       mat_rows,
       mat_cols,
@@ -1049,7 +1077,7 @@ pub fn unflatten_array_strided_to_matrices(
 
   unsafe {
     cuda_unflatten_array_strided(
-      to_unflatten.id,
+      to_unflatten.get_id(),
       to_unflatten.get_data_length(),
       mat_rows,
       mat_cols,
@@ -1093,8 +1121,8 @@ pub fn convolution_packed(
     panic!("Kernel must be square and odd for same convolution!");
   }
 
-  let mat_ids = matrices.iter().map(|mat| mat.id).collect_vec();
-  let kernel_ids = kernels.iter().map(|kernel| kernel.id).collect_vec();
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let kernel_ids = kernels.iter().map(|kernel| kernel.get_id()).collect_vec();
   let mut result_ids = vec![0; num_matrices];
 
   unsafe {

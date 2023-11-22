@@ -13,9 +13,9 @@ add_library(cuda_kernels STATIC ${SRC})
 find_package(CUDA REQUIRED)
 set_target_properties(cuda_kernels PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(cuda_kernels PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+set_target_properties(cuda_kernels PROPERTIES CUDA_ARCHITECTURES "52;75;86;89;90")
 set( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wall --std=c++11 -O3 -fPIC" )
 target_compile_options(cuda_kernels PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math>)
-# set_target_properties(cuda_kernels PROPERTIES CUDA_ARCHITECTURES native)
 
 # Link libraries
 target_link_libraries(
