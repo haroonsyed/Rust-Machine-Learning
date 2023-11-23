@@ -1,26 +1,4 @@
-#include <unordered_map>
-#include <vector>
-
-#include "./cuda_kernels.cuh"
-
-bool library_init = false;
-cudaStream_t mem_stream;
-cudaMemPool_t mempool;
-std::vector<cudaStream_t> exec_streams;
-bool parallel_stream_execution = false;
-cublasHandle_t handle;
-size_t mat_generated_count(0);
-std::unordered_map<size_t, float*> mat_map;
-
-// Error checking macro: https://stackoverflow.com/a/14038590
-#define gpuErrchk(ans) \
-    { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char* file, int line, bool abort = false) {
-    if (code != cudaSuccess) {
-        fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-        if (abort) exit(code);
-    }
-}
+#include "cuda_kernels.cuh"
 
 /////////////////////
 /// TEST FUNCTIONS
@@ -73,93 +51,6 @@ void test_array_fill(float* buffer, size_t length) {
 
 void cuda_synchronize() {
     cudaDeviceSynchronize();
-}
-
-/////////////////////
-/// Matrix Setup API
-/////////////////////
-void init_cublas_handle() {
-    cublasCreate(&handle);
-    cublasSetStream(handle, 0);
-}
-void init_min_pool_size() {
-    int device;
-    cudaGetDevice(&device);
-    cudaDeviceGetDefaultMemPool(&mempool, device);
-    size_t threshold = UINT64_MAX;  // Since exclusive to one process, we can max out threshold
-    cudaMemPoolSetAttribute(mempool, cudaMemPoolAttrReleaseThreshold, &threshold);
-}
-void init_library() {
-    // Init streams
-    int exec_stream_count = 4;
-    for (int i = 0; i < exec_stream_count; i++) {
-        cudaStream_t stream;
-        cudaStreamCreate(&stream);
-        exec_streams.push_back(stream);
-    }
-
-    // Init mem stream, for now we will just use stream 0
-    mem_stream = 0;
-    // cudaStreamCreate(&mem_stream);
-
-    // Init cublas
-    init_cublas_handle();
-
-    // Init pool
-    init_min_pool_size();
-
-    library_init = true;
-}
-void enable_parallel_stream_execution() {
-    // Wait for all streams to finish
-    cudaDeviceSynchronize();
-    parallel_stream_execution = true;
-}
-void disable_parallel_stream_execution() {
-    // Wait for all streams to finish
-    cudaDeviceSynchronize();
-    parallel_stream_execution = false;
-}
-cudaStream_t get_stream() {
-    if (parallel_stream_execution) {
-        return exec_streams[mat_generated_count % exec_streams.size()];
-    }
-    return 0;
-}
-size_t register_matrix_buffer(float* gpu_buffer) {
-    if (!library_init) {
-        init_library();
-    }
-
-    // Register with the map for retrieval later
-    mat_map[mat_generated_count] = gpu_buffer;
-    return mat_generated_count++;  // Fine if this overflows
-}
-
-size_t register_matrix(size_t rows, size_t cols) {
-    // Upload the data
-    float* gpu_buffer;
-    gpuErrchk(cudaMallocAsync(&gpu_buffer, sizeof(float) * rows * cols, mem_stream));
-
-    return register_matrix_buffer(gpu_buffer);
-}
-
-size_t register_matrix(float* data, size_t rows, size_t cols) {
-    // Upload the data
-    float* gpu_buffer;
-    gpuErrchk(cudaMallocAsync(&gpu_buffer, sizeof(float) * rows * cols, mem_stream));
-    gpuErrchk(cudaMemcpy(gpu_buffer, data, sizeof(float) * rows * cols, cudaMemcpyHostToDevice));
-    return register_matrix_buffer(gpu_buffer);
-}
-
-void unregister_matrix(size_t mat_id) {
-    gpuErrchk(cudaFreeAsync(mat_map[mat_id], mem_stream));
-    mat_map.erase(mat_id);
-}
-
-void get_matrix_data(size_t mat_id, int rows, int cols, float* data_buffer) {
-    float* gpu_buffer = mat_map[mat_id];
-    gpuErrchk(cudaMemcpy(data_buffer, gpu_buffer, sizeof(float) * rows * cols, cudaMemcpyDeviceToHost));
 }
 
 //////////////////////////
@@ -1739,13 +1630,13 @@ void cuda_convolution_valid_packed(size_t* matrices_ids, size_t num_matrices, si
 
     // Upload gpu buffers. TODO: ensure get_stream returns same value for each of these (or just get stream once)
     float** gpu_mat_buffers_ptr;
-    cudaMallocAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, get_stream());
+    cudaMallocFromPoolAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
     cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
     float** gpu_kernel_buffers_ptr;
-    cudaMallocAsync(&gpu_kernel_buffers_ptr, sizeof(float*) * num_matrices, get_stream());
+    cudaMallocFromPoolAsync(&gpu_kernel_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
     cudaMemcpy(gpu_kernel_buffers_ptr, &gpu_kernel_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
     float** gpu_out_buffers_ptr;
-    cudaMallocAsync(&gpu_out_buffers_ptr, sizeof(float*) * num_matrices, get_stream());
+    cudaMallocFromPoolAsync(&gpu_out_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
     cudaMemcpy(gpu_out_buffers_ptr, &gpu_out_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
 
     // Kernel launch parameters
@@ -1829,13 +1720,13 @@ void cuda_convolution_same_packed(size_t* matrices_ids, size_t num_matrices, siz
 
     // Upload gpu buffers, TODO: ensure get_stream returns same value for each of these (or just get stream once)
     float** gpu_mat_buffers_ptr;
-    cudaMallocAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, get_stream());
+    cudaMallocFromPoolAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
     cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
     float** gpu_kernel_buffers_ptr;
-    cudaMallocAsync(&gpu_kernel_buffers_ptr, sizeof(float*) * num_matrices, get_stream());
+    cudaMallocFromPoolAsync(&gpu_kernel_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
     cudaMemcpy(gpu_kernel_buffers_ptr, &gpu_kernel_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
     float** gpu_out_buffers_ptr;
-    cudaMallocAsync(&gpu_out_buffers_ptr, sizeof(float*) * num_matrices, get_stream());
+    cudaMallocFromPoolAsync(&gpu_out_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
     cudaMemcpy(gpu_out_buffers_ptr, &gpu_out_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
 
     // Kernel launch parameters
@@ -1920,13 +1811,13 @@ void cuda_convolution_full_packed(size_t* matrices_ids, size_t num_matrices, siz
 
     // Upload gpu buffers, TODO: ensure get_stream returns same value for each of these (or just get stream once)
     float** gpu_mat_buffers_ptr;
-    cudaMallocAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, get_stream());
+    cudaMallocFromPoolAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
     cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
     float** gpu_kernel_buffers_ptr;
-    cudaMallocAsync(&gpu_kernel_buffers_ptr, sizeof(float*) * num_matrices, get_stream());
+    cudaMallocFromPoolAsync(&gpu_kernel_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
     cudaMemcpy(gpu_kernel_buffers_ptr, &gpu_kernel_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
     float** gpu_out_buffers_ptr;
-    cudaMallocAsync(&gpu_out_buffers_ptr, sizeof(float*) * num_matrices, get_stream());
+    cudaMallocFromPoolAsync(&gpu_out_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
     cudaMemcpy(gpu_out_buffers_ptr, &gpu_out_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
 
     // Kernel launch parameters
@@ -1997,7 +1888,7 @@ size_t cuda_img2col_valid(size_t* mat_ids, size_t num_matrices, size_t mat_rows,
 
     // TODO: ensure get_stream returns same value for each of these (or just get stream once)
     float** gpu_mat_buffers;
-    cudaMallocAsync(&gpu_mat_buffers, sizeof(float*) * num_matrices, get_stream());
+    cudaMallocFromPoolAsync(&gpu_mat_buffers, sizeof(float*) * num_matrices, mempool, get_stream());
     cudaMemcpy(gpu_mat_buffers, &mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
     float* gpu_out_buffer = mat_map[out_mat_id];
 
@@ -2066,7 +1957,7 @@ size_t cuda_flatten_array(size_t* mat_ids, size_t num_matrices, size_t mat_rows,
 
     // TODO: ensure get_stream returns same value for each of these (or just get stream once)
     float** gpu_mat_buffers;
-    cudaMallocAsync(&gpu_mat_buffers, sizeof(float*) * num_matrices, get_stream());
+    cudaMallocFromPoolAsync(&gpu_mat_buffers, sizeof(float*) * num_matrices, mempool, get_stream());
     cudaMemcpy(gpu_mat_buffers, &mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
     float* gpu_out_buffer = mat_map[out_mat_id];
 
@@ -2117,7 +2008,7 @@ void cuda_unflatten_array(size_t array_id, size_t arr_size, size_t mat_rows, siz
 
     // Upload the gpu_mat_buffers to the gpu, TODO: ensure get_stream returns same value for each of these (or just get stream once)
     float** gpu_mat_buffers_ptr;
-    cudaMallocAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, get_stream());
+    cudaMallocFromPoolAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
     cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
 
     // Get the flattened array
@@ -2163,7 +2054,7 @@ void cuda_unflatten_array_strided(size_t array_id, size_t arr_size, size_t mat_r
 
     // Upload the gpu_mat_buffers to the gpu, ,TODO: ensure get_stream returns same value for each of these (or just get stream once)
     float** gpu_mat_buffers_ptr;
-    cudaMallocAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, get_stream());
+    cudaMallocFromPoolAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
     cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
 
     // Get the flattened array

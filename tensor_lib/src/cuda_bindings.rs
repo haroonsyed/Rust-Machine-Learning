@@ -13,7 +13,8 @@ extern "C" {
   pub fn test();
   pub fn test_array_fill(out: *mut c_float, length: usize);
   pub fn cuda_synchronize();
-  pub fn register_matrix(data: *const c_float, rows: usize, cols: usize) -> usize;
+  pub fn register_matrix(rows: usize, cols: usize) -> usize;
+  pub fn register_matrix_with_data(data: *const c_float, rows: usize, cols: usize) -> usize;
   pub fn unregister_matrix(mat_id: usize) -> usize;
   pub fn get_matrix_data(mat_id: usize, rows: usize, cols: usize, data_buffer: *mut c_float);
   pub fn cuda_element_add(

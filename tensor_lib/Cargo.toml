@@ -20,7 +20,6 @@ rayon = "1.7.0"
 itertools = "0.10.5"
 statrs = "0.16.0"
 rand = "0.8.5"
-lazy_static = "1.4.0"
 
 [build-dependencies]
 cc = "1.0.79"

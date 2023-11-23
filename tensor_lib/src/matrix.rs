@@ -79,10 +79,9 @@ impl Matrix {
   }
 
   pub fn no_fill(rows: usize, columns: usize) -> Self {
-    let data = Vec::<c_float>::with_capacity(rows * columns);
     let id;
     unsafe {
-      id = register_matrix(data.as_ptr(), rows, columns);
+      id = register_matrix(rows, columns);
     }
     return Matrix::new(id, rows, columns);
   }
@@ -91,7 +90,7 @@ impl Matrix {
     let data = vec![0.0; rows * columns];
     let id;
     unsafe {
-      id = register_matrix(data.as_ptr(), rows, columns);
+      id = register_matrix_with_data(data.as_ptr(), rows, columns);
     }
     return Matrix::new(id, rows, columns);
   }
@@ -103,7 +102,7 @@ impl Matrix {
 
     let id;
     unsafe {
-      id = register_matrix(data.as_ptr(), rows, columns);
+      id = register_matrix_with_data(data.as_ptr(), rows, columns);
     }
 
     return Matrix::new(id, rows, columns);
@@ -121,7 +120,7 @@ impl Matrix {
 
     let id;
     unsafe {
-      id = register_matrix(flattened.as_ptr(), rows, columns);
+      id = register_matrix_with_data(flattened.as_ptr(), rows, columns);
     }
 
     return Matrix::new(id, rows, columns);

@@ -3,6 +3,8 @@ use std::env;
 
 fn main() {
   println!("cargo:rerun-if-changed=cuda_kernels/cuda_kernels.cu");
+  println!("cargo:rerun-if-changed=cuda_kernels/cuda_exec_memory_manager.cu");
+  println!("cargo:rerun-if-changed=cuda_kernels/err_check_util.cu");
 
   cc::Build::new()
     .cuda(true)
@@ -21,6 +23,8 @@ fn main() {
     .flag("arch=compute_90,code=sm_90")
     .flag("--use_fast_math")
     .file("cuda_kernels/src/cuda_kernels.cu")
+    .file("cuda_kernels/src/cuda_exec_memory_manager.cu")
+    .file("cuda_kernels/src/err_check_util.cu")
     .compile("cuda_kernels");
 
   if let Ok(cuda_path) = env::var("CUDA_HOME") {

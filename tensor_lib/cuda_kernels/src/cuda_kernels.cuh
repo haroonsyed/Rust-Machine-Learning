@@ -1,56 +1,21 @@
-#include <cublas_v2.h>
-#include <cuda.h>
-#include <stdio.h>
+#pragma once
+#include "./cuda_exec_memory_manager.cuh"
+#include "./types.cuh"
 
-// Experiment to make access to map thread safe.
-// For now only use one thread with this library.
-
-// std::shared_mutex mat_map_mutex;
-// Function to perform thread-safe write operation on mat_map
-// void writeToMatMap(size_t key, float* value) {
-//     std::unique_lock<std::shared_mutex> lock(mat_map_mutex);
-//     mat_map[key] = value;
-// }
-// // Function to perform thread-safe read operation on mat_map
-// float* readFromMatMap(size_t key) {
-//     std::shared_lock<std::shared_mutex> lock(mat_map_mutex);
-//     return mat_map[key];
-// }
-// Function to perform thread-safe remove operation on mat_map
-// void removeFromMatMap(size_t key) {
-//     std::unique_lock<std::shared_mutex> lock(mat_map_mutex);
-//     mat_map.erase(key);
-// }
-
-// Make enum for convolution types
-enum ConvolutionType {
-    VALID,
-    SAME,
-    FULL
-};
-
-// Make sure bindings are not mangled for rust
 extern "C" {
+
+// Test Functions
 void test();
 void test_array_fill(float* buffer, size_t length);
-
-// Misc
-void cuda_synchronize();
-struct Tuple {  // Used to return tuple with interop to rust
-    size_t a;
-    size_t b;
-};
-
-// Matrix Setup API (reduces overhead of keeping matrices in ram)
-size_t register_matrix(float* data, size_t rows, size_t cols);
-void unregister_matrix(size_t mat_id);
-void get_matrix_data(size_t mat_id, int rows, int cols, float* data_buffer);
 
 // Execution Type
 void enable_parallel_stream_execution();
 void disable_parallel_stream_execution();
 
-// Matrix operation API, Returns id of new matrix. Consumer should not release
+// Misc
+void cuda_synchronize();
+
+// Matrix operation API
 size_t cuda_element_add(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
 size_t cuda_element_subtract(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
 size_t cuda_element_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
