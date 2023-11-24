@@ -23,7 +23,7 @@ bool parallel_stream_execution = false;
 cublasHandle_t handle;
 size_t mat_generated_count(0);
 size_t chunks_generated_count(0);
-const size_t chunk_size(sizeof(char) * 1024 * 1024 * 32);  // 4 MB
+const size_t chunk_size(sizeof(char) * 1024 * 1024 * 1);  // 1 MB
 std::unordered_map<size_t, MatrixMemBlock*> matrix_map;
 std::unordered_map<size_t, ChunkMemBlock*> gpu_mem_blocks;
 ChunkMemBlock* current_chunk = nullptr;
@@ -134,14 +134,23 @@ std::pair<size_t, size_t> memory_manager_allocate(size_t size) {
     return allocate_from_chunk(size);
 }
 void memory_manager_free(size_t block_id, size_t size) {
+    // Align size to 16 bytes
+    size = ((size / 16) + (size % 16 > 0 ? 1 : 0)) * 16;
+
     ChunkMemBlock* block = gpu_mem_blocks[block_id];
     block->used_size -= size;
+
+    bool should_reset_current_chunk = block == current_chunk;
 
     // If the block is empty, free it
     if (block->used_size == 0) {
         gpuErrchk(cudaFreeAsync(block->address, mem_stream));
         delete block;
         gpu_mem_blocks.erase(block_id);
+    }
+
+    if (should_reset_current_chunk) {
+        current_chunk = nullptr;
     }
 }
 void memory_manager_upload_to_allocation(size_t block_id, size_t block_offset, void* data, size_t size) {

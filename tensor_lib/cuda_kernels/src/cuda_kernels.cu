@@ -1635,7 +1635,7 @@ void cuda_convolution_valid_packed(size_t* matrices_ids, size_t num_matrices, si
 
     auto end = std::chrono::high_resolution_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    printf("Overhead us: %f\n", (float)elapsed.count());
+    // printf("Overhead us: %f\n", (float)elapsed.count());
 
     // Upload the pointers to a gpu array
     // Each allocation pair contains block_id, block_offset
@@ -1658,6 +1658,11 @@ void cuda_convolution_valid_packed(size_t* matrices_ids, size_t num_matrices, si
     // Run the kernels
     cuda_convolution_kernel_packed_valid_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_ptr, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_ptr, kernel_rows, kernel_cols, gpu_out_buffers_ptr, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
+
+    // Cleanup
+    memory_manager_free(gpu_mat_buffers_block.first, sizeof(float*) * num_matrices);
+    memory_manager_free(gpu_kernel_buffers_block.first, sizeof(float*) * num_matrices);
+    memory_manager_free(gpu_out_buffers_block.first, sizeof(float*) * num_matrices);
 }
 
 // Each block handles one convolution
@@ -1750,6 +1755,11 @@ void cuda_convolution_same_packed(size_t* matrices_ids, size_t num_matrices, siz
     // Run the kernels
     cuda_convolution_kernel_packed_same_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_ptr, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_ptr, kernel_rows, kernel_cols, gpu_out_buffers_ptr, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
+
+    // Cleanup
+    memory_manager_free(gpu_mat_buffers_block.first, sizeof(float*) * num_matrices);
+    memory_manager_free(gpu_kernel_buffers_block.first, sizeof(float*) * num_matrices);
+    memory_manager_free(gpu_out_buffers_block.first, sizeof(float*) * num_matrices);
 }
 
 // Each block handles one convolution
@@ -1843,6 +1853,11 @@ void cuda_convolution_full_packed(size_t* matrices_ids, size_t num_matrices, siz
     // Run the kernels
     cuda_convolution_kernel_packed_full_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_ptr, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_ptr, kernel_rows, kernel_cols, gpu_out_buffers_ptr, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
+
+    // Cleanup
+    memory_manager_free(gpu_mat_buffers_block.first, sizeof(float*) * num_matrices);
+    memory_manager_free(gpu_kernel_buffers_block.first, sizeof(float*) * num_matrices);
+    memory_manager_free(gpu_out_buffers_block.first, sizeof(float*) * num_matrices);
 }
 void cuda_convolution_packed(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_ids, ConvolutionType conv_type) {
     if (conv_type == ConvolutionType::VALID) {
@@ -1922,7 +1937,7 @@ size_t cuda_img2col_valid(size_t* mat_ids, size_t num_matrices, size_t mat_rows,
     gpuErrchk(cudaPeekAtLastError());
 
     // Cleanup
-    cudaFreeAsync((void*)gpu_mat_buffers, mem_stream);
+    memory_manager_free(gpu_mat_buffers_block.first, sizeof(float*) * num_matrices);
 
     // Return result matrix id
     return out_mat_id;
@@ -1989,7 +2004,7 @@ size_t cuda_flatten_array(size_t* mat_ids, size_t num_matrices, size_t mat_rows,
     gpuErrchk(cudaPeekAtLastError());
 
     // Cleanup
-    cudaFreeAsync((void*)gpu_mat_buffers, mem_stream);
+    memory_manager_free(gpu_mat_buffers_block.first, sizeof(float*) * num_matrices);
 
     // Return result matrix id
     return out_mat_id;
@@ -2042,6 +2057,9 @@ void cuda_unflatten_array(size_t array_id, size_t arr_size, size_t mat_rows, siz
     // Run the kernels
     cuda_unflatten_array_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_array_buffer, arr_size, mat_rows, mat_cols, gpu_mat_buffers_ptr);
     gpuErrchk(cudaPeekAtLastError());
+
+    // Cleanup
+    memory_manager_free(gpu_mat_buffers_block.first, sizeof(float*) * num_matrices);
 }
 
 __global__ void cuda_unflatten_array_strided_kernel(float* array_buffer, int arr_size, int num_matrices, int mat_rows, int mat_cols, float** mat_buffers) {
@@ -2090,6 +2108,9 @@ void cuda_unflatten_array_strided(size_t array_id, size_t arr_size, size_t mat_r
     // Run the kernels
     cuda_unflatten_array_strided_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_array_buffer, arr_size, num_matrices, mat_rows, mat_cols, gpu_mat_buffers_ptr);
     gpuErrchk(cudaPeekAtLastError());
+
+    // Cleanup
+    memory_manager_free(gpu_mat_buffers_block.first, sizeof(float*) * num_matrices);
 }
 
 __global__ void cuda_center_pad_kernel(float* mat_buffer, int mat_rows, int mat_cols, int pad_rows, int pad_cols, float* out_buffer, int out_rows, int out_cols) {

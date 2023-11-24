@@ -129,6 +129,7 @@ void bench_max_pool(int mat_dim, int num_iter) {
         // Perform multiplication
         Tuple result = cuda_max_pool(mat1, mat_dim, mat_dim);
         unregister_matrix(result.a);
+        unregister_matrix(result.b);
     }
     cuda_synchronize();
 
@@ -456,24 +457,49 @@ void bench_unflatten_array(int mat_dim, int mat_count, int num_iter) {
     std::cout << "Including overhead bench_unflatten_array was: " << (float)cpu_time.count() / num_iter << " ms" << std::endl;
 }
 
+void stress_test_mix_short_lived_long_lived_blocks() {
+    std::vector<float> data;
+    for (int i = 0; i < 2 * 3; i++) {
+        data.push_back(i + 1);
+    }
+
+    std::vector<size_t> results;
+    for (int i = 0; i < 10000; i++) {
+        // Register
+        int mat1 = register_matrix_with_data(&data[0], 2, 3);
+
+        // Perform multiplication
+        int result_id = cuda_sum_rows(mat1, 2, 3);
+        unregister_matrix(mat1);
+    }
+
+    for (auto id : results) {
+        unregister_matrix(id);
+    }
+}
+
 int main() {
     // Get the temps and frequencies up
-    warmup();
+    // warmup();
 
     // Used with ncu to profile kernels. Will expand to have all kernels, but for now just has the most time consuming ones
 
-    const int mat_dim = 32;
+    const int mat_dim = 1024;
     const int kernel_dim = 3;
     const int num_iter = 1000;
     // bench_flatten_array(mat_dim, 256, num_iter);
     // bench_unflatten_array(mat_dim, 256, num_iter);
     // bench_img2col(mat_dim, num_iter, kernel_dim);
     // bench_convolution(mat_dim, num_iter, kernel_dim);
-    // bench_multiple_convolutions(mat_dim, num_iter, 1024, kernel_dim);
-    bench_packed_convolution(mat_dim, num_iter, 1024, kernel_dim);  // Seems to be faster with matrices smaller than or eqal to 32x32, scaling at about 2x to 3x. Shows overhead of launches.
+    bench_multiple_convolutions(32, num_iter, 1024, kernel_dim);
+    bench_packed_convolution(32, num_iter, 1024, kernel_dim);  // Seems to be faster with matrices smaller than or eqal to 32x32, scaling at about 2x to 3x. Shows overhead of launches.
     // bench_convolution_2(mat_dim, num_iter, kernel_dim);
     // bench_rotate_180(mat_dim, num_iter);
     // bench_max_pool(mat_dim, num_iter);
     // bench_matrix_transpose(mat_dim, num_iter);
     // bench_matrix_multiply(mat_dim, num_iter);
+
+    // Stress tests
+    // TODO: Fix adjacent short and long lived blocks.
+    // stress_test_mix_short_lived_long_lived_blocks();
 }
