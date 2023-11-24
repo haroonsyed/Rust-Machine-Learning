@@ -25,7 +25,7 @@ struct Tuple {  // Used to return tuple with interop to rust
 };
 
 // Matrix Setup API (reduces overhead of keeping matrices in ram)
-size_t register_matrix(float* data, size_t rows, size_t cols);
+size_t register_matrix_with_data(float* data, size_t rows, size_t cols);
 void unregister_matrix(size_t mat_id);
 void get_matrix_data(size_t mat_id, int rows, int cols, float* data_buffer);
 
@@ -68,8 +68,8 @@ void warmup() {
     }
 
     // Register
-    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
-    int mat2 = register_matrix(&data[0], mat_dim, mat_dim);
+    int mat1 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
+    int mat2 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
 
     // WARMUP
     for (int i = 0; i < 50; i++) {
@@ -91,8 +91,8 @@ void bench_matrix_transpose(int mat_dim, int num_iter) {
     }
 
     // Register
-    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
-    int mat2 = register_matrix(&data[0], mat_dim, mat_dim);
+    int mat1 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
+    int mat2 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
 
     auto start_host = high_resolution_clock::now();
 
@@ -120,8 +120,8 @@ void bench_max_pool(int mat_dim, int num_iter) {
     }
 
     // Register
-    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
-    int mat2 = register_matrix(&data[0], mat_dim, mat_dim);
+    int mat1 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
+    int mat2 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
 
     auto start_host = high_resolution_clock::now();
 
@@ -149,8 +149,8 @@ void bench_rotate_180(int mat_dim, int num_iter) {
     }
 
     // Register
-    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
-    int mat2 = register_matrix(&data[0], mat_dim, mat_dim);
+    int mat1 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
+    int mat2 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
 
     auto start_host = high_resolution_clock::now();
 
@@ -183,8 +183,8 @@ void bench_convolution(int mat_dim, int num_iter, int kernel_size) {
     }
 
     // Register
-    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
-    int kernel = register_matrix(&kernel_data[0], kernel_size, kernel_size);
+    int mat1 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
+    int kernel = register_matrix_with_data(&kernel_data[0], kernel_size, kernel_size);
 
     auto start_host = high_resolution_clock::now();
 
@@ -216,8 +216,8 @@ void bench_multiple_convolutions(int mat_dim, int num_iter, int num_matrices, in
     }
 
     // Register
-    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
-    int kernel = register_matrix(&kernel_data[0], kernel_size, kernel_size);
+    int mat1 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
+    int kernel = register_matrix_with_data(&kernel_data[0], kernel_size, kernel_size);
 
     auto start_host = high_resolution_clock::now();
 
@@ -249,8 +249,8 @@ void bench_packed_convolution(int mat_dim, int num_iter, int num_matrices, int k
     }
 
     // Register
-    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
-    int kernel = register_matrix(&kernel_data[0], kernel_size, kernel_size);
+    int mat1 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
+    int kernel = register_matrix_with_data(&kernel_data[0], kernel_size, kernel_size);
 
     // Repeat the mat ids and kernel ids to simulate multiple images and kernels
     std::vector<size_t> mat_ids;
@@ -261,6 +261,8 @@ void bench_packed_convolution(int mat_dim, int num_iter, int num_matrices, int k
         kernel_ids.push_back(kernel);
         result_ids.push_back(0);
     }
+
+    cuda_synchronize();
 
     auto start_host = high_resolution_clock::now();
 
@@ -287,7 +289,7 @@ void bench_img2col(int mat_dim, int num_iter, int kernel_size) {
         data.push_back(i);
     }
 
-    size_t mat1 = register_matrix(&data[0], mat_dim, mat_dim);
+    size_t mat1 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
 
     int img2col_rows = kernel_size * kernel_size;
     int img2col_cols = (mat_dim - kernel_size + 1) * (mat_dim - kernel_size + 1);
@@ -326,8 +328,8 @@ void bench_convolution_2(int mat_dim, int num_iter, int kernel_size) {
     }
 
     // Register
-    size_t mat1 = register_matrix(&data[0], mat_dim, mat_dim);
-    size_t kernel = register_matrix(&kernel_data[0], kernel_size, kernel_size);
+    size_t mat1 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
+    size_t kernel = register_matrix_with_data(&kernel_data[0], kernel_size, kernel_size);
 
     int img2col_rows = kernel_size * kernel_size;
     int img2col_cols = (mat_dim - kernel_size + 1) * (mat_dim - kernel_size + 1);
@@ -369,8 +371,8 @@ void bench_matrix_multiply(int mat_dim, int num_iter) {
     }
 
     // Register
-    int mat1 = register_matrix(&data[0], mat_dim, mat_dim);
-    int mat2 = register_matrix(&data[0], mat_dim, mat_dim);
+    int mat1 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
+    int mat2 = register_matrix_with_data(&data[0], mat_dim, mat_dim);
 
     auto start_host = high_resolution_clock::now();
 
@@ -400,7 +402,7 @@ void bench_flatten_array(int mat_dim, int mat_count, int num_iter) {
     // Register
     std::vector<size_t> mat_ids;
     for (int i = 0; i < mat_count; i++) {
-        mat_ids.push_back(register_matrix(&data[0], mat_dim, mat_dim));
+        mat_ids.push_back(register_matrix_with_data(&data[0], mat_dim, mat_dim));
     }
 
     auto start_host = high_resolution_clock::now();
@@ -429,7 +431,7 @@ void bench_unflatten_array(int mat_dim, int mat_count, int num_iter) {
     }
 
     // Register
-    size_t mat = register_matrix(&data[0], 1, mat_count * mat_dim * mat_dim);
+    size_t mat = register_matrix_with_data(&data[0], 1, mat_count * mat_dim * mat_dim);
     std::vector<size_t> unflattened;
     for (int i = 0; i < mat_count; i++) {
         unflattened.push_back(0);
@@ -456,19 +458,19 @@ void bench_unflatten_array(int mat_dim, int mat_count, int num_iter) {
 
 int main() {
     // Get the temps and frequencies up
-    // warmup();
+    warmup();
 
     // Used with ncu to profile kernels. Will expand to have all kernels, but for now just has the most time consuming ones
 
     const int mat_dim = 32;
     const int kernel_dim = 3;
-    const int num_iter = 1;
+    const int num_iter = 1000;
     // bench_flatten_array(mat_dim, 256, num_iter);
     // bench_unflatten_array(mat_dim, 256, num_iter);
     // bench_img2col(mat_dim, num_iter, kernel_dim);
     // bench_convolution(mat_dim, num_iter, kernel_dim);
-    // bench_multiple_convolutions(mat_dim, num_iter, 64, kernel_dim);
-    bench_packed_convolution(mat_dim, num_iter, 256, kernel_dim);  // Seems to be faster with matrices smaller than or eqal to 32x32, scaling at about 2x to 3x. Shows overhead of launches.
+    // bench_multiple_convolutions(mat_dim, num_iter, 1024, kernel_dim);
+    bench_packed_convolution(mat_dim, num_iter, 1024, kernel_dim);  // Seems to be faster with matrices smaller than or eqal to 32x32, scaling at about 2x to 3x. Shows overhead of launches.
     // bench_convolution_2(mat_dim, num_iter, kernel_dim);
     // bench_rotate_180(mat_dim, num_iter);
     // bench_max_pool(mat_dim, num_iter);

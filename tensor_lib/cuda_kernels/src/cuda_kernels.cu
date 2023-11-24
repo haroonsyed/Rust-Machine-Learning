@@ -1,3 +1,5 @@
+#include <chrono>
+
 #include "cuda_kernels.cuh"
 
 /////////////////////
@@ -71,9 +73,9 @@ size_t cuda_element_add(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size
     int out_cols = mat1_cols;
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_mat2_buffer = mat_map[mat2_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_mat2_buffer = get_matrix_gpu_address(mat2_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
@@ -103,9 +105,9 @@ size_t cuda_element_subtract(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_mat2_buffer = mat_map[mat2_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_mat2_buffer = get_matrix_gpu_address(mat2_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -139,9 +141,9 @@ size_t cuda_element_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_mat2_buffer = mat_map[mat2_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_mat2_buffer = get_matrix_gpu_address(mat2_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -175,9 +177,9 @@ size_t cuda_element_divide(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, s
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_mat2_buffer = mat_map[mat2_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_mat2_buffer = get_matrix_gpu_address(mat2_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -211,8 +213,8 @@ size_t cuda_scalar_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, 
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -246,8 +248,8 @@ size_t cuda_scalar_divide(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, fl
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -281,8 +283,8 @@ size_t cuda_scalar_add(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, float
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -316,8 +318,8 @@ size_t cuda_scalar_subtract(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, 
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -351,9 +353,9 @@ size_t cuda_scalar_multiply_matrix(size_t mat1_id, size_t mat1_rows, size_t mat1
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_scalar_buffer = mat_map[scalar];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_scalar_buffer = get_matrix_gpu_address(scalar);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -387,9 +389,9 @@ size_t cuda_scalar_divide_matrix(size_t mat1_id, size_t mat1_rows, size_t mat1_c
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_scalar_buffer = mat_map[scalar];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_scalar_buffer = get_matrix_gpu_address(scalar);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -423,9 +425,9 @@ size_t cuda_scalar_add_matrix(size_t mat1_id, size_t mat1_rows, size_t mat1_cols
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_scalar_buffer = mat_map[scalar];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_scalar_buffer = get_matrix_gpu_address(scalar);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -459,9 +461,9 @@ size_t cuda_scalar_subtract_matrix(size_t mat1_id, size_t mat1_rows, size_t mat1
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_scalar_buffer = mat_map[scalar];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_scalar_buffer = get_matrix_gpu_address(scalar);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -771,9 +773,9 @@ size_t cuda_matrix_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, 
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_mat2_buffer = mat_map[mat2_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_mat2_buffer = get_matrix_gpu_address(mat2_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     // const int THREADS_PER_BLOCK_X = 32;
@@ -848,9 +850,9 @@ size_t cuda_add_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_mat2_buffer = mat_map[mat2_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_mat2_buffer = get_matrix_gpu_address(mat2_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -909,9 +911,9 @@ size_t cuda_divide_by_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_mat2_buffer = mat_map[mat2_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_mat2_buffer = get_matrix_gpu_address(mat2_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -949,8 +951,8 @@ size_t cuda_element_sqrt(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, boo
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -984,8 +986,8 @@ size_t cuda_element_exp(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, bool
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -1019,8 +1021,8 @@ size_t cuda_element_ReLU(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, boo
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -1054,8 +1056,8 @@ size_t cuda_element_ReLU_prime(size_t mat1_id, size_t mat1_rows, size_t mat1_col
     size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -1096,8 +1098,8 @@ size_t cuda_sum_rows(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -1137,8 +1139,8 @@ size_t cuda_sum_columns(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -1174,8 +1176,8 @@ size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -1244,9 +1246,9 @@ Tuple cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     size_t max_bitmask = register_matrix(mat1_rows, mat1_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
-    float* gpu_max_bitmask = mat_map[max_bitmask];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
+    float* gpu_max_bitmask = get_matrix_gpu_address(max_bitmask);
 
     // Zero out bitmask
     cudaMemsetAsync(gpu_max_bitmask, 0.0, mat1_rows * mat1_cols * sizeof(float), mem_stream);
@@ -1286,8 +1288,8 @@ size_t cuda_nearest_neighbor_2x_upsample(size_t mat1_id, size_t mat1_rows, size_
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK_X = 16;
@@ -1326,8 +1328,8 @@ size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 32;
@@ -1416,9 +1418,9 @@ size_t cuda_convolution_valid(size_t mat1_id, size_t mat1_rows, size_t mat1_cols
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_kernel_buffer = mat_map[kernel_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_kernel_buffer = get_matrix_gpu_address(kernel_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1476,9 +1478,9 @@ size_t cuda_convolution_same(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_kernel_buffer = mat_map[kernel_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_kernel_buffer = get_matrix_gpu_address(kernel_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1532,9 +1534,9 @@ size_t cuda_convolution_full(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = mat_map[mat1_id];
-    float* gpu_kernel_buffer = mat_map[kernel_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
+    float* gpu_kernel_buffer = get_matrix_gpu_address(kernel_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1603,6 +1605,9 @@ __global__ void cuda_convolution_kernel_packed_valid_1(float** mat_buffers, int 
 
 // Should be used when you have a lot of small matrices to convolve
 void cuda_convolution_valid_packed(size_t* matrices_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_mat_ids) {
+    // Time the overhead
+    auto start = std::chrono::high_resolution_clock::now();
+
     // Create output buffer
     // Dimension of output is input - kernel + 1
     int out_rows = mat_rows - kernel_rows + 1;
@@ -1622,22 +1627,28 @@ void cuda_convolution_valid_packed(size_t* matrices_ids, size_t num_matrices, si
     std::vector<float*> gpu_out_buffers;
 
     for (int i = 0; i < num_matrices; i++) {
-        gpu_mat_buffers.push_back(mat_map[matrices_ids[i]]);
-        gpu_kernel_buffers.push_back(mat_map[kernel_ids[i]]);
-        gpu_out_buffers.push_back(mat_map[out_mat_ids[i]]);
-        // gpu_out_buffers.push_back(mat_map[out_mat_id_container] + i * out_rows * out_cols);
+        gpu_mat_buffers.push_back(get_matrix_gpu_address(matrices_ids[i]));
+        gpu_kernel_buffers.push_back(get_matrix_gpu_address(kernel_ids[i]));
+        gpu_out_buffers.push_back(get_matrix_gpu_address(out_mat_ids[i]));
+        // gpu_out_buffers.push_back(get_matrix_gpu_address(out_mat_id_container) + i * out_rows * out_cols);
     }
 
-    // Upload gpu buffers. TODO: ensure get_stream returns same value for each of these (or just get stream once)
-    float** gpu_mat_buffers_ptr;
-    cudaMallocFromPoolAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
-    cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
-    float** gpu_kernel_buffers_ptr;
-    cudaMallocFromPoolAsync(&gpu_kernel_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
-    cudaMemcpy(gpu_kernel_buffers_ptr, &gpu_kernel_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
-    float** gpu_out_buffers_ptr;
-    cudaMallocFromPoolAsync(&gpu_out_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
-    cudaMemcpy(gpu_out_buffers_ptr, &gpu_out_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+    auto end = std::chrono::high_resolution_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    printf("Overhead us: %f\n", (float)elapsed.count());
+
+    // Upload the pointers to a gpu array
+    // Each allocation pair contains block_id, block_offset
+    auto gpu_mat_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second, &gpu_mat_buffers[0], sizeof(float*) * num_matrices);
+    auto gpu_kernel_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_kernel_buffers_block.first, gpu_kernel_buffers_block.second, &gpu_kernel_buffers[0], sizeof(float*) * num_matrices);
+    auto gpu_out_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_out_buffers_block.first, gpu_out_buffers_block.second, &gpu_out_buffers[0], sizeof(float*) * num_matrices);
+
+    float** gpu_mat_buffers_ptr = (float**)get_block_gpu_address(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second);
+    float** gpu_kernel_buffers_ptr = (float**)get_block_gpu_address(gpu_kernel_buffers_block.first, gpu_kernel_buffers_block.second);
+    float** gpu_out_buffers_ptr = (float**)get_block_gpu_address(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1713,21 +1724,23 @@ void cuda_convolution_same_packed(size_t* matrices_ids, size_t num_matrices, siz
     std::vector<float*> gpu_out_buffers;
 
     for (int i = 0; i < num_matrices; i++) {
-        gpu_mat_buffers.push_back(mat_map[matrices_ids[i]]);
-        gpu_kernel_buffers.push_back(mat_map[kernel_ids[i]]);
-        gpu_out_buffers.push_back(mat_map[out_mat_ids[i]]);
+        gpu_mat_buffers.push_back(get_matrix_gpu_address(matrices_ids[i]));
+        gpu_kernel_buffers.push_back(get_matrix_gpu_address(kernel_ids[i]));
+        gpu_out_buffers.push_back(get_matrix_gpu_address(out_mat_ids[i]));
     }
 
-    // Upload gpu buffers, TODO: ensure get_stream returns same value for each of these (or just get stream once)
-    float** gpu_mat_buffers_ptr;
-    cudaMallocFromPoolAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
-    cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
-    float** gpu_kernel_buffers_ptr;
-    cudaMallocFromPoolAsync(&gpu_kernel_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
-    cudaMemcpy(gpu_kernel_buffers_ptr, &gpu_kernel_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
-    float** gpu_out_buffers_ptr;
-    cudaMallocFromPoolAsync(&gpu_out_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
-    cudaMemcpy(gpu_out_buffers_ptr, &gpu_out_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+    // Upload the pointers to a gpu array
+    // Each allocation pair contains block_id, block_offset
+    auto gpu_mat_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second, &gpu_mat_buffers[0], sizeof(float*) * num_matrices);
+    auto gpu_kernel_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_kernel_buffers_block.first, gpu_kernel_buffers_block.second, &gpu_kernel_buffers[0], sizeof(float*) * num_matrices);
+    auto gpu_out_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_out_buffers_block.first, gpu_out_buffers_block.second, &gpu_out_buffers[0], sizeof(float*) * num_matrices);
+
+    float** gpu_mat_buffers_ptr = (float**)get_block_gpu_address(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second);
+    float** gpu_kernel_buffers_ptr = (float**)get_block_gpu_address(gpu_kernel_buffers_block.first, gpu_kernel_buffers_block.second);
+    float** gpu_out_buffers_ptr = (float**)get_block_gpu_address(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1804,21 +1817,23 @@ void cuda_convolution_full_packed(size_t* matrices_ids, size_t num_matrices, siz
     std::vector<float*> gpu_out_buffers;
 
     for (int i = 0; i < num_matrices; i++) {
-        gpu_mat_buffers.push_back(mat_map[matrices_ids[i]]);
-        gpu_kernel_buffers.push_back(mat_map[kernel_ids[i]]);
-        gpu_out_buffers.push_back(mat_map[out_mat_ids[i]]);
+        gpu_mat_buffers.push_back(get_matrix_gpu_address(matrices_ids[i]));
+        gpu_kernel_buffers.push_back(get_matrix_gpu_address(kernel_ids[i]));
+        gpu_out_buffers.push_back(get_matrix_gpu_address(out_mat_ids[i]));
     }
 
-    // Upload gpu buffers, TODO: ensure get_stream returns same value for each of these (or just get stream once)
-    float** gpu_mat_buffers_ptr;
-    cudaMallocFromPoolAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
-    cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
-    float** gpu_kernel_buffers_ptr;
-    cudaMallocFromPoolAsync(&gpu_kernel_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
-    cudaMemcpy(gpu_kernel_buffers_ptr, &gpu_kernel_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
-    float** gpu_out_buffers_ptr;
-    cudaMallocFromPoolAsync(&gpu_out_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
-    cudaMemcpy(gpu_out_buffers_ptr, &gpu_out_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+    // Upload the pointers to a gpu array
+    // Each allocation pair contains block_id, block_offset
+    auto gpu_mat_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second, &gpu_mat_buffers[0], sizeof(float*) * num_matrices);
+    auto gpu_kernel_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_kernel_buffers_block.first, gpu_kernel_buffers_block.second, &gpu_kernel_buffers[0], sizeof(float*) * num_matrices);
+    auto gpu_out_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_out_buffers_block.first, gpu_out_buffers_block.second, &gpu_out_buffers[0], sizeof(float*) * num_matrices);
+
+    float** gpu_mat_buffers_ptr = (float**)get_block_gpu_address(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second);
+    float** gpu_kernel_buffers_ptr = (float**)get_block_gpu_address(gpu_kernel_buffers_block.first, gpu_kernel_buffers_block.second);
+    float** gpu_out_buffers_ptr = (float**)get_block_gpu_address(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1883,14 +1898,16 @@ size_t cuda_img2col_valid(size_t* mat_ids, size_t num_matrices, size_t mat_rows,
     // Get the gpu buffers to operate on
     std::vector<float*> mat_buffers;
     for (size_t i = 0; i < num_matrices; i++) {
-        mat_buffers.push_back(mat_map[mat_ids[i]]);
+        mat_buffers.push_back(get_matrix_gpu_address(mat_ids[i]));
     }
 
-    // TODO: ensure get_stream returns same value for each of these (or just get stream once)
-    float** gpu_mat_buffers;
-    cudaMallocFromPoolAsync(&gpu_mat_buffers, sizeof(float*) * num_matrices, mempool, get_stream());
-    cudaMemcpy(gpu_mat_buffers, &mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    // Upload the pointers to a gpu array
+    // Each allocation pair contains block_id, block_offset
+    auto gpu_mat_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second, &mat_buffers[0], sizeof(float*) * num_matrices);
+
+    float** gpu_mat_buffers = (float**)get_block_gpu_address(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     // Let's have each threads handle its own patch between all the kernels
@@ -1952,14 +1969,16 @@ size_t cuda_flatten_array(size_t* mat_ids, size_t num_matrices, size_t mat_rows,
     // Get the gpu buffers to operate on
     std::vector<float*> mat_buffers;
     for (size_t i = 0; i < num_matrices; i++) {
-        mat_buffers.push_back(mat_map[mat_ids[i]]);
+        mat_buffers.push_back(get_matrix_gpu_address(mat_ids[i]));
     }
 
-    // TODO: ensure get_stream returns same value for each of these (or just get stream once)
-    float** gpu_mat_buffers;
-    cudaMallocFromPoolAsync(&gpu_mat_buffers, sizeof(float*) * num_matrices, mempool, get_stream());
-    cudaMemcpy(gpu_mat_buffers, &mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    // Upload the pointers to a gpu array
+    // Each allocation pair contains block_id, block_offset
+    auto gpu_mat_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second, &mat_buffers[0], sizeof(float*) * num_matrices);
+
+    float** gpu_mat_buffers = (float**)get_block_gpu_address(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     dim3 block_dim(256, 1, 1);
@@ -2000,19 +2019,21 @@ void cuda_unflatten_array(size_t array_id, size_t arr_size, size_t mat_rows, siz
     std::vector<float*> gpu_mat_buffers;
     for (int i = 0; i < num_matrices; i++) {
         size_t mat_id = register_matrix(mat_rows, mat_cols);
-        gpu_mat_buffers.push_back(mat_map[mat_id]);
+        gpu_mat_buffers.push_back(get_matrix_gpu_address(mat_id));
 
         // Write back to rust vector
         mat_ids[i] = mat_id;
     }
 
-    // Upload the gpu_mat_buffers to the gpu, TODO: ensure get_stream returns same value for each of these (or just get stream once)
-    float** gpu_mat_buffers_ptr;
-    cudaMallocFromPoolAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
-    cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+    // Upload the pointers to a gpu array
+    // Each allocation pair contains block_id, block_offset
+    auto gpu_mat_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second, &gpu_mat_buffers[0], sizeof(float*) * num_matrices);
+
+    float** gpu_mat_buffers_ptr = (float**)get_block_gpu_address(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second);
 
     // Get the flattened array
-    float* gpu_array_buffer = mat_map[array_id];
+    float* gpu_array_buffer = get_matrix_gpu_address(array_id);
 
     // Kernel launch parameters
     dim3 block_dim(256, 1, 1);
@@ -2046,19 +2067,21 @@ void cuda_unflatten_array_strided(size_t array_id, size_t arr_size, size_t mat_r
     std::vector<float*> gpu_mat_buffers;
     for (int i = 0; i < num_matrices; i++) {
         size_t mat_id = register_matrix(mat_rows, mat_cols);
-        gpu_mat_buffers.push_back(mat_map[mat_id]);
+        gpu_mat_buffers.push_back(get_matrix_gpu_address(mat_id));
 
         // Write back to rust vector
         mat_ids[i] = mat_id;
     }
 
-    // Upload the gpu_mat_buffers to the gpu, ,TODO: ensure get_stream returns same value for each of these (or just get stream once)
-    float** gpu_mat_buffers_ptr;
-    cudaMallocFromPoolAsync(&gpu_mat_buffers_ptr, sizeof(float*) * num_matrices, mempool, get_stream());
-    cudaMemcpy(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices, cudaMemcpyHostToDevice);
+    // Upload the pointers to a gpu array
+    // Each allocation pair contains block_id, block_offset
+    auto gpu_mat_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second, &gpu_mat_buffers[0], sizeof(float*) * num_matrices);
+
+    float** gpu_mat_buffers_ptr = (float**)get_block_gpu_address(gpu_mat_buffers_block.first, gpu_mat_buffers_block.second);
 
     // Get the flattened array
-    float* gpu_array_buffer = mat_map[array_id];
+    float* gpu_array_buffer = get_matrix_gpu_address(array_id);
 
     // Kernel launch parameters
     dim3 block_dim(256, 1, 1);
@@ -2093,8 +2116,8 @@ size_t cuda_center_pad(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t p
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat_buffer = mat_map[mat_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat_buffer = get_matrix_gpu_address(mat_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -2141,8 +2164,8 @@ size_t cuda_softmax(size_t mat_id, size_t mat_rows, size_t mat_cols) {
     size_t out_mat_id = register_matrix(mat_rows, mat_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat_buffer = mat_map[mat_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat_buffer = get_matrix_gpu_address(mat_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters, each thread handles one column
     const int THREADS_PER_BLOCK = 128;
@@ -2176,8 +2199,8 @@ size_t cuda_crop(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t crop_of
     size_t out_mat_id = register_matrix(crop_rows, crop_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat_buffer = mat_map[mat_id];
-    float* gpu_out_buffer = mat_map[out_mat_id];
+    float* gpu_mat_buffer = get_matrix_gpu_address(mat_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters, each thread handles one column
     const int THREADS_PER_BLOCK = 16;
@@ -2227,7 +2250,7 @@ size_t cuda_sum_all_matrix_elements(size_t mat_id, size_t mat_rows, size_t mat_c
     size_t mat_copy_id = cuda_copy(mat_id, mat_rows, mat_cols);
 
     // Get the gpu buffers to operate on
-    float* gpu_mat_buffer = mat_map[mat_copy_id];
+    float* gpu_mat_buffer = get_matrix_gpu_address(mat_copy_id);
 
     // Kernel launch parameters, each thread handles one column
     const int THREADS_PER_BLOCK = 256;

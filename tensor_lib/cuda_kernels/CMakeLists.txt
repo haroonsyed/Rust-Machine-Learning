@@ -17,6 +17,9 @@ set_target_properties(cuda_kernels PROPERTIES CUDA_ARCHITECTURES "52;75;86;89;90
 set( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wall --std=c++11 -O3 -fPIC" )
 target_compile_options(cuda_kernels PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math>)
 
+# Debug Symbols
+# set(CMAKE_CUDA_FLAGS ${CMAKE_CUDA_FLAGS} "-g -G")  # enable cuda-gdb
+
 # Link libraries
 target_link_libraries(
   cuda_kernels

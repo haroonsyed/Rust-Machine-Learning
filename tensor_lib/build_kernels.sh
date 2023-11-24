@@ -3,7 +3,7 @@ cd ./cuda_kernels
 rm -r build
 mkdir build
 cd ./build
-cmake ..
+cmake -DCMAKE_BUILD_TYPE=Release ..
 make
 cd ..
 cd ..

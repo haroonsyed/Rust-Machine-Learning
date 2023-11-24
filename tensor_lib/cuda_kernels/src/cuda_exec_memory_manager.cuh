@@ -7,19 +7,19 @@
 
 #include "./err_check_util.cu"
 
-extern bool library_init;
 extern cudaStream_t mem_stream;
-extern cudaMemPool_t mempool;
-extern std::vector<cudaStream_t> exec_streams;
-extern bool parallel_stream_execution;
-
 extern cublasHandle_t handle;
-extern size_t mat_generated_count;
-extern std::unordered_map<size_t, float*> mat_map;
 
 extern "C" {
+// Memory Manager Functions
+void* get_block_gpu_address(size_t block_id, size_t block_offset);
+std::pair<size_t, size_t> memory_manager_allocate(size_t size);
+void memory_manager_free(size_t block_id, size_t size);
+void memory_manager_upload_to_allocation(size_t block_id, size_t block_offset, void* data, size_t size);
+
 // Matrix Setup API
 cudaStream_t get_stream();
+float* get_matrix_gpu_address(size_t mat_id);
 size_t register_matrix(size_t rows, size_t cols);
 size_t register_matrix_with_data(float* data, size_t rows, size_t cols);
 void unregister_matrix(size_t mat_id);
