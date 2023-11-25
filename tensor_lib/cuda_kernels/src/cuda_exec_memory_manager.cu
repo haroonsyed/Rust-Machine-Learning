@@ -24,8 +24,8 @@ cublasHandle_t handle;
 size_t mat_generated_count(0);
 size_t chunks_generated_count(0);
 const size_t chunk_size(sizeof(char) * 1024 * 1024 * 1);  // 1 MB
-std::unordered_map<size_t, MatrixMemBlock*> matrix_map;
-std::unordered_map<size_t, ChunkMemBlock*> gpu_mem_blocks;
+std::unordered_map<size_t, MatrixMemBlock> matrix_map;
+std::unordered_map<size_t, ChunkMemBlock> gpu_mem_blocks;
 ChunkMemBlock* current_chunk = nullptr;
 
 /////////////////////
@@ -86,8 +86,8 @@ cudaStream_t get_stream() {
 /// Memory Allocation
 /////////////////////
 void* get_block_gpu_address(size_t block_id, size_t block_offset) {
-    ChunkMemBlock* block = gpu_mem_blocks[block_id];
-    return block->address + block_offset;
+    ChunkMemBlock block = gpu_mem_blocks[block_id];
+    return block.address + block_offset;
 }
 std::pair<size_t, size_t> allocate_from_chunk(size_t size) {
     // Check if we have enough space in the current chunk
@@ -123,13 +123,13 @@ std::pair<size_t, size_t> memory_manager_allocate(size_t size) {
     gpuErrchk(cudaMallocAsync(&address, curr_chunk_size, mempool, mem_stream));
     chunks_generated_count++;
 
-    ChunkMemBlock* block = new ChunkMemBlock();
-    block->address = address;
-    block->used_size = 0;
-    block->allocation_size_left = curr_chunk_size;
-    block->total_size = curr_chunk_size;
+    ChunkMemBlock block;
+    block.address = address;
+    block.used_size = 0;
+    block.allocation_size_left = curr_chunk_size;
+    block.total_size = curr_chunk_size;
     gpu_mem_blocks[chunks_generated_count] = block;
-    current_chunk = block;
+    current_chunk = &gpu_mem_blocks[chunks_generated_count];
 
     return allocate_from_chunk(size);
 }
@@ -137,7 +137,7 @@ void memory_manager_free(size_t block_id, size_t size) {
     // Align size to 16 bytes
     size = ((size / 16) + (size % 16 > 0 ? 1 : 0)) * 16;
 
-    ChunkMemBlock* block = gpu_mem_blocks[block_id];
+    ChunkMemBlock* block = &gpu_mem_blocks[block_id];
     block->used_size -= size;
 
     bool should_reset_current_chunk = block == current_chunk;
@@ -145,7 +145,6 @@ void memory_manager_free(size_t block_id, size_t size) {
     // If the block is empty, free it
     if (block->used_size == 0) {
         gpuErrchk(cudaFreeAsync(block->address, mem_stream));
-        delete block;
         gpu_mem_blocks.erase(block_id);
     }
 
@@ -161,12 +160,12 @@ void memory_manager_upload_to_allocation(size_t block_id, size_t block_offset, v
 /// Matrix Allocation
 /////////////////////
 float* get_matrix_gpu_address(size_t mat_id) {
-    MatrixMemBlock* mat = matrix_map[mat_id];
+    MatrixMemBlock* mat = &matrix_map[mat_id];
     size_t chunk = mat->chunk_id;
     size_t offset = mat->chunk_offset;
     return (float*)get_block_gpu_address(chunk, offset);
 }
-size_t register_matrix_block(MatrixMemBlock* mat) {
+size_t register_matrix_block(MatrixMemBlock mat) {
     // Register with the map for retrieval later
     matrix_map[mat_generated_count] = mat;
     return mat_generated_count++;
@@ -178,11 +177,11 @@ size_t register_matrix(size_t rows, size_t columns) {
     size_t chunk_offset = chunk_info.second;
 
     // Create the matrix block
-    MatrixMemBlock* mat = new MatrixMemBlock();
-    mat->chunk_id = chunk_id;
-    mat->chunk_offset = chunk_offset;
-    mat->rows = rows;
-    mat->columns = columns;
+    MatrixMemBlock mat;
+    mat.chunk_id = chunk_id;
+    mat.chunk_offset = chunk_offset;
+    mat.rows = rows;
+    mat.columns = columns;
 
     return register_matrix_block(mat);
 }
@@ -198,11 +197,10 @@ size_t register_matrix_with_data(float* data, size_t rows, size_t columns) {
     return matrix_id;
 }
 void unregister_matrix(size_t mat_id) {
-    MatrixMemBlock* mat = matrix_map[mat_id];
+    MatrixMemBlock* mat = &matrix_map[mat_id];
     size_t chunk_id = mat->chunk_id;
     size_t matrix_size = mat->rows * mat->columns * sizeof(float);
     memory_manager_free(chunk_id, matrix_size);
-    delete mat;
     matrix_map.erase(mat_id);
 }
 void get_matrix_data(size_t mat_id, int rows, int columns, float* data_buffer) {
