@@ -1605,9 +1605,6 @@ __global__ void cuda_convolution_kernel_packed_valid_1(float** mat_buffers, int 
 
 // Should be used when you have a lot of small matrices to convolve
 void cuda_convolution_valid_packed(size_t* matrices_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_mat_ids) {
-    // Time the overhead
-    auto start = std::chrono::high_resolution_clock::now();
-
     // Create output buffer
     // Dimension of output is input - kernel + 1
     int out_rows = mat_rows - kernel_rows + 1;
@@ -1615,7 +1612,6 @@ void cuda_convolution_valid_packed(size_t* matrices_ids, size_t num_matrices, si
 
     // Register output matrices
     // Register large buffer
-    // size_t out_mat_id_container = register_matrix(1, out_rows * out_cols * num_matrices);
     for (int i = 0; i < num_matrices; i++) {
         size_t out_mat_id = register_matrix(out_rows, out_cols);
         out_mat_ids[i] = out_mat_id;
@@ -1630,12 +1626,7 @@ void cuda_convolution_valid_packed(size_t* matrices_ids, size_t num_matrices, si
         gpu_mat_buffers.push_back(get_matrix_gpu_address(matrices_ids[i]));
         gpu_kernel_buffers.push_back(get_matrix_gpu_address(kernel_ids[i]));
         gpu_out_buffers.push_back(get_matrix_gpu_address(out_mat_ids[i]));
-        // gpu_out_buffers.push_back(get_matrix_gpu_address(out_mat_id_container) + i * out_rows * out_cols);
     }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    // printf("Overhead us: %f\n", (float)elapsed.count());
 
     // Upload the pointers to a gpu array
     // Each allocation pair contains block_id, block_offset

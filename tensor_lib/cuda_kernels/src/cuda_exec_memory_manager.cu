@@ -9,6 +9,7 @@ struct MatrixMemBlock {
 
 struct ChunkMemBlock {
     char* address;
+    size_t chunk_id;
     size_t used_size;             // Size of the chunk allocated to matrices
     size_t allocation_size_left;  // The amount of contiguous free space at the end of the chunk.
     size_t total_size;            // Not necessarily the same as used_size + allocation_size_left. This is the size of the chunk.
@@ -24,8 +25,10 @@ cublasHandle_t handle;
 size_t mat_generated_count(0);
 size_t chunks_generated_count(0);
 const size_t chunk_size(sizeof(char) * 1024 * 1024 * 1);  // 1 MB
-std::unordered_map<size_t, MatrixMemBlock> matrix_map;
-std::unordered_map<size_t, ChunkMemBlock> gpu_mem_blocks;
+std::vector<MatrixMemBlock> matrix_map;
+std::vector<size_t> free_mat_ids;
+std::vector<ChunkMemBlock> gpu_mem_blocks;
+std::vector<size_t> free_chunk_ids;
 ChunkMemBlock* current_chunk = nullptr;
 
 /////////////////////
@@ -98,7 +101,7 @@ std::pair<size_t, size_t> allocate_from_chunk(size_t size) {
     size_t current_allocation_offset = current_chunk->total_size - current_chunk->allocation_size_left;
     current_chunk->allocation_size_left -= size;
     current_chunk->used_size += size;
-    return std::make_pair(chunks_generated_count, current_allocation_offset);
+    return std::make_pair(current_chunk->chunk_id, current_allocation_offset);
 }
 
 // Allocate a chunk in multiple of chunk_size. Returns the chunkID and chunk offset
@@ -121,15 +124,23 @@ std::pair<size_t, size_t> memory_manager_allocate(size_t size) {
     // Allocate a new chunk
     char* address;
     gpuErrchk(cudaMallocAsync(&address, curr_chunk_size, mempool, mem_stream));
-    chunks_generated_count++;
 
     ChunkMemBlock block;
     block.address = address;
     block.used_size = 0;
     block.allocation_size_left = curr_chunk_size;
     block.total_size = curr_chunk_size;
-    gpu_mem_blocks[chunks_generated_count] = block;
-    current_chunk = &gpu_mem_blocks[chunks_generated_count];
+
+    // Determine Chunk ID
+    size_t chunk_id = free_chunk_ids.size() > 0 ? free_chunk_ids.back() : chunks_generated_count++;
+    if (free_chunk_ids.size() > 0) {
+        gpu_mem_blocks[chunk_id] = block;
+        free_chunk_ids.pop_back();
+    } else {
+        gpu_mem_blocks.push_back(block);
+    }
+    gpu_mem_blocks[chunk_id].chunk_id = chunk_id;
+    current_chunk = &gpu_mem_blocks[chunk_id];
 
     return allocate_from_chunk(size);
 }
@@ -145,7 +156,7 @@ void memory_manager_free(size_t block_id, size_t size) {
     // If the block is empty, free it
     if (block->used_size == 0) {
         gpuErrchk(cudaFreeAsync(block->address, mem_stream));
-        gpu_mem_blocks.erase(block_id);
+        free_chunk_ids.push_back(block_id);
     }
 
     if (should_reset_current_chunk) {
@@ -167,8 +178,15 @@ float* get_matrix_gpu_address(size_t mat_id) {
 }
 size_t register_matrix_block(MatrixMemBlock mat) {
     // Register with the map for retrieval later
-    matrix_map[mat_generated_count] = mat;
-    return mat_generated_count++;
+    size_t mat_id = free_mat_ids.size() > 0 ? free_mat_ids.back() : mat_generated_count;
+    if (free_mat_ids.size() > 0) {
+        matrix_map[mat_id] = mat;
+        free_mat_ids.pop_back();
+    } else {
+        matrix_map.push_back(mat);
+        mat_generated_count++;
+    }
+    return mat_id;
 }
 size_t register_matrix(size_t rows, size_t columns) {
     // Allocate the memory
@@ -201,7 +219,7 @@ void unregister_matrix(size_t mat_id) {
     size_t chunk_id = mat->chunk_id;
     size_t matrix_size = mat->rows * mat->columns * sizeof(float);
     memory_manager_free(chunk_id, matrix_size);
-    matrix_map.erase(mat_id);
+    free_mat_ids.push_back(mat_id);
 }
 void get_matrix_data(size_t mat_id, int rows, int columns, float* data_buffer) {
     float* gpu_address = get_matrix_gpu_address(mat_id);
