@@ -103,7 +103,33 @@ std::pair<size_t, size_t> allocate_from_chunk(size_t size) {
     current_chunk->used_size += size;
     return std::make_pair(current_chunk->chunk_id, current_allocation_offset);
 }
+void memory_manager_delete_block(ChunkMemBlock* block) {
+    gpuErrchk(cudaFreeAsync(block->address, mem_stream));
+    free_chunk_ids.push_back(block->chunk_id);
+}
+void memory_manager_free(size_t block_id, size_t size) {
+    // Align size to 16 bytes
+    size = ((size / 16) + (size % 16 > 0 ? 1 : 0)) * 16;
 
+    ChunkMemBlock* block = &gpu_mem_blocks[block_id];
+    block->used_size -= size;
+
+    // Keep current chunk if it has allocatable space left
+    bool is_current_chunk = block == current_chunk;
+
+    // If the block is empty, free it
+    if (block->used_size == 0) {
+        if (is_current_chunk) {
+            current_chunk->allocation_size_left = current_chunk->total_size;
+        } else {
+            memory_manager_delete_block(block);
+        }
+    }
+}
+void memory_manager_upload_to_allocation(size_t block_id, size_t block_offset, void* data, size_t size) {
+    void* address = get_block_gpu_address(block_id, block_offset);
+    gpuErrchk(cudaMemcpyAsync(address, data, size, cudaMemcpyHostToDevice, mem_stream));
+}
 // Allocate a chunk in multiple of chunk_size. Returns the chunkID and chunk offset
 std::pair<size_t, size_t> memory_manager_allocate(size_t size) {
     if (!library_init) {
@@ -115,6 +141,11 @@ std::pair<size_t, size_t> memory_manager_allocate(size_t size) {
 
     if (current_chunk != nullptr && current_chunk->allocation_size_left >= size) {
         return allocate_from_chunk(size);
+    }
+
+    // Delete current block if empty
+    if (current_chunk != nullptr && current_chunk->used_size == 0) {
+        memory_manager_delete_block(current_chunk);
     }
 
     // Determine the multiple of chunk_size that is greater than size
@@ -137,35 +168,12 @@ std::pair<size_t, size_t> memory_manager_allocate(size_t size) {
         gpu_mem_blocks[chunk_id] = block;
         free_chunk_ids.pop_back();
     } else {
-        gpu_mem_blocks.push_back(block);
+        gpu_mem_blocks.emplace_back(block);
     }
     gpu_mem_blocks[chunk_id].chunk_id = chunk_id;
     current_chunk = &gpu_mem_blocks[chunk_id];
 
     return allocate_from_chunk(size);
-}
-void memory_manager_free(size_t block_id, size_t size) {
-    // Align size to 16 bytes
-    size = ((size / 16) + (size % 16 > 0 ? 1 : 0)) * 16;
-
-    ChunkMemBlock* block = &gpu_mem_blocks[block_id];
-    block->used_size -= size;
-
-    bool should_reset_current_chunk = block == current_chunk;
-
-    // If the block is empty, free it
-    if (block->used_size == 0) {
-        gpuErrchk(cudaFreeAsync(block->address, mem_stream));
-        free_chunk_ids.push_back(block_id);
-    }
-
-    if (should_reset_current_chunk) {
-        current_chunk = nullptr;
-    }
-}
-void memory_manager_upload_to_allocation(size_t block_id, size_t block_offset, void* data, size_t size) {
-    void* address = get_block_gpu_address(block_id, block_offset);
-    gpuErrchk(cudaMemcpyAsync(address, data, size, cudaMemcpyHostToDevice, mem_stream));
 }
 /////////////////////
 /// Matrix Allocation
@@ -183,7 +191,7 @@ size_t register_matrix_block(MatrixMemBlock mat) {
         matrix_map[mat_id] = mat;
         free_mat_ids.pop_back();
     } else {
-        matrix_map.push_back(mat);
+        matrix_map.emplace_back(mat);
         mat_generated_count++;
     }
     return mat_id;
