@@ -127,6 +127,9 @@ void memory_manager_free(size_t block_id, size_t size) {
     }
 }
 void memory_manager_upload_to_allocation(size_t block_id, size_t block_offset, void* data, size_t size) {
+    // Copy data from pinned buffer to gpu
+    // When performing async memcpy with page-locked memory, the behavior is same as cudaMemcpy.
+    // But the call is asynchronous, and allows the cpu overhead to be lower.
     void* address = get_block_gpu_address(block_id, block_offset);
     gpuErrchk(cudaMemcpyAsync(address, data, size, cudaMemcpyHostToDevice, mem_stream));
 }
@@ -215,11 +218,14 @@ size_t register_matrix_with_data(float* data, size_t rows, size_t columns) {
     // Create the matrix block
     size_t matrix_id = register_matrix(rows, columns);
 
-    // Get the gpu address
-    float* gpu_address = get_matrix_gpu_address(matrix_id);
+    // Block information
+    MatrixMemBlock* mat = &matrix_map[matrix_id];
+    size_t chunk_id = mat->chunk_id;
+    size_t chunk_offset = mat->chunk_offset;
+    size_t mat_size = sizeof(float) * rows * columns;
 
     // Upload the data
-    gpuErrchk(cudaMemcpy(gpu_address, data, sizeof(float) * rows * columns, cudaMemcpyHostToDevice));
+    memory_manager_upload_to_allocation(chunk_id, chunk_offset, data, mat_size);
     return matrix_id;
 }
 void unregister_matrix(size_t mat_id) {
