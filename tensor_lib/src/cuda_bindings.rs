@@ -26,6 +26,15 @@ extern "C" {
     mat2_cols: usize,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_element_add_packed(
+    mat1_ids: *const c_ulonglong,
+    mat2_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    inplace: bool,
+  );
   pub fn cuda_element_subtract(
     mat1_id: usize,
     mat1_rows: usize,
@@ -35,6 +44,15 @@ extern "C" {
     mat2_cols: usize,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_element_subtract_packed(
+    mat1_ids: *const c_ulonglong,
+    mat2_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    inplace: bool,
+  );
   pub fn cuda_element_multiply(
     mat1_id: usize,
     mat1_rows: usize,
@@ -44,6 +62,15 @@ extern "C" {
     mat2_cols: usize,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_element_multiply_packed(
+    mat1_ids: *const c_ulonglong,
+    mat2_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    inplace: bool,
+  );
   pub fn cuda_element_divide(
     mat1_id: usize,
     mat1_rows: usize,
@@ -53,6 +80,15 @@ extern "C" {
     mat2_cols: usize,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_element_divide_packed(
+    mat1_ids: *const c_ulonglong,
+    mat2_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    inplace: bool,
+  );
   pub fn cuda_scalar_multiply(
     mat1_id: usize,
     mat1_rows: usize,
@@ -60,6 +96,15 @@ extern "C" {
     scalar: c_float,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_scalar_multiply_packed(
+    mat_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    scalar: c_float,
+    inplace: bool,
+  );
   pub fn cuda_scalar_divide(
     mat1_id: usize,
     mat1_rows: usize,
@@ -67,6 +112,15 @@ extern "C" {
     scalar: c_float,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_scalar_divide_packed(
+    mat_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    scalar: c_float,
+    inplace: bool,
+  );
   pub fn cuda_scalar_add(
     mat1_id: usize,
     mat1_rows: usize,
@@ -74,6 +128,15 @@ extern "C" {
     scalar: c_float,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_scalar_add_packed(
+    mat_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    scalar: c_float,
+    inplace: bool,
+  );
   pub fn cuda_scalar_subtract(
     mat1_id: usize,
     mat1_rows: usize,
@@ -81,6 +144,15 @@ extern "C" {
     scalar: c_float,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_scalar_subtract_packed(
+    mat_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    scalar: c_float,
+    inplace: bool,
+  );
   pub fn cuda_scalar_multiply_matrix(
     mat1_id: usize,
     mat1_rows: usize,
@@ -88,6 +160,15 @@ extern "C" {
     scalar: usize,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_scalar_multiply_matrix_packed(
+    mat_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    scalar: usize,
+    inplace: bool,
+  );
   pub fn cuda_scalar_divide_matrix(
     mat1_id: usize,
     mat1_rows: usize,
@@ -95,6 +176,15 @@ extern "C" {
     scalar: usize,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_scalar_divide_matrix_packed(
+    mat_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    scalar: usize,
+    inplace: bool,
+  );
   pub fn cuda_scalar_add_matrix(
     mat1_id: usize,
     mat1_rows: usize,
@@ -102,6 +192,15 @@ extern "C" {
     scalar: usize,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_scalar_add_matrix_packed(
+    mat_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    scalar: usize,
+    inplace: bool,
+  );
   pub fn cuda_scalar_subtract_matrix(
     mat1_id: usize,
     mat1_rows: usize,
@@ -109,6 +208,15 @@ extern "C" {
     scalar: usize,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_scalar_subtract_matrix_packed(
+    mat_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    scalar: usize,
+    inplace: bool,
+  );
   pub fn cuda_matrix_multiply(
     mat1_id: usize,
     mat1_rows: usize,
@@ -141,24 +249,56 @@ extern "C" {
     mat1_cols: usize,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_element_sqrt_packed(
+    mat_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    inplace: bool,
+  );
   pub fn cuda_element_exp(
     mat1_id: usize,
     mat1_rows: usize,
     mat1_cols: usize,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_element_exp_packed(
+    mat_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    inplace: bool,
+  );
   pub fn cuda_element_ReLU(
     mat1_id: usize,
     mat1_rows: usize,
     mat1_cols: usize,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_element_ReLU_packed(
+    mat_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    inplace: bool,
+  );
   pub fn cuda_element_ReLU_prime(
     mat1_id: usize,
     mat1_rows: usize,
     mat1_cols: usize,
     inplace: bool,
   ) -> usize;
+  pub fn cuda_element_ReLU_prime_packed(
+    mat_ids: *const c_ulonglong,
+    out_mat_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    inplace: bool,
+  );
   pub fn cuda_sum_rows(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_sum_columns(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_transpose(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
