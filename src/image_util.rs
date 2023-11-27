@@ -78,6 +78,8 @@ impl ImageBatchLoaderRust {
           }
         }
       }
+    } else {
+      println!("Error reading directory {:?}", parent_folder);
     }
 
     return (paths, classifications_map);
