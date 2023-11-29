@@ -405,134 +405,6 @@ impl Matrix {
     return self.clone();
   }
 
-  fn scalar_multiply_matrix_impl(&self, scalar: &Matrix, inplace: bool) -> usize {
-    if scalar.get_data_length() != 1 {
-      panic!("Scalar matrix must be 1x1!");
-    }
-
-    let result_id: usize;
-    unsafe {
-      result_id = cuda_scalar_multiply_matrix(
-        self.get_id(),
-        self.rows,
-        self.columns,
-        scalar.get_id(),
-        inplace,
-      )
-    }
-
-    return result_id;
-  }
-
-  pub fn scalar_multiply_matrix(&self, scalar: &Matrix) -> Self {
-    let result_id = self.scalar_multiply_matrix_impl(scalar, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
-
-    return Matrix::new(result_id, output_rows, output_columns);
-  }
-
-  pub fn scalar_multiply_matrix_inplace(&self, scalar: &Matrix) -> Self {
-    self.scalar_multiply_matrix_impl(scalar, true);
-    return self.clone();
-  }
-
-  fn scalar_divide_matrix_impl(&self, scalar: &Matrix, inplace: bool) -> usize {
-    if scalar.get_data_length() != 1 {
-      panic!("Scalar matrix must be 1x1!");
-    }
-
-    let result_id: usize;
-    unsafe {
-      result_id = cuda_scalar_divide_matrix(
-        self.get_id(),
-        self.rows,
-        self.columns,
-        scalar.get_id(),
-        inplace,
-      )
-    }
-
-    return result_id;
-  }
-
-  pub fn scalar_divide_matrix(&self, scalar: &Matrix) -> Self {
-    let result_id = self.scalar_divide_matrix_impl(scalar, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
-
-    return Matrix::new(result_id, output_rows, output_columns);
-  }
-
-  pub fn scalar_divide_matrix_inplace(&self, scalar: &Matrix) -> Self {
-    self.scalar_divide_matrix_impl(scalar, true);
-    return self.clone();
-  }
-
-  fn scalar_add_matrix_impl(&self, scalar: &Matrix, inplace: bool) -> usize {
-    if scalar.get_data_length() != 1 {
-      panic!("Scalar matrix must be 1x1!");
-    }
-
-    let result_id: usize;
-    unsafe {
-      result_id = cuda_scalar_add_matrix(
-        self.get_id(),
-        self.rows,
-        self.columns,
-        scalar.get_id(),
-        inplace,
-      )
-    }
-
-    return result_id;
-  }
-
-  pub fn scalar_add_matrix(&self, scalar: &Matrix) -> Self {
-    let result_id = self.scalar_add_matrix_impl(scalar, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
-
-    return Matrix::new(result_id, output_rows, output_columns);
-  }
-
-  pub fn scalar_add_matrix_inplace(&self, scalar: &Matrix) -> Self {
-    self.scalar_add_matrix_impl(scalar, true);
-    return self.clone();
-  }
-
-  fn scalar_subtract_matrix_impl(&self, scalar: &Matrix, inplace: bool) -> usize {
-    if scalar.get_data_length() != 1 {
-      panic!("Scalar matrix must be 1x1!");
-    }
-
-    let result_id: usize;
-    unsafe {
-      result_id = cuda_scalar_subtract_matrix(
-        self.get_id(),
-        self.rows,
-        self.columns,
-        scalar.get_id(),
-        inplace,
-      )
-    }
-
-    return result_id;
-  }
-
-  pub fn scalar_subtract_matrix(&self, scalar: &Matrix) -> Self {
-    let result_id = self.scalar_subtract_matrix_impl(scalar, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
-
-    return Matrix::new(result_id, output_rows, output_columns);
-  }
-
-  pub fn scalar_subtract_matrix_inplace(&self, scalar: &Matrix) -> Self {
-    self.scalar_subtract_matrix_impl(scalar, true);
-    return self.clone();
-  }
-
   pub fn matrix_multiply(&self, other: &Matrix) -> Self {
     // Bound Check
     if self.columns != other.rows {
@@ -1286,7 +1158,11 @@ pub fn element_divide_packed(
   }
 }
 
-pub fn scalar_multiply_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
+pub fn scalar_multiply_packed(
+  matrices: &Vec<Matrix>,
+  scalars: &Vec<f32>,
+  inplace: bool,
+) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1306,7 +1182,7 @@ pub fn scalar_multiply_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
       num_matrices,
       mat_rows,
       mat_cols,
-      scalar,
+      scalars.as_ptr() as *const c_float,
       inplace,
     );
   }
@@ -1322,7 +1198,11 @@ pub fn scalar_multiply_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
   }
 }
 
-pub fn scalar_divide_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
+pub fn scalar_divide_packed(
+  matrices: &Vec<Matrix>,
+  scalars: &Vec<f32>,
+  inplace: bool,
+) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1342,7 +1222,7 @@ pub fn scalar_divide_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) 
       num_matrices,
       mat_rows,
       mat_cols,
-      scalar,
+      scalars.as_ptr() as *const c_float,
       inplace,
     );
   }
@@ -1358,7 +1238,7 @@ pub fn scalar_divide_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) 
   }
 }
 
-pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
+pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalars: &Vec<f32>, inplace: bool) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1378,7 +1258,7 @@ pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> 
       num_matrices,
       mat_rows,
       mat_cols,
-      scalar,
+      scalars.as_ptr() as *const c_float,
       inplace,
     );
   }
@@ -1394,7 +1274,11 @@ pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> 
   }
 }
 
-pub fn scalar_subtract_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
+pub fn scalar_subtract_packed(
+  matrices: &Vec<Matrix>,
+  scalars: &Vec<f32>,
+  inplace: bool,
+) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1414,167 +1298,7 @@ pub fn scalar_subtract_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
       num_matrices,
       mat_rows,
       mat_cols,
-      scalar,
-      inplace,
-    );
-  }
-
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return matrices.to_owned();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
-}
-
-pub fn scalar_multiply_matrix_packed(
-  matrices: &Vec<Matrix>,
-  scalar: &Matrix,
-  inplace: bool,
-) -> Vec<Matrix> {
-  let num_matrices = matrices.len();
-
-  if num_matrices == 0 {
-    return Vec::new();
-  }
-
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
-
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
-
-  unsafe {
-    cuda_scalar_multiply_matrix_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-      scalar.get_id(),
-      inplace,
-    );
-  }
-
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return matrices.to_owned();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
-}
-
-pub fn scalar_divide_matrix_packed(
-  matrices: &Vec<Matrix>,
-  scalar: &Matrix,
-  inplace: bool,
-) -> Vec<Matrix> {
-  let num_matrices = matrices.len();
-
-  if num_matrices == 0 {
-    return Vec::new();
-  }
-
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
-
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
-
-  unsafe {
-    cuda_scalar_divide_matrix_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-      scalar.get_id(),
-      inplace,
-    );
-  }
-
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return matrices.to_owned();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
-}
-
-pub fn scalar_add_matrix_packed(
-  matrices: &Vec<Matrix>,
-  scalar: &Matrix,
-  inplace: bool,
-) -> Vec<Matrix> {
-  let num_matrices = matrices.len();
-
-  if num_matrices == 0 {
-    return Vec::new();
-  }
-
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
-
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
-
-  unsafe {
-    cuda_scalar_add_matrix_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-      scalar.get_id(),
-      inplace,
-    );
-  }
-
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return matrices.to_owned();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
-}
-
-pub fn scalar_subtract_matrix_packed(
-  matrices: &Vec<Matrix>,
-  scalar: &Matrix,
-  inplace: bool,
-) -> Vec<Matrix> {
-  let num_matrices = matrices.len();
-
-  if num_matrices == 0 {
-    return Vec::new();
-  }
-
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
-
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
-
-  unsafe {
-    cuda_scalar_subtract_matrix_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-      scalar.get_id(),
+      scalars.as_ptr() as *const c_float,
       inplace,
     );
   }

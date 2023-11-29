@@ -635,13 +635,14 @@ size_t cuda_scalar_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, 
 }
 
 // Each block handles one matrix
-__global__ void cuda_scalar_multiply_packed_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float scalar) {
+__global__ void cuda_scalar_multiply_packed_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalars) {
     const int current_matrix = blockIdx.x;
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
 
     // Grab the buffers
     const float* mat_buffer = mat_buffers[current_matrix];
+    const float scalar = scalars[current_matrix];
     float* out_buffer = out_buffers[current_matrix];
 
     // The work will be split among threads in the block
@@ -656,13 +657,14 @@ __global__ void cuda_scalar_multiply_packed_kernel(float** mat_buffers, float** 
     }
 }
 // Each block handles one matrix
-__global__ void cuda_scalar_multiply_packed_inplace_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float scalar) {
+__global__ void cuda_scalar_multiply_packed_inplace_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalars) {
     const int current_matrix = blockIdx.x;
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
 
     // Grab the buffers
     const float* mat_buffer = mat_buffers[current_matrix];
+    const float scalar = scalars[current_matrix];
     float* out_buffer = out_buffers[current_matrix];
 
     // The work will be split among threads in the block
@@ -678,7 +680,7 @@ __global__ void cuda_scalar_multiply_packed_inplace_kernel(float** mat_buffers, 
         tidY += blockDim.y;
     }
 }
-void cuda_scalar_multiply_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float scalar, bool inplace) {
+void cuda_scalar_multiply_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float* scalars, bool inplace) {
     // Create output buffer
     int out_rows = mat_rows;
     int out_cols = mat_cols;
@@ -701,10 +703,13 @@ void cuda_scalar_multiply_packed(size_t* mat_ids, size_t* out_mat_ids, size_t nu
     // Each allocation contains the block_id, block_offset
     auto gpu_mat1_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
     memory_manager_upload_to_allocation(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second, &gpu_mat1_buffers[0], sizeof(float*) * num_matrices);
+    auto gpu_scalars_block = memory_manager_allocate(sizeof(float) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_scalars_block.first, gpu_scalars_block.second, &scalars[0], sizeof(float) * num_matrices);
     auto gpu_out_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
     memory_manager_upload_to_allocation(gpu_out_buffers_block.first, gpu_out_buffers_block.second, &gpu_out_buffers[0], sizeof(float*) * num_matrices);
 
     float** gpu_mat1_buffers_dp = (float**)get_block_gpu_address(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
+    float* gpu_scalars_buffer = (float*)get_block_gpu_address(gpu_scalars_block.first, gpu_scalars_block.second);
     float** gpu_out_buffers_dp = (float**)get_block_gpu_address(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
 
     // Kernel launch parameters
@@ -714,11 +719,12 @@ void cuda_scalar_multiply_packed(size_t* mat_ids, size_t* out_mat_ids, size_t nu
 
     // Run the kernels
     auto kernel = inplace ? cuda_scalar_multiply_packed_inplace_kernel : cuda_scalar_multiply_packed_kernel;
-    kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, scalar);
+    kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, gpu_scalars_buffer);
     gpuErrchk(cudaPeekAtLastError());
 
     // Free the gpu buffers
     memory_manager_free(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
+    memory_manager_free(gpu_scalars_block.first, gpu_scalars_block.second);
     memory_manager_free(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
 }
 
@@ -758,13 +764,14 @@ size_t cuda_scalar_divide(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, fl
 }
 
 // Each block handles one matrix
-__global__ void cuda_scalar_divide_packed_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float scalar) {
+__global__ void cuda_scalar_divide_packed_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalars) {
     const int current_matrix = blockIdx.x;
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
 
     // Grab the buffers
     const float* mat_buffer = mat_buffers[current_matrix];
+    const float scalar = scalars[current_matrix];
     float* out_buffer = out_buffers[current_matrix];
 
     // The work will be split among threads in the block
@@ -779,13 +786,14 @@ __global__ void cuda_scalar_divide_packed_kernel(float** mat_buffers, float** ou
     }
 }
 // Each block handles one matrix
-__global__ void cuda_scalar_divide_packed_inplace_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float scalar) {
+__global__ void cuda_scalar_divide_packed_inplace_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalars) {
     const int current_matrix = blockIdx.x;
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
 
     // Grab the buffers
     const float* mat_buffer = mat_buffers[current_matrix];
+    const float scalar = scalars[current_matrix];
     float* out_buffer = out_buffers[current_matrix];
 
     // The work will be split among threads in the block
@@ -801,7 +809,7 @@ __global__ void cuda_scalar_divide_packed_inplace_kernel(float** mat_buffers, fl
         tidY += blockDim.y;
     }
 }
-void cuda_scalar_divide_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float scalar, bool inplace) {
+void cuda_scalar_divide_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float* scalars, bool inplace) {
     // Create output buffer
     int out_rows = mat_rows;
     int out_cols = mat_cols;
@@ -824,10 +832,13 @@ void cuda_scalar_divide_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_
     // Each allocation contains the block_id, block_offset
     auto gpu_mat1_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
     memory_manager_upload_to_allocation(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second, &gpu_mat1_buffers[0], sizeof(float*) * num_matrices);
+    auto gpu_scalars_block = memory_manager_allocate(sizeof(float) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_scalars_block.first, gpu_scalars_block.second, &scalars[0], sizeof(float) * num_matrices);
     auto gpu_out_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
     memory_manager_upload_to_allocation(gpu_out_buffers_block.first, gpu_out_buffers_block.second, &gpu_out_buffers[0], sizeof(float*) * num_matrices);
 
     float** gpu_mat1_buffers_dp = (float**)get_block_gpu_address(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
+    float* gpu_scalars_buffer = (float*)get_block_gpu_address(gpu_scalars_block.first, gpu_scalars_block.second);
     float** gpu_out_buffers_dp = (float**)get_block_gpu_address(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
 
     // Kernel launch parameters
@@ -837,11 +848,12 @@ void cuda_scalar_divide_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_
 
     // Run the kernels
     auto kernel = inplace ? cuda_scalar_divide_packed_inplace_kernel : cuda_scalar_divide_packed_kernel;
-    kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, scalar);
+    kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, gpu_scalars_buffer);
     gpuErrchk(cudaPeekAtLastError());
 
     // Free the gpu buffers
     memory_manager_free(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
+    memory_manager_free(gpu_scalars_block.first, gpu_scalars_block.second);
     memory_manager_free(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
 }
 
@@ -881,13 +893,14 @@ size_t cuda_scalar_add(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, float
 }
 
 // Each block handles one matrix
-__global__ void cuda_scalar_add_packed_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float scalar) {
+__global__ void cuda_scalar_add_packed_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalars) {
     const int current_matrix = blockIdx.x;
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
 
     // Grab the buffers
     const float* mat_buffer = mat_buffers[current_matrix];
+    const float scalar = scalars[current_matrix];
     float* out_buffer = out_buffers[current_matrix];
 
     // The work will be split among threads in the block
@@ -902,13 +915,14 @@ __global__ void cuda_scalar_add_packed_kernel(float** mat_buffers, float** out_b
     }
 }
 // Each block handles one matrix
-__global__ void cuda_scalar_add_packed_inplace_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float scalar) {
+__global__ void cuda_scalar_add_packed_inplace_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalars) {
     const int current_matrix = blockIdx.x;
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
 
     // Grab the buffers
     const float* mat_buffer = mat_buffers[current_matrix];
+    const float scalar = scalars[current_matrix];
     float* out_buffer = out_buffers[current_matrix];
 
     // The work will be split among threads in the block
@@ -924,7 +938,7 @@ __global__ void cuda_scalar_add_packed_inplace_kernel(float** mat_buffers, float
         tidY += blockDim.y;
     }
 }
-void cuda_scalar_add_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float scalar, bool inplace) {
+void cuda_scalar_add_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float* scalars, bool inplace) {
     // Create output buffer
     int out_rows = mat_rows;
     int out_cols = mat_cols;
@@ -947,10 +961,13 @@ void cuda_scalar_add_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_mat
     // Each allocation contains the block_id, block_offset
     auto gpu_mat1_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
     memory_manager_upload_to_allocation(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second, &gpu_mat1_buffers[0], sizeof(float*) * num_matrices);
+    auto gpu_scalars_block = memory_manager_allocate(sizeof(float) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_scalars_block.first, gpu_scalars_block.second, &scalars[0], sizeof(float) * num_matrices);
     auto gpu_out_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
     memory_manager_upload_to_allocation(gpu_out_buffers_block.first, gpu_out_buffers_block.second, &gpu_out_buffers[0], sizeof(float*) * num_matrices);
 
     float** gpu_mat1_buffers_dp = (float**)get_block_gpu_address(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
+    float* gpu_scalars_buffer = (float*)get_block_gpu_address(gpu_scalars_block.first, gpu_scalars_block.second);
     float** gpu_out_buffers_dp = (float**)get_block_gpu_address(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
 
     // Kernel launch parameters
@@ -960,11 +977,12 @@ void cuda_scalar_add_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_mat
 
     // Run the kernels
     auto kernel = inplace ? cuda_scalar_add_packed_inplace_kernel : cuda_scalar_add_packed_kernel;
-    kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, scalar);
+    kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, gpu_scalars_buffer);
     gpuErrchk(cudaPeekAtLastError());
 
     // Free the gpu buffers
     memory_manager_free(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
+    memory_manager_free(gpu_scalars_block.first, gpu_scalars_block.second);
     memory_manager_free(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
 }
 
@@ -1004,13 +1022,14 @@ size_t cuda_scalar_subtract(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, 
 }
 
 // Each block handles one matrix
-__global__ void cuda_scalar_subtract_packed_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float scalar) {
+__global__ void cuda_scalar_subtract_packed_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalars) {
     const int current_matrix = blockIdx.x;
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
 
     // Grab the buffers
     const float* mat_buffer = mat_buffers[current_matrix];
+    const float scalar = scalars[current_matrix];
     float* out_buffer = out_buffers[current_matrix];
 
     // The work will be split among threads in the block
@@ -1025,13 +1044,14 @@ __global__ void cuda_scalar_subtract_packed_kernel(float** mat_buffers, float** 
     }
 }
 // Each block handles one matrix
-__global__ void cuda_scalar_subtract_packed_inplace_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float scalar) {
+__global__ void cuda_scalar_subtract_packed_inplace_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalars) {
     const int current_matrix = blockIdx.x;
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
 
     // Grab the buffers
     const float* mat_buffer = mat_buffers[current_matrix];
+    const float scalar = scalars[current_matrix];
     float* out_buffer = out_buffers[current_matrix];
 
     // The work will be split among threads in the block
@@ -1047,7 +1067,7 @@ __global__ void cuda_scalar_subtract_packed_inplace_kernel(float** mat_buffers, 
         tidY += blockDim.y;
     }
 }
-void cuda_scalar_subtract_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float scalar, bool inplace) {
+void cuda_scalar_subtract_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float* scalars, bool inplace) {
     // Create output buffer
     int out_rows = mat_rows;
     int out_cols = mat_cols;
@@ -1070,10 +1090,13 @@ void cuda_scalar_subtract_packed(size_t* mat_ids, size_t* out_mat_ids, size_t nu
     // Each allocation contains the block_id, block_offset
     auto gpu_mat1_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
     memory_manager_upload_to_allocation(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second, &gpu_mat1_buffers[0], sizeof(float*) * num_matrices);
+    auto gpu_scalars_block = memory_manager_allocate(sizeof(float) * num_matrices);
+    memory_manager_upload_to_allocation(gpu_scalars_block.first, gpu_scalars_block.second, &scalars[0], sizeof(float) * num_matrices);
     auto gpu_out_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
     memory_manager_upload_to_allocation(gpu_out_buffers_block.first, gpu_out_buffers_block.second, &gpu_out_buffers[0], sizeof(float*) * num_matrices);
 
     float** gpu_mat1_buffers_dp = (float**)get_block_gpu_address(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
+    float* gpu_scalars_buffer = (float*)get_block_gpu_address(gpu_scalars_block.first, gpu_scalars_block.second);
     float** gpu_out_buffers_dp = (float**)get_block_gpu_address(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
 
     // Kernel launch parameters
@@ -1083,514 +1106,14 @@ void cuda_scalar_subtract_packed(size_t* mat_ids, size_t* out_mat_ids, size_t nu
 
     // Run the kernels
     auto kernel = inplace ? cuda_scalar_subtract_packed_inplace_kernel : cuda_scalar_subtract_packed_kernel;
-    kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, scalar);
+    kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, gpu_scalars_buffer);
     gpuErrchk(cudaPeekAtLastError());
 
     // Free the gpu buffers
     memory_manager_free(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
+    memory_manager_free(gpu_scalars_block.first, gpu_scalars_block.second);
     memory_manager_free(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
 }
-
-__global__ void scalar_multiply_matrix_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* scalar, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = mat1[i][j] * scalar
-
-        int index = tidY * out_cols + tidX;
-        out_buffer[index] = mat1_buffer[index] * scalar[0];
-    }
-}
-
-size_t cuda_scalar_multiply_matrix(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t scalar, bool inplace) {
-    // Create output buffer
-    int out_rows = mat1_rows;
-    int out_cols = mat1_cols;
-    size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
-
-    // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
-    float* gpu_scalar_buffer = get_matrix_gpu_address(scalar);
-    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 32;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
-
-    // Run the kernels
-    scalar_multiply_matrix_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_scalar_buffer, gpu_out_buffer, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-
-    // Return result matrix id
-    return out_mat_id;
-}
-
-// Each block handles one matrix
-__global__ void cuda_scalar_multiply_matrix_packed_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalar) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix];
-    float* out_buffer = out_buffers[current_matrix];
-
-    // The work will be split among threads in the block
-    while (tidY < mat_rows) {
-        while (tidX < mat_cols) {
-            const int index = tidY * mat_cols + tidX;
-            out_buffer[index] = mat_buffer[index] * scalar[0];
-            tidX += blockDim.x;
-        }
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-// Each block handles one matrix
-__global__ void cuda_scalar_multiply_matrix_packed_inplace_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalar) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix];
-    float* out_buffer = out_buffers[current_matrix];
-
-    // The work will be split among threads in the block
-    while (tidY < mat_rows) {
-        while (tidX < mat_cols) {
-            const int index = tidY * mat_cols + tidX;
-
-            // Atomic because mat1 may be used multiple times
-            atomicMultiply(&out_buffer[index], scalar[0]);
-            tidX += blockDim.x;
-        }
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-void cuda_scalar_multiply_matrix_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t scalar_mat_id, bool inplace) {
-    // Create output buffer
-    int out_rows = mat_rows;
-    int out_cols = mat_cols;
-
-    for (int i = 0; i < num_matrices; i++) {
-        size_t out_mat_id = inplace ? mat_ids[i] : register_matrix(out_rows, out_cols);
-        out_mat_ids[i] = out_mat_id;
-    }
-
-    // Get the gpu buffers to operate on
-    std::vector<float*> gpu_mat1_buffers;
-    std::vector<float*> gpu_out_buffers;
-    float* scalar_buffer = get_matrix_gpu_address(scalar_mat_id);
-
-    for (int i = 0; i < num_matrices; i++) {
-        gpu_mat1_buffers.push_back(get_matrix_gpu_address(mat_ids[i]));
-        gpu_out_buffers.push_back(get_matrix_gpu_address(out_mat_ids[i]));
-    }
-
-    // Upload the pointers to a gpu array
-    // Each allocation contains the block_id, block_offset
-    auto gpu_mat1_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
-    memory_manager_upload_to_allocation(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second, &gpu_mat1_buffers[0], sizeof(float*) * num_matrices);
-    auto gpu_out_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
-    memory_manager_upload_to_allocation(gpu_out_buffers_block.first, gpu_out_buffers_block.second, &gpu_out_buffers[0], sizeof(float*) * num_matrices);
-
-    float** gpu_mat1_buffers_dp = (float**)get_block_gpu_address(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
-    float** gpu_out_buffers_dp = (float**)get_block_gpu_address(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim(num_matrices, 1, 1);
-
-    // Run the kernels
-    auto kernel = inplace ? cuda_scalar_multiply_matrix_packed_inplace_kernel : cuda_scalar_multiply_matrix_packed_kernel;
-    kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, scalar_buffer);
-    gpuErrchk(cudaPeekAtLastError());
-
-    // Free the gpu buffers
-    memory_manager_free(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
-    memory_manager_free(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
-}
-
-__global__ void scalar_divide_matrix_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* scalar, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = mat1[i][j] * scalar
-
-        int index = tidY * out_cols + tidX;
-        out_buffer[index] = mat1_buffer[index] / scalar[0];
-    }
-}
-
-size_t cuda_scalar_divide_matrix(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t scalar, bool inplace) {
-    // Create output buffer
-    int out_rows = mat1_rows;
-    int out_cols = mat1_cols;
-    size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
-
-    // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
-    float* gpu_scalar_buffer = get_matrix_gpu_address(scalar);
-    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 32;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
-
-    // Run the kernels
-    scalar_divide_matrix_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_scalar_buffer, gpu_out_buffer, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-
-    // Return result matrix id
-    return out_mat_id;
-}
-
-// Each block handles one matrix
-__global__ void cuda_scalar_divide_matrix_packed_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalar) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix];
-    float* out_buffer = out_buffers[current_matrix];
-
-    // The work will be split among threads in the block
-    while (tidY < mat_rows) {
-        while (tidX < mat_cols) {
-            const int index = tidY * mat_cols + tidX;
-            out_buffer[index] = mat_buffer[index] / scalar[0];
-            tidX += blockDim.x;
-        }
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-// Each block handles one matrix
-__global__ void cuda_scalar_divide_matrix_packed_inplace_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalar) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix];
-    float* out_buffer = out_buffers[current_matrix];
-
-    // The work will be split among threads in the block
-    while (tidY < mat_rows) {
-        while (tidX < mat_cols) {
-            const int index = tidY * mat_cols + tidX;
-
-            // Atomic because mat1 may be used multiple times
-            atomicDivide(&out_buffer[index], scalar[0]);
-            tidX += blockDim.x;
-        }
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-void cuda_scalar_divide_matrix_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t scalar_mat_id, bool inplace) {
-    // Create output buffer
-    int out_rows = mat_rows;
-    int out_cols = mat_cols;
-
-    for (int i = 0; i < num_matrices; i++) {
-        size_t out_mat_id = inplace ? mat_ids[i] : register_matrix(out_rows, out_cols);
-        out_mat_ids[i] = out_mat_id;
-    }
-
-    // Get the gpu buffers to operate on
-    std::vector<float*> gpu_mat1_buffers;
-    std::vector<float*> gpu_out_buffers;
-    float* scalar_buffer = get_matrix_gpu_address(scalar_mat_id);
-
-    for (int i = 0; i < num_matrices; i++) {
-        gpu_mat1_buffers.push_back(get_matrix_gpu_address(mat_ids[i]));
-        gpu_out_buffers.push_back(get_matrix_gpu_address(out_mat_ids[i]));
-    }
-
-    // Upload the pointers to a gpu array
-    // Each allocation contains the block_id, block_offset
-    auto gpu_mat1_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
-    memory_manager_upload_to_allocation(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second, &gpu_mat1_buffers[0], sizeof(float*) * num_matrices);
-    auto gpu_out_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
-    memory_manager_upload_to_allocation(gpu_out_buffers_block.first, gpu_out_buffers_block.second, &gpu_out_buffers[0], sizeof(float*) * num_matrices);
-
-    float** gpu_mat1_buffers_dp = (float**)get_block_gpu_address(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
-    float** gpu_out_buffers_dp = (float**)get_block_gpu_address(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim(num_matrices, 1, 1);
-
-    // Run the kernels
-    auto kernel = inplace ? cuda_scalar_divide_matrix_packed_inplace_kernel : cuda_scalar_divide_matrix_packed_kernel;
-    kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, scalar_buffer);
-    gpuErrchk(cudaPeekAtLastError());
-
-    // Free the gpu buffers
-    memory_manager_free(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
-    memory_manager_free(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
-}
-
-__global__ void scalar_add_matrix_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* scalar, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = mat1[i][j] * scalar
-
-        int index = tidY * out_cols + tidX;
-        out_buffer[index] = mat1_buffer[index] + scalar[0];
-    }
-}
-
-size_t cuda_scalar_add_matrix(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t scalar, bool inplace) {
-    // Create output buffer
-    int out_rows = mat1_rows;
-    int out_cols = mat1_cols;
-    size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
-
-    // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
-    float* gpu_scalar_buffer = get_matrix_gpu_address(scalar);
-    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 32;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
-
-    // Run the kernels
-    scalar_add_matrix_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_scalar_buffer, gpu_out_buffer, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-
-    // Return result matrix id
-    return out_mat_id;
-}
-
-// Each block handles one matrix
-__global__ void cuda_scalar_add_matrix_packed_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalar) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix];
-    float* out_buffer = out_buffers[current_matrix];
-
-    // The work will be split among threads in the block
-    while (tidY < mat_rows) {
-        while (tidX < mat_cols) {
-            const int index = tidY * mat_cols + tidX;
-            out_buffer[index] = mat_buffer[index] + scalar[0];
-            tidX += blockDim.x;
-        }
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-// Each block handles one matrix
-__global__ void cuda_scalar_add_matrix_packed_inplace_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalar) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix];
-    float* out_buffer = out_buffers[current_matrix];
-
-    // The work will be split among threads in the block
-    while (tidY < mat_rows) {
-        while (tidX < mat_cols) {
-            const int index = tidY * mat_cols + tidX;
-
-            // Atomic because mat1 may be used multiple times
-            atomicAdd(&out_buffer[index], scalar[0]);
-            tidX += blockDim.x;
-        }
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-void cuda_scalar_add_matrix_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t scalar_mat_id, bool inplace) {
-    // Create output buffer
-    int out_rows = mat_rows;
-    int out_cols = mat_cols;
-
-    for (int i = 0; i < num_matrices; i++) {
-        size_t out_mat_id = inplace ? mat_ids[i] : register_matrix(out_rows, out_cols);
-        out_mat_ids[i] = out_mat_id;
-    }
-
-    // Get the gpu buffers to operate on
-    std::vector<float*> gpu_mat1_buffers;
-    std::vector<float*> gpu_out_buffers;
-    float* scalar_buffer = get_matrix_gpu_address(scalar_mat_id);
-
-    for (int i = 0; i < num_matrices; i++) {
-        gpu_mat1_buffers.push_back(get_matrix_gpu_address(mat_ids[i]));
-        gpu_out_buffers.push_back(get_matrix_gpu_address(out_mat_ids[i]));
-    }
-
-    // Upload the pointers to a gpu array
-    // Each allocation contains the block_id, block_offset
-    auto gpu_mat1_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
-    memory_manager_upload_to_allocation(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second, &gpu_mat1_buffers[0], sizeof(float*) * num_matrices);
-    auto gpu_out_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
-    memory_manager_upload_to_allocation(gpu_out_buffers_block.first, gpu_out_buffers_block.second, &gpu_out_buffers[0], sizeof(float*) * num_matrices);
-
-    float** gpu_mat1_buffers_dp = (float**)get_block_gpu_address(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
-    float** gpu_out_buffers_dp = (float**)get_block_gpu_address(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim(num_matrices, 1, 1);
-
-    // Run the kernels
-    auto kernel = inplace ? cuda_scalar_add_matrix_packed_inplace_kernel : cuda_scalar_add_matrix_packed_kernel;
-    kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, scalar_buffer);
-    gpuErrchk(cudaPeekAtLastError());
-
-    // Free the gpu buffers
-    memory_manager_free(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
-    memory_manager_free(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
-}
-
-__global__ void scalar_subtract_matrix_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* scalar, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = mat1[i][j] * scalar
-
-        int index = tidY * out_cols + tidX;
-        out_buffer[index] = mat1_buffer[index] - scalar[0];
-    }
-}
-
-size_t cuda_scalar_subtract_matrix(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t scalar, bool inplace) {
-    // Create output buffer
-    int out_rows = mat1_rows;
-    int out_cols = mat1_cols;
-    size_t out_mat_id = inplace ? mat1_id : register_matrix(out_rows, out_cols);
-
-    // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = get_matrix_gpu_address(mat1_id);
-    float* gpu_scalar_buffer = get_matrix_gpu_address(scalar);
-    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 32;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
-
-    // Run the kernels
-    scalar_subtract_matrix_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_scalar_buffer, gpu_out_buffer, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-
-    // Return result matrix id
-    return out_mat_id;
-}
-
-// Each block handles one matrix
-__global__ void cuda_scalar_subtract_matrix_packed_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalar) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix];
-    float* out_buffer = out_buffers[current_matrix];
-
-    // The work will be split among threads in the block
-    while (tidY < mat_rows) {
-        while (tidX < mat_cols) {
-            const int index = tidY * mat_cols + tidX;
-            out_buffer[index] = mat_buffer[index] - scalar[0];
-            tidX += blockDim.x;
-        }
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-// Each block handles one matrix
-__global__ void cuda_scalar_subtract_matrix_packed_inplace_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, float* scalar) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix];
-    float* out_buffer = out_buffers[current_matrix];
-
-    // The work will be split among threads in the block
-    while (tidY < mat_rows) {
-        while (tidX < mat_cols) {
-            const int index = tidY * mat_cols + tidX;
-
-            // Atomic because mat1 may be used multiple times
-            atomicAdd(&out_buffer[index], -scalar[0]);
-            tidX += blockDim.x;
-        }
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-void cuda_scalar_subtract_matrix_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t scalar_mat_id, bool inplace) {
-    // Create output buffer
-    int out_rows = mat_rows;
-    int out_cols = mat_cols;
-
-    for (int i = 0; i < num_matrices; i++) {
-        size_t out_mat_id = inplace ? mat_ids[i] : register_matrix(out_rows, out_cols);
-        out_mat_ids[i] = out_mat_id;
-    }
-
-    // Get the gpu buffers to operate on
-    std::vector<float*> gpu_mat1_buffers;
-    std::vector<float*> gpu_out_buffers;
-    float* scalar_buffer = get_matrix_gpu_address(scalar_mat_id);
-
-    for (int i = 0; i < num_matrices; i++) {
-        gpu_mat1_buffers.push_back(get_matrix_gpu_address(mat_ids[i]));
-        gpu_out_buffers.push_back(get_matrix_gpu_address(out_mat_ids[i]));
-    }
-
-    // Upload the pointers to a gpu array
-    // Each allocation contains the block_id, block_offset
-    auto gpu_mat1_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
-    memory_manager_upload_to_allocation(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second, &gpu_mat1_buffers[0], sizeof(float*) * num_matrices);
-    auto gpu_out_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
-    memory_manager_upload_to_allocation(gpu_out_buffers_block.first, gpu_out_buffers_block.second, &gpu_out_buffers[0], sizeof(float*) * num_matrices);
-
-    float** gpu_mat1_buffers_dp = (float**)get_block_gpu_address(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
-    float** gpu_out_buffers_dp = (float**)get_block_gpu_address(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim(num_matrices, 1, 1);
-
-    // Run the kernels
-    auto kernel = inplace ? cuda_scalar_subtract_matrix_packed_inplace_kernel : cuda_scalar_subtract_matrix_packed_kernel;
-    kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, scalar_buffer);
-    gpuErrchk(cudaPeekAtLastError());
-
-    // Free the gpu buffers
-    memory_manager_free(gpu_mat1_buffers_block.first, gpu_mat1_buffers_block.second);
-    memory_manager_free(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
-}
-
 __global__ void matrix_multiply_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
