@@ -1821,24 +1821,28 @@ mod tests {
 
   #[test]
   fn max_pool_gpu_v1() {
-    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0], vec![4.0, 5.0]]);
+    for _ in 0..100 {
+      let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0], vec![4.0, 5.0]]);
 
-    let expected_result = Matrix::new_2d(&vec![vec![5.0]]);
+      let expected_result = Matrix::new_2d(&vec![vec![5.0]]);
 
-    let (observed_result, _) = test_data.max_pool();
+      let (observed_result, _) = test_data.max_pool();
 
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+    }
   }
 
   #[test]
   fn max_pool_gpu_v2() {
-    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0, -100.0], vec![4.0, 5.0, 23.0]]);
+    for _ in 0..100 {
+      let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0, -100.0], vec![4.0, 5.0, 23.0]]);
 
-    let expected_result = Matrix::new_2d(&vec![vec![5.0, 23.0]]);
+      let expected_result = Matrix::new_2d(&vec![vec![5.0, 23.0]]);
 
-    let (observed_result, _) = test_data.max_pool();
+      let (observed_result, _) = test_data.max_pool();
 
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+    }
   }
 
   #[test]
@@ -1864,24 +1868,78 @@ mod tests {
 
   #[test]
   fn max_pool_bitmask_gpu() {
-    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0, -100.0], vec![4.0, 5.0, 23.0]]);
+    for _ in 0..100 {
+      let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0, -100.0], vec![4.0, 5.0, 23.0]]);
 
-    let expected_result = Matrix::new_2d(&vec![vec![0.0, 0.0, 0.0], vec![0.0, 1.0, 1.0]]);
+      let expected_result = Matrix::new_2d(&vec![vec![0.0, 0.0, 0.0], vec![0.0, 1.0, 1.0]]);
 
-    let (_, observed_result) = test_data.max_pool();
+      let (_, observed_result) = test_data.max_pool();
 
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+    }
   }
 
   #[test]
   fn max_pool_bitmask_gpu_2() {
-    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0], vec![4.0, 5.0]]);
+    for _ in 0..100 {
+      let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0], vec![4.0, 5.0]]);
 
-    let expected_result = Matrix::new_2d(&vec![vec![0.0, 0.0], vec![0.0, 1.0]]);
+      let expected_result = Matrix::new_2d(&vec![vec![0.0, 0.0], vec![0.0, 1.0]]);
 
-    let (_, observed_result) = test_data.max_pool();
+      let (_, observed_result) = test_data.max_pool();
 
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+    }
+  }
+
+  #[test]
+  fn max_pool_packed_1() {
+    let random_matrices = (0..100)
+      .map(|_| Matrix::new_random(0.0, 100.0, 256, 256))
+      .collect_vec();
+
+    let expected_results = random_matrices
+      .iter()
+      .map(|mat| mat.max_pool())
+      .collect_vec();
+
+    let expected_results_pooled = expected_results.iter().map(|(mat, _)| mat).collect_vec();
+    let expected_results_bitmask = expected_results.iter().map(|(_, mat)| mat).collect_vec();
+
+    let observed_results = max_pool_packed(&random_matrices);
+    let observed_results_pooled = observed_results.iter().map(|(mat, _)| mat).collect_vec();
+    let observed_results_bitmask = observed_results.iter().map(|(_, mat)| mat).collect_vec();
+
+    izip!(observed_results_pooled, expected_results_pooled)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+
+    izip!(observed_results_bitmask, expected_results_bitmask)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+  }
+
+  #[test]
+  fn max_pool_packed_2() {
+    let random_matrices = (0..100)
+      .map(|_| Matrix::new_random(0.0, 100.0, 255, 255))
+      .collect_vec();
+
+    let expected_results = random_matrices
+      .iter()
+      .map(|mat| mat.max_pool())
+      .collect_vec();
+
+    let expected_results_pooled = expected_results.iter().map(|(mat, _)| mat).collect_vec();
+    let expected_results_bitmask = expected_results.iter().map(|(_, mat)| mat).collect_vec();
+
+    let observed_results = max_pool_packed(&random_matrices);
+    let observed_results_pooled = observed_results.iter().map(|(mat, _)| mat).collect_vec();
+    let observed_results_bitmask = observed_results.iter().map(|(_, mat)| mat).collect_vec();
+
+    izip!(observed_results_pooled, expected_results_pooled)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+
+    izip!(observed_results_bitmask, expected_results_bitmask)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
   }
 
   #[test]
@@ -1912,6 +1970,40 @@ mod tests {
     let observed_result = test_data.rotate_180();
 
     assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn rotate_180_packed_1() {
+    let random_matrices = (0..100)
+      .map(|_| Matrix::new_random(0.0, 100.0, 3, 3))
+      .collect_vec();
+
+    let expected_results = random_matrices
+      .iter()
+      .map(|mat| mat.rotate_180())
+      .collect_vec();
+
+    let observed_results = rotate_180_packed(&random_matrices);
+
+    izip!(observed_results, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+  }
+
+  #[test]
+  fn rotate_180_packed_2() {
+    let random_matrices = (0..100)
+      .map(|_| Matrix::new_random(0.0, 100.0, 2, 3))
+      .collect_vec();
+
+    let expected_results = random_matrices
+      .iter()
+      .map(|mat| mat.rotate_180())
+      .collect_vec();
+
+    let observed_results = rotate_180_packed(&random_matrices);
+
+    izip!(observed_results, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
   }
 
   #[test]
@@ -2593,6 +2685,40 @@ mod tests {
     let observed_result = test_data.nearest_neighbor_2x_upsample(true);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn nearest_neighbor_2x_upsample_packed_1() {
+    let random_matrices = (0..100)
+      .map(|_| Matrix::new_random(0.0, 100.0, 256, 256))
+      .collect_vec();
+
+    let expected_results = random_matrices
+      .iter()
+      .map(|mat| mat.nearest_neighbor_2x_upsample(false))
+      .collect_vec();
+
+    let observed_results = nearest_neighbor_2x_upsample_packed(&random_matrices, false);
+
+    izip!(observed_results, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+  }
+
+  #[test]
+  fn nearest_neighbor_2x_upsample_packed_2() {
+    let random_matrices = (0..100)
+      .map(|_| Matrix::new_random(0.0, 100.0, 256, 256))
+      .collect_vec();
+
+    let expected_results = random_matrices
+      .iter()
+      .map(|mat| mat.nearest_neighbor_2x_upsample(true))
+      .collect_vec();
+
+    let observed_results = nearest_neighbor_2x_upsample_packed(&random_matrices, true);
+
+    izip!(observed_results, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
   }
 
   #[test]

@@ -3,6 +3,7 @@ use std::ffi::c_ulonglong;
 
 use crate::ConvolutionType;
 
+#[derive(Clone)]
 #[repr(C)] // Used to return a tuple from C
 pub struct Tuple {
   pub a: usize,
@@ -303,13 +304,35 @@ extern "C" {
   pub fn cuda_sum_columns(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_transpose(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
   pub fn cuda_max_pool(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> Tuple;
+  pub fn cuda_max_pool_packed(
+    mat_ids: *const c_ulonglong,
+    out_ids: *mut Tuple,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+  );
   pub fn cuda_nearest_neighbor_2x_upsample(
     mat1_id: usize,
     mat1_rows: usize,
     mat2_rows: usize,
     odd_upsample: bool,
   ) -> usize;
+  pub fn cuda_nearest_neighbor_2x_upsample_packed(
+    mat_ids: *const c_ulonglong,
+    out_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    odd_upsample: bool,
+  );
   pub fn cuda_rotate_180(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
+  pub fn cuda_rotate_180_packed(
+    mat_ids: *const c_ulonglong,
+    out_ids: *mut c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+  );
   pub fn cuda_convolution(
     mat1_id: usize,
     mat1_rows: usize,
