@@ -127,11 +127,10 @@ void memory_manager_free(size_t block_id, size_t size) {
     }
 }
 void memory_manager_upload_to_allocation(size_t block_id, size_t block_offset, void* data, size_t size) {
-    // Copy data from pinned buffer to gpu
-    // When performing async memcpy with page-locked memory, the behavior is same as cudaMemcpy.
-    // But the call is asynchronous, and allows the cpu overhead to be lower.
+    // TODO: Copy data to pinned buffer, then from pinned buffer to gpu
+    // This should allow pipeline to be more asynchronous
     void* address = get_block_gpu_address(block_id, block_offset);
-    gpuErrchk(cudaMemcpyAsync(address, data, size, cudaMemcpyHostToDevice, mem_stream));
+    gpuErrchk(cudaMemcpy(address, data, size, cudaMemcpyHostToDevice));
 }
 // Allocate a chunk in multiple of chunk_size. Returns the chunkID and chunk offset
 std::pair<size_t, size_t> memory_manager_allocate(size_t size) {

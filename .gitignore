@@ -82,3 +82,7 @@ data
 !data/kmeans-dataset.csv
 !data/sort_images.py
 !data/winequality-red.csv
+
+# Ignore nsys files
+*.sqlite
+*.nsys-rep

@@ -1090,9 +1090,756 @@ pub fn unflatten_array_strided_to_matrices(
     .collect_vec();
 }
 
+pub fn element_add_packed(
+  mat_1s: &Vec<Matrix>,
+  mat_2s: &Vec<Matrix>,
+  inplace: bool,
+) -> Vec<Matrix> {
+  let num_matrices = mat_1s.len();
+
+  if num_matrices != mat_2s.len() {
+    panic!(
+      "Number of matrices must be equal! {} {}",
+      mat_1s.len(),
+      mat_2s.len()
+    );
+  }
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = mat_1s[0].rows;
+  let mat_cols = mat_1s[0].columns;
+
+  let mat_1_ids = mat_1s.iter().map(|mat| mat.get_id()).collect_vec();
+  let mat_2_ids = mat_2s.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_element_add_packed(
+      mat_1_ids.as_ptr() as *const c_ulonglong,
+      mat_2_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return mat_1s.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn element_subtract_packed(
+  mat_1s: &Vec<Matrix>,
+  mat_2s: &Vec<Matrix>,
+  inplace: bool,
+) -> Vec<Matrix> {
+  let num_matrices = mat_1s.len();
+
+  if num_matrices != mat_2s.len() {
+    panic!(
+      "Number of matrices must be equal! {} {}",
+      mat_1s.len(),
+      mat_2s.len()
+    );
+  }
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = mat_1s[0].rows;
+  let mat_cols = mat_1s[0].columns;
+
+  let mat_1_ids = mat_1s.iter().map(|mat| mat.get_id()).collect_vec();
+  let mat_2_ids = mat_2s.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_element_subtract_packed(
+      mat_1_ids.as_ptr() as *const c_ulonglong,
+      mat_2_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return mat_1s.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn element_multiply_packed(
+  mat_1s: &Vec<Matrix>,
+  mat_2s: &Vec<Matrix>,
+  inplace: bool,
+) -> Vec<Matrix> {
+  let num_matrices = mat_1s.len();
+
+  if num_matrices != mat_2s.len() {
+    panic!(
+      "Number of matrices must be equal! {} {}",
+      mat_1s.len(),
+      mat_2s.len()
+    );
+  }
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = mat_1s[0].rows;
+  let mat_cols = mat_1s[0].columns;
+
+  let mat_1_ids = mat_1s.iter().map(|mat| mat.get_id()).collect_vec();
+  let mat_2_ids = mat_2s.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_element_multiply_packed(
+      mat_1_ids.as_ptr() as *const c_ulonglong,
+      mat_2_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return mat_1s.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn element_divide_packed(
+  mat_1s: &Vec<Matrix>,
+  mat_2s: &Vec<Matrix>,
+  inplace: bool,
+) -> Vec<Matrix> {
+  let num_matrices = mat_1s.len();
+
+  if num_matrices != mat_2s.len() {
+    panic!(
+      "Number of matrices must be equal! {} {}",
+      mat_1s.len(),
+      mat_2s.len()
+    );
+  }
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = mat_1s[0].rows;
+  let mat_cols = mat_1s[0].columns;
+
+  let mat_1_ids = mat_1s.iter().map(|mat| mat.get_id()).collect_vec();
+  let mat_2_ids = mat_2s.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_element_divide_packed(
+      mat_1_ids.as_ptr() as *const c_ulonglong,
+      mat_2_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return mat_1s.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn scalar_multiply_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_scalar_multiply_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      scalar,
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return matrices.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn scalar_divide_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_scalar_divide_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      scalar,
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return matrices.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_scalar_add_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      scalar,
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return matrices.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn scalar_subtract_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_scalar_subtract_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      scalar,
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return matrices.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn scalar_multiply_matrix_packed(
+  matrices: &Vec<Matrix>,
+  scalar: &Matrix,
+  inplace: bool,
+) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_scalar_multiply_matrix_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      scalar.get_id(),
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return matrices.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn scalar_divide_matrix_packed(
+  matrices: &Vec<Matrix>,
+  scalar: &Matrix,
+  inplace: bool,
+) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_scalar_divide_matrix_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      scalar.get_id(),
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return matrices.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn scalar_add_matrix_packed(
+  matrices: &Vec<Matrix>,
+  scalar: &Matrix,
+  inplace: bool,
+) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_scalar_add_matrix_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      scalar.get_id(),
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return matrices.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn scalar_subtract_matrix_packed(
+  matrices: &Vec<Matrix>,
+  scalar: &Matrix,
+  inplace: bool,
+) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_scalar_subtract_matrix_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      scalar.get_id(),
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return matrices.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn element_sqrt_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_element_sqrt_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return matrices.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn element_exp_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_element_exp_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return matrices.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+#[allow(non_snake_case)]
+pub fn element_ReLU_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_element_ReLU_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return matrices.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+#[allow(non_snake_case)]
+pub fn element_ReLU_prime_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_element_ReLU_prime_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      inplace,
+    );
+  }
+
+  if inplace {
+    // Return mat1s, but clone to keep arc
+    return matrices.to_owned();
+  } else {
+    return result_ids
+      .iter()
+      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
+      .collect_vec();
+  }
+}
+
+pub fn max_pool_packed(matrices: &Vec<Matrix>) -> Vec<(Matrix, Matrix)> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![Tuple { a: 0, b: 0 }; num_matrices];
+
+  unsafe {
+    cuda_max_pool_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut Tuple,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+    );
+  }
+
+  let output_rows = mat_rows / 2 + mat_rows % 2;
+  let output_columns = mat_cols / 2 + mat_cols % 2;
+
+  return result_ids
+    .iter()
+    .map(|result_id| {
+      (
+        Matrix::new(result_id.a, output_rows, output_columns),
+        Matrix::new(result_id.b, mat_rows, mat_cols),
+      )
+    })
+    .collect_vec();
+}
+
+pub fn nearest_neighbor_2x_upsample_packed(
+  matrices: &Vec<Matrix>,
+  odd_upsample: bool,
+) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  unsafe {
+    cuda_nearest_neighbor_2x_upsample_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      odd_upsample,
+    );
+  }
+
+  let output_rows = mat_rows * 2 - (odd_upsample as usize);
+  let output_columns = mat_cols * 2 - (odd_upsample as usize);
+
+  return result_ids
+    .iter()
+    .map(|result_id| Matrix::new(*result_id, output_rows, output_columns))
+    .collect_vec();
+}
+
+pub fn rotate_180_packed(matrices: &Vec<Matrix>) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+
+  unsafe {
+    cuda_rotate_180_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+    );
+  }
+
+  let output_rows = mat_rows;
+  let output_columns = mat_cols;
+
+  return result_ids
+    .iter()
+    .map(|result_id| Matrix::new(*result_id, output_rows, output_columns))
+    .collect_vec();
+}
+
 pub fn convolution_packed(
-  matrices: &Vec<&Matrix>,
-  kernels: &Vec<&Matrix>,
+  matrices: &Vec<Matrix>,
+  kernels: &Vec<Matrix>,
   conv_type: ConvolutionType,
 ) -> Vec<Matrix> {
   let num_matrices = matrices.len();
