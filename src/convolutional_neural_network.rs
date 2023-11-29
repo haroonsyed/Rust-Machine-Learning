@@ -432,22 +432,28 @@ impl CNN_Layer for MaxPoolLayerRust {
   }
 
   fn feed_forward(&mut self, input: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
-    let mut pooled_samples = Vec::new();
-    let mut input_bm = Vec::new();
-    for sample in input {
-      let mut pooled_channels = Vec::new();
-      let mut input_bm_channels = Vec::new();
-      for channel in sample {
-        let (pooled_channel, bitmask) = channel.max_pool();
-        pooled_channels.push(pooled_channel);
-        input_bm_channels.push(bitmask);
-      }
-      pooled_samples.push(pooled_channels);
-      input_bm.push(input_bm_channels);
-    }
+    // Pack the input and pool
+    let to_pool = input.to_owned().into_iter().flatten().collect_vec();
+    let (pooled_samples, bitmasks) = max_pool_packed(&to_pool);
 
-    self.prev_input_bm = input_bm;
-    return pooled_samples;
+    // Unpack the pooled results and bitmasks
+    let input_depth = self.input_dimensions.2;
+    let grouped_pooled_samples = pooled_samples
+      .into_iter()
+      .chunks(input_depth)
+      .into_iter()
+      .map(|sample| sample.into_iter().collect_vec())
+      .collect_vec();
+
+    let grouped_bitmasks = bitmasks
+      .into_iter()
+      .chunks(input_depth)
+      .into_iter()
+      .map(|sample| sample.into_iter().collect_vec())
+      .collect_vec();
+
+    self.prev_input_bm = grouped_bitmasks;
+    return grouped_pooled_samples;
   }
 
   fn backpropogation(&mut self, error: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
@@ -455,22 +461,28 @@ impl CNN_Layer for MaxPoolLayerRust {
     // Element wise multiply max mask by nearest_neighbor upscaled error
 
     let odd_input_columns = self.input_dimensions.1 % 2 == 1;
-    let mut sample_input_errors = Vec::new();
 
-    for (sample_error, sample_bitmasks) in izip!(error, self.prev_input_bm.iter()) {
-      let mut channel_input_errors = Vec::new();
-      for (channel_error, bitmask) in izip!(sample_error, sample_bitmasks) {
-        // Upsample the error
-        let upsampled_error = channel_error.nearest_neighbor_2x_upsample(odd_input_columns);
+    // Pack the error and bitmasks and upsample
+    let to_upsample = error.to_owned().into_iter().flatten().collect_vec();
+    let bitmasks = self
+      .prev_input_bm
+      .to_owned()
+      .into_iter()
+      .flatten()
+      .collect_vec();
+    let upsampled = nearest_neighbor_2x_upsample_packed(&to_upsample, odd_input_columns);
+    let upsampled_errors = element_multiply_packed(&upsampled, &bitmasks, true);
 
-        // Element wise multiply
-        upsampled_error.element_multiply_inplace(bitmask);
-        channel_input_errors.push(upsampled_error);
-      }
-      sample_input_errors.push(channel_input_errors);
-    }
+    // Unpack the upsampled errors
+    let input_depth = self.input_dimensions.2;
+    let grouped_upsampled_errors = upsampled_errors
+      .into_iter()
+      .chunks(input_depth)
+      .into_iter()
+      .map(|sample| sample.into_iter().collect_vec())
+      .collect_vec();
 
-    return sample_input_errors;
+    return grouped_upsampled_errors;
   }
 }
 

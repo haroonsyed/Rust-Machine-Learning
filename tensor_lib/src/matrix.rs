@@ -1456,11 +1456,11 @@ pub fn element_ReLU_prime_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<M
   }
 }
 
-pub fn max_pool_packed(matrices: &Vec<Matrix>) -> Vec<(Matrix, Matrix)> {
+pub fn max_pool_packed(matrices: &Vec<Matrix>) -> (Vec<Matrix>, Vec<Matrix>) {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
-    return Vec::new();
+    return (Vec::new(), Vec::new());
   }
 
   let mat_rows = matrices[0].rows;
@@ -1482,15 +1482,17 @@ pub fn max_pool_packed(matrices: &Vec<Matrix>) -> Vec<(Matrix, Matrix)> {
   let output_rows = mat_rows / 2 + mat_rows % 2;
   let output_columns = mat_cols / 2 + mat_cols % 2;
 
-  return result_ids
+  let pooled_result = result_ids
     .iter()
-    .map(|result_id| {
-      (
-        Matrix::new(result_id.a, output_rows, output_columns),
-        Matrix::new(result_id.b, mat_rows, mat_cols),
-      )
-    })
+    .map(|result_id| Matrix::new(result_id.a, output_rows, output_columns))
     .collect_vec();
+
+  let bitmask_result = result_ids
+    .iter()
+    .map(|result_id| Matrix::new(result_id.b, mat_rows, mat_cols))
+    .collect_vec();
+
+  return (pooled_result, bitmask_result);
 }
 
 pub fn nearest_neighbor_2x_upsample_packed(

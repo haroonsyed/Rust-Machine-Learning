@@ -1452,9 +1452,7 @@ mod tests {
     let expected_results_pooled = expected_results.iter().map(|(mat, _)| mat).collect_vec();
     let expected_results_bitmask = expected_results.iter().map(|(_, mat)| mat).collect_vec();
 
-    let observed_results = max_pool_packed(&random_matrices);
-    let observed_results_pooled = observed_results.iter().map(|(mat, _)| mat).collect_vec();
-    let observed_results_bitmask = observed_results.iter().map(|(_, mat)| mat).collect_vec();
+    let (observed_results_pooled, observed_results_bitmask) = max_pool_packed(&random_matrices);
 
     izip!(observed_results_pooled, expected_results_pooled)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
@@ -1477,9 +1475,7 @@ mod tests {
     let expected_results_pooled = expected_results.iter().map(|(mat, _)| mat).collect_vec();
     let expected_results_bitmask = expected_results.iter().map(|(_, mat)| mat).collect_vec();
 
-    let observed_results = max_pool_packed(&random_matrices);
-    let observed_results_pooled = observed_results.iter().map(|(mat, _)| mat).collect_vec();
-    let observed_results_bitmask = observed_results.iter().map(|(_, mat)| mat).collect_vec();
+    let (observed_results_pooled, observed_results_bitmask) = max_pool_packed(&random_matrices);
 
     izip!(observed_results_pooled, expected_results_pooled)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
