@@ -103,7 +103,7 @@ extern "C" {
     num_matrices: usize,
     mat_rows: usize,
     mat_cols: usize,
-    scalar: c_float,
+    scalars: *const c_float,
     inplace: bool,
   );
   pub fn cuda_scalar_divide(
@@ -119,7 +119,7 @@ extern "C" {
     num_matrices: usize,
     mat_rows: usize,
     mat_cols: usize,
-    scalar: c_float,
+    scalars: *const c_float,
     inplace: bool,
   );
   pub fn cuda_scalar_add(
@@ -135,7 +135,7 @@ extern "C" {
     num_matrices: usize,
     mat_rows: usize,
     mat_cols: usize,
-    scalar: c_float,
+    scalars: *const c_float,
     inplace: bool,
   );
   pub fn cuda_scalar_subtract(
@@ -151,71 +151,7 @@ extern "C" {
     num_matrices: usize,
     mat_rows: usize,
     mat_cols: usize,
-    scalar: c_float,
-    inplace: bool,
-  );
-  pub fn cuda_scalar_multiply_matrix(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    scalar: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_scalar_multiply_matrix_packed(
-    mat_ids: *const c_ulonglong,
-    out_mat_ids: *mut c_ulonglong,
-    num_matrices: usize,
-    mat_rows: usize,
-    mat_cols: usize,
-    scalar: usize,
-    inplace: bool,
-  );
-  pub fn cuda_scalar_divide_matrix(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    scalar: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_scalar_divide_matrix_packed(
-    mat_ids: *const c_ulonglong,
-    out_mat_ids: *mut c_ulonglong,
-    num_matrices: usize,
-    mat_rows: usize,
-    mat_cols: usize,
-    scalar: usize,
-    inplace: bool,
-  );
-  pub fn cuda_scalar_add_matrix(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    scalar: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_scalar_add_matrix_packed(
-    mat_ids: *const c_ulonglong,
-    out_mat_ids: *mut c_ulonglong,
-    num_matrices: usize,
-    mat_rows: usize,
-    mat_cols: usize,
-    scalar: usize,
-    inplace: bool,
-  );
-  pub fn cuda_scalar_subtract_matrix(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    scalar: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_scalar_subtract_matrix_packed(
-    mat_ids: *const c_ulonglong,
-    out_mat_ids: *mut c_ulonglong,
-    num_matrices: usize,
-    mat_rows: usize,
-    mat_cols: usize,
-    scalar: usize,
+    scalars: *const c_float,
     inplace: bool,
   );
   pub fn cuda_matrix_multiply(
