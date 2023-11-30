@@ -291,33 +291,91 @@ impl CNN_Layer for ConvolutionalLayerRust {
   }
 
   fn feed_forward(&mut self, input: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
-    let mut sample_filter_outputs = Vec::new();
+    let mut channels_to_convolve = Vec::new();
+    let mut kernels_to_convolve = Vec::new();
+    let mut filter_result_index_to_sum_filter_result_to = Vec::new();
+    let mut filter_result_index_to_sum = Vec::new();
+    let mut filter_result_index_to_sum_bias_to = Vec::new();
+    let mut biases_to_sum = Vec::new();
 
+    let mut raw_filter_output_indices = Vec::new();
+
+    // The below logic is used to setup the packed operation.
+    // It follows from doing the operations non-packed (commented out below)
+    // I understand the packed version is more complex, but it is much faster
     // Sample
     for sample in input {
-      let mut filter_outputs = Vec::new();
-
       // Filter
       for (filter, bias) in izip!(self.filters.iter(), self.biases.iter()) {
-        let filter_output = sample[0].convolution(&filter[0], ConvolutionType::VALID);
+        // let filter_output = sample[0].convolution(&filter[0], ConvolutionType::VALID);
+        let index_to_sum_to = channels_to_convolve.len();
+        channels_to_convolve.push(sample[0].clone());
+        kernels_to_convolve.push(filter[0].clone());
 
         // Channel
         for (channel, kernel) in izip!(sample[1..].iter(), filter[1..].iter()) {
-          let channel_output = channel.convolution(kernel, ConvolutionType::VALID);
-          filter_output.element_add_inplace(&channel_output);
+          // let channel_output = channel.convolution(kernel, ConvolutionType::VALID);
+          channels_to_convolve.push(channel.clone());
+          kernels_to_convolve.push(kernel.clone());
+
+          // filter_output.element_add_inplace(&channel_output);
+          filter_result_index_to_sum_filter_result_to.push(index_to_sum_to);
+          filter_result_index_to_sum.push(channels_to_convolve.len() - 1);
         }
 
         // Add the bias
-        filter_output.element_add_inplace(bias);
+        // filter_output.element_add_inplace(bias);
+        filter_result_index_to_sum_bias_to.push(index_to_sum_to);
+        biases_to_sum.push(bias.clone());
+
+        raw_filter_output_indices.push(index_to_sum_to);
 
         // relu
-        filter_output.element_ReLU_inplace();
-
-        filter_outputs.push(filter_output);
+        // filter_output.element_ReLU_inplace();
       }
-
-      sample_filter_outputs.push(filter_outputs);
     }
+
+    // Convolve
+    let mut convolved_channels = convolution_packed(
+      &channels_to_convolve,
+      &kernels_to_convolve,
+      ConvolutionType::VALID,
+    );
+
+    // Sum
+    let mut sum_to = Vec::new();
+    let mut to_add = Vec::new();
+
+    for (index_to_sum_to, index_to_sum) in izip!(
+      filter_result_index_to_sum_filter_result_to,
+      filter_result_index_to_sum
+    ) {
+      sum_to.push(convolved_channels[index_to_sum_to].clone());
+      to_add.push(convolved_channels[index_to_sum].clone());
+    }
+
+    for (index_to_sum_to, bias) in izip!(filter_result_index_to_sum_bias_to, biases_to_sum) {
+      sum_to.push(convolved_channels[index_to_sum_to].clone());
+      to_add.push(bias);
+    }
+
+    let summed = element_add_packed(&sum_to, &to_add, true);
+
+    let raw_filter_outputs = raw_filter_output_indices
+      .iter()
+      .map(|index| summed[*index].clone())
+      .collect_vec();
+
+    // ReLU
+    let filter_outputs = element_ReLU_packed(&raw_filter_outputs, true);
+
+    // Group into sample outputs of chunk size filter count
+    let sample_filter_outputs = filter_outputs
+      .into_iter()
+      .chunks(self.filters.len())
+      .into_iter()
+      .map(|sample| sample.into_iter().collect_vec())
+      .collect_vec();
 
     self.prev_input = input.clone();
     self.prev_output = sample_filter_outputs.clone();
