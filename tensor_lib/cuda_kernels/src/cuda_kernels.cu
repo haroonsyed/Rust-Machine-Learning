@@ -2387,17 +2387,15 @@ void cuda_nearest_neighbor_2x_upsample_packed(size_t* mat_ids, size_t* out_mat_i
 
 __global__ void cuda_rotate_180_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+    const int mat_length = mat1_rows * mat1_cols;
 
-    if (tidX < out_cols && tidY < out_rows) {
+    if (tidX < mat_length) {
         // Rotating an array 180 means
-        // x_output = length - x_current
-        // y_output = height - y_current
-        int x_out = mat1_cols - tidX - 1;
-        int y_out = mat1_rows - tidY - 1;
-        float input = mat1_buffer[tidY * mat1_cols + tidX];
+        // Reversing the linearized array
+        const int reversed_index = mat_length - tidX - 1;
+        const float input = mat1_buffer[reversed_index];
 
-        int output_index = y_out * out_cols + x_out;
+        const int output_index = tidX;
         out_buffer[output_index] = input;
     }
 }
@@ -2406,6 +2404,7 @@ size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     // Create output buffer
     int out_rows = mat1_rows;
     int out_cols = mat1_cols;
+    int out_length = out_rows * out_cols;
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
@@ -2413,9 +2412,9 @@ size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
     float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 32;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
+    const int THREADS_PER_BLOCK_X = 256;
+    dim3 block_dim(THREADS_PER_BLOCK_X, 1, 1);
+    dim3 grid_dim((out_length + block_dim.x - 1) / block_dim.x, 1, 1);
 
     // Run the kernels
     cuda_rotate_180_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_out_buffer, out_rows, out_cols);
@@ -2429,29 +2428,23 @@ size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols) {
 __global__ void cuda_rotate_180_packed_kernel(float** mat_buffers, float** out_buffers, int mat_rows, int mat_cols, int out_rows, int out_cols) {
     const int current_matrix = blockIdx.x;
     int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
+    const int mat_length = out_rows * out_cols;
 
     // Grab the buffers
     const float* mat_buffer = mat_buffers[current_matrix];
     float* out_buffer = out_buffers[current_matrix];
 
     // The work will be split among threads in the block
-    while (tidY < mat_rows) {
-        while (tidX < mat_cols) {
-            // Rotating an array 180 means
-            // x_output = length - x_current
-            // y_output = height - y_current
-            int x_out = mat_cols - tidX - 1;
-            int y_out = mat_rows - tidY - 1;
-            float input = mat_buffer[tidY * mat_cols + tidX];
+    while (tidX < mat_length) {
+        // Rotating an array 180 means
+        // Reversing the linearized array
+        const int reversed_index = mat_length - tidX - 1;
+        const float input = mat_buffer[reversed_index];
 
-            int output_index = y_out * out_cols + x_out;
-            out_buffer[output_index] = input;
+        int output_index = tidX;
+        out_buffer[output_index] = input;
 
-            tidX += blockDim.x;
-        }
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
+        tidX += blockDim.x;
     }
 }
 
@@ -2484,8 +2477,8 @@ void cuda_rotate_180_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_mat
     float** gpu_out_buffers_dp = (float**)get_block_gpu_address(gpu_out_buffers_block.first, gpu_out_buffers_block.second);
 
     // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    const int THREADS_PER_BLOCK_X = 256;
+    dim3 block_dim(THREADS_PER_BLOCK_X, 1, 1);
     dim3 grid_dim(num_matrices, 1, 1);
 
     // Run the kernels
