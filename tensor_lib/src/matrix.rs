@@ -692,7 +692,7 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn convolution(&self, kernel: &Matrix, padding_type: PaddingType) -> Self {
+  pub fn correlate(&self, kernel: &Matrix, padding_type: PaddingType) -> Self {
     let result_id: usize;
 
     if matches!(padding_type, PaddingType::SAME)
@@ -702,7 +702,7 @@ impl Matrix {
     }
 
     unsafe {
-      result_id = cuda_convolution(
+      result_id = cuda_correlate(
         self.get_id(),
         self.rows,
         self.columns,
@@ -728,11 +728,11 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn convolution_v2(&self, kernel: &Matrix, padding_type: PaddingType) -> Self {
+  pub fn correlate_v2(&self, kernel: &Matrix, padding_type: PaddingType) -> Self {
     if matches!(padding_type, PaddingType::SAME)
       && (kernel.rows != kernel.columns || kernel.rows % 2 == 0)
     {
-      panic!("Kernel must be square and odd for same convolution!");
+      panic!("Kernel must be square and odd for same correlation!");
     }
 
     // Fast version using matrix multiplication
@@ -1563,7 +1563,7 @@ pub fn rotate_180_packed(matrices: &Vec<Matrix>) -> Vec<Matrix> {
     .collect_vec();
 }
 
-pub fn convolution_packed(
+pub fn correlate_packed(
   matrices: &Vec<Matrix>,
   kernels: &Vec<Matrix>,
   padding_type: PaddingType,
@@ -1590,7 +1590,7 @@ pub fn convolution_packed(
   if matches!(padding_type, PaddingType::SAME)
     && (kernel_rows != kernel_cols || kernel_rows % 2 == 0)
   {
-    panic!("Kernel must be square and odd for same convolution!");
+    panic!("Kernel must be square and odd for same correlation!");
   }
 
   let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
@@ -1598,7 +1598,7 @@ pub fn convolution_packed(
   let mut result_ids = vec![0; num_matrices];
 
   unsafe {
-    cuda_convolution_packed(
+    cuda_correlate_packed(
       mat_ids.as_ptr() as *const c_ulonglong,
       num_matrices,
       mat_rows,

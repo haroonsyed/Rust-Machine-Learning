@@ -2498,7 +2498,7 @@ void cuda_rotate_180_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_mat
 }
 
 // Naive implementation
-__global__ void cuda_convolution_kernel_valid_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+__global__ void cuda_correlate_kernel_valid_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
@@ -2525,7 +2525,7 @@ __global__ void cuda_convolution_kernel_valid_1(float* mat1_buffer, int mat1_row
 
 // Partial Shared Memory implementation
 template <const int block_x, const int block_y>
-__global__ void cuda_convolution_kernel_valid_2(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+__global__ void cuda_correlate_kernel_valid_2(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
     // Create shared memory
     __shared__ float mat1_shared[block_x * block_y];
 
@@ -2563,7 +2563,7 @@ __global__ void cuda_convolution_kernel_valid_2(float* mat1_buffer, int mat1_row
 }
 
 // Be careful, this needs to be optimized or your CNN will suffer
-size_t cuda_convolution_valid(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols) {
+size_t cuda_correlate_valid(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols) {
     // Create output buffer
     // Dimension of output is input - kernel + 1
     int out_rows = mat1_rows - kernel_rows + 1;
@@ -2581,8 +2581,8 @@ size_t cuda_convolution_valid(size_t mat1_id, size_t mat1_rows, size_t mat1_cols
     dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
 
     // Run the kernels
-    cuda_convolution_kernel_valid_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
-    // cuda_convolution_kernel_valid_2<THREADS_PER_BLOCK, THREADS_PER_BLOCK><<<grid_dim, block_di>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
+    cuda_correlate_kernel_valid_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
+    // cuda_correlate_kernel_valid_2<THREADS_PER_BLOCK, THREADS_PER_BLOCK><<<grid_dim, block_di>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
@@ -2590,7 +2590,7 @@ size_t cuda_convolution_valid(size_t mat1_id, size_t mat1_rows, size_t mat1_cols
 }
 
 // Naive implementation
-__global__ void cuda_convolution_kernel_same_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+__global__ void cuda_correlate_kernel_same_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
@@ -2621,10 +2621,10 @@ __global__ void cuda_convolution_kernel_same_1(float* mat1_buffer, int mat1_rows
     }
 }
 
-// Convolution is zero-padded (Output is the same size as input)
+// correlation is zero-padded (Output is the same size as input)
 // Expects odd size, square kernels ONLY
 // Be careful, this needs to be optimized or your CNN will suffer
-size_t cuda_convolution_same(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols) {
+size_t cuda_correlate_same(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols) {
     // Create output buffer
     int out_rows = mat1_rows;
     int out_cols = mat1_cols;
@@ -2641,7 +2641,7 @@ size_t cuda_convolution_same(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
 
     // Run the kernels
-    cuda_convolution_kernel_same_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
+    cuda_correlate_kernel_same_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
@@ -2649,7 +2649,7 @@ size_t cuda_convolution_same(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
 }
 
 // Naive implementation
-__global__ void cuda_convolution_kernel_full_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+__global__ void cuda_correlate_kernel_full_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
     int tidX = blockDim.x * blockIdx.x + threadIdx.x;
     int tidY = blockDim.y * blockIdx.y + threadIdx.y;
 
@@ -2679,7 +2679,7 @@ __global__ void cuda_convolution_kernel_full_1(float* mat1_buffer, int mat1_rows
 }
 
 // Be careful, this needs to be optimized or your CNN will suffer
-size_t cuda_convolution_full(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols) {
+size_t cuda_correlate_full(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols) {
     // Create output buffer
     // Dimension of output is input + kernel - 1
     int out_rows = mat1_rows + kernel_rows - 1;
@@ -2697,25 +2697,25 @@ size_t cuda_convolution_full(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
 
     // Run the kernels
-    cuda_convolution_kernel_full_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
+    cuda_correlate_kernel_full_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 
     // Return result matrix id
     return out_mat_id;
 }
 
-size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, PaddingType padding_type) {
+size_t cuda_correlate(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, PaddingType padding_type) {
     if (padding_type == PaddingType::VALID) {
-        return cuda_convolution_valid(mat1_id, mat1_rows, mat1_cols, kernel_id, kernel_rows, kernel_cols);
+        return cuda_correlate_valid(mat1_id, mat1_rows, mat1_cols, kernel_id, kernel_rows, kernel_cols);
     } else if (padding_type == PaddingType::SAME) {
-        return cuda_convolution_same(mat1_id, mat1_rows, mat1_cols, kernel_id, kernel_rows, kernel_cols);
+        return cuda_correlate_same(mat1_id, mat1_rows, mat1_cols, kernel_id, kernel_rows, kernel_cols);
     } else if (padding_type == PaddingType::FULL) {
-        return cuda_convolution_full(mat1_id, mat1_rows, mat1_cols, kernel_id, kernel_rows, kernel_cols);
+        return cuda_correlate_full(mat1_id, mat1_rows, mat1_cols, kernel_id, kernel_rows, kernel_cols);
     }
 }
 
 // Each block handles one matrix
-__global__ void cuda_convolution_kernel_packed_valid_1(float** mat_buffers, int num_matrices, int mat_rows, int mat_cols, float** kernel_buffers, int kernel_rows, int kernel_cols, float** out_buffers, int out_rows, int out_cols) {
+__global__ void cuda_correlate_kernel_packed_valid_1(float** mat_buffers, int num_matrices, int mat_rows, int mat_cols, float** kernel_buffers, int kernel_rows, int kernel_cols, float** out_buffers, int out_rows, int out_cols) {
     const int current_matrix = blockIdx.x;
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
@@ -2730,7 +2730,7 @@ __global__ void cuda_convolution_kernel_packed_valid_1(float** mat_buffers, int 
         // Each thread will work until of tidX or tidY is out of bounds
         while (tidY < out_rows) {
             while (tidX < out_cols) {
-                // Now perform convolution at this location
+                // Now perform correlation at this location
                 float result = 0.0;
                 const int kernel_top_left_row = tidY;
                 const int kernel_top_left_col = tidX;
@@ -2757,7 +2757,7 @@ __global__ void cuda_convolution_kernel_packed_valid_1(float** mat_buffers, int 
 }
 
 // Should be used when you have a lot of small matrices to convolve
-void cuda_convolution_valid_packed(size_t* matrices_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_mat_ids) {
+void cuda_correlate_valid_packed(size_t* matrices_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_mat_ids) {
     // Create output buffer
     // Dimension of output is input - kernel + 1
     int out_rows = mat_rows - kernel_rows + 1;
@@ -2800,7 +2800,7 @@ void cuda_convolution_valid_packed(size_t* matrices_ids, size_t num_matrices, si
     dim3 grid_dim(num_matrices, 1, 1);
 
     // Run the kernels
-    cuda_convolution_kernel_packed_valid_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_ptr, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_ptr, kernel_rows, kernel_cols, gpu_out_buffers_ptr, out_rows, out_cols);
+    cuda_correlate_kernel_packed_valid_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_ptr, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_ptr, kernel_rows, kernel_cols, gpu_out_buffers_ptr, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 
     // Cleanup
@@ -2809,8 +2809,8 @@ void cuda_convolution_valid_packed(size_t* matrices_ids, size_t num_matrices, si
     memory_manager_free(gpu_out_buffers_block.first, sizeof(float*) * num_matrices);
 }
 
-// Each block handles one convolution
-__global__ void cuda_convolution_kernel_packed_same_1(float** mat_buffers, int num_matrices, int mat_rows, int mat_cols, float** kernel_buffers, int kernel_rows, int kernel_cols, float** out_buffers, int out_rows, int out_cols) {
+// Each block handles one correlation
+__global__ void cuda_correlate_kernel_packed_same_1(float** mat_buffers, int num_matrices, int mat_rows, int mat_cols, float** kernel_buffers, int kernel_rows, int kernel_cols, float** out_buffers, int out_rows, int out_cols) {
     const int current_matrix = blockIdx.x;
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
@@ -2856,7 +2856,7 @@ __global__ void cuda_convolution_kernel_packed_same_1(float** mat_buffers, int n
 }
 
 // Should be used when you have a lot of small matrices to convolve
-void cuda_convolution_same_packed(size_t* matrices_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_mat_ids) {
+void cuda_correlate_same_packed(size_t* matrices_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_mat_ids) {
     // Create output buffer
     int out_rows = mat_rows;
     int out_cols = mat_cols;
@@ -2897,7 +2897,7 @@ void cuda_convolution_same_packed(size_t* matrices_ids, size_t num_matrices, siz
     dim3 grid_dim(num_matrices, 1, 1);
 
     // Run the kernels
-    cuda_convolution_kernel_packed_same_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_ptr, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_ptr, kernel_rows, kernel_cols, gpu_out_buffers_ptr, out_rows, out_cols);
+    cuda_correlate_kernel_packed_same_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_ptr, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_ptr, kernel_rows, kernel_cols, gpu_out_buffers_ptr, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 
     // Cleanup
@@ -2906,8 +2906,8 @@ void cuda_convolution_same_packed(size_t* matrices_ids, size_t num_matrices, siz
     memory_manager_free(gpu_out_buffers_block.first, sizeof(float*) * num_matrices);
 }
 
-// Each block handles one convolution
-__global__ void cuda_convolution_kernel_packed_full_1(float** mat_buffers, int num_matrices, int mat_rows, int mat_cols, float** kernel_buffers, int kernel_rows, int kernel_cols, float** out_buffers, int out_rows, int out_cols) {
+// Each block handles one correlation
+__global__ void cuda_correlate_kernel_packed_full_1(float** mat_buffers, int num_matrices, int mat_rows, int mat_cols, float** kernel_buffers, int kernel_rows, int kernel_cols, float** out_buffers, int out_rows, int out_cols) {
     const int current_matrix = blockIdx.x;
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
@@ -2953,7 +2953,7 @@ __global__ void cuda_convolution_kernel_packed_full_1(float** mat_buffers, int n
 }
 
 // Should be used when you have a lot of small matrices to convolve
-void cuda_convolution_full_packed(size_t* matrices_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_mat_ids) {
+void cuda_correlate_full_packed(size_t* matrices_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_mat_ids) {
     // Create output buffer
     // Dimension of output is input + kernel - 1
     int out_rows = mat_rows + kernel_rows - 1;
@@ -2995,7 +2995,7 @@ void cuda_convolution_full_packed(size_t* matrices_ids, size_t num_matrices, siz
     dim3 grid_dim(num_matrices, 1, 1);
 
     // Run the kernels
-    cuda_convolution_kernel_packed_full_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_ptr, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_ptr, kernel_rows, kernel_cols, gpu_out_buffers_ptr, out_rows, out_cols);
+    cuda_correlate_kernel_packed_full_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_ptr, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_ptr, kernel_rows, kernel_cols, gpu_out_buffers_ptr, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 
     // Cleanup
@@ -3003,13 +3003,13 @@ void cuda_convolution_full_packed(size_t* matrices_ids, size_t num_matrices, siz
     memory_manager_free(gpu_kernel_buffers_block.first, sizeof(float*) * num_matrices);
     memory_manager_free(gpu_out_buffers_block.first, sizeof(float*) * num_matrices);
 }
-void cuda_convolution_packed(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_ids, PaddingType padding_type) {
+void cuda_correlate_packed(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_ids, PaddingType padding_type) {
     if (padding_type == PaddingType::VALID) {
-        return cuda_convolution_valid_packed(mat_ids, num_matrices, mat_rows, mat_cols, kernel_ids, kernel_rows, kernel_cols, out_ids);
+        return cuda_correlate_valid_packed(mat_ids, num_matrices, mat_rows, mat_cols, kernel_ids, kernel_rows, kernel_cols, out_ids);
     } else if (padding_type == PaddingType::SAME) {
-        return cuda_convolution_same_packed(mat_ids, num_matrices, mat_rows, mat_cols, kernel_ids, kernel_rows, kernel_cols, out_ids);
+        return cuda_correlate_same_packed(mat_ids, num_matrices, mat_rows, mat_cols, kernel_ids, kernel_rows, kernel_cols, out_ids);
     } else if (padding_type == PaddingType::FULL) {
-        return cuda_convolution_full_packed(mat_ids, num_matrices, mat_rows, mat_cols, kernel_ids, kernel_rows, kernel_cols, out_ids);
+        return cuda_correlate_full_packed(mat_ids, num_matrices, mat_rows, mat_cols, kernel_ids, kernel_rows, kernel_cols, out_ids);
     }
 }
 

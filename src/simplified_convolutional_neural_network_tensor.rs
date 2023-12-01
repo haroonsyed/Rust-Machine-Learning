@@ -8,7 +8,7 @@ use crate::{basic_neural_network::BasicNeuralNetworkRust, image_util::ImageBatch
 
 #[pyclass]
 pub struct SimplifiedConvolutionalNeuralNetworkTensor {
-  pub network: SimplifiedConvolutionalNeuralNetworkTensorRust,
+  pub network: SimplifiedConvolutionuralNetworkTensorRust,
   batch_loader: Option<ImageBatchLoaderRust>,
 }
 
@@ -23,7 +23,7 @@ impl SimplifiedConvolutionalNeuralNetworkTensor {
     filters_per_conv_layer: Vec<usize>,
     filter_dimension: usize, // Must be odd
   ) -> Self {
-    let network = SimplifiedConvolutionalNeuralNetworkTensorRust::new(
+    let network = SimplifiedConvolutionuralNetworkTensorRust::new(
       num_classifications,
       input_width,
       input_height,
@@ -86,7 +86,7 @@ impl SimplifiedConvolutionalNeuralNetworkTensor {
 }
 
 // This is going to have no bias, no relU, and no max pooling
-pub struct SimplifiedConvolutionalNeuralNetworkTensorRust {
+pub struct SimplifiedConvolutionuralNetworkTensorRust {
   pub num_classifications: usize,
   pub input_width: usize,
   pub input_height: usize,
@@ -96,7 +96,7 @@ pub struct SimplifiedConvolutionalNeuralNetworkTensorRust {
   pub filter_output_dimensions_per_layer: Vec<(usize, usize)>, // Layer -> (width, height)
 }
 
-impl SimplifiedConvolutionalNeuralNetworkTensorRust {
+impl SimplifiedConvolutionuralNetworkTensorRust {
   pub fn new(
     num_classifications: usize,
     input_width: usize,
@@ -114,7 +114,7 @@ impl SimplifiedConvolutionalNeuralNetworkTensorRust {
         filter_output_dimensions_per_layer[layer_index - 1]
       };
 
-      // This output_dimension = (input - filter + 1) assuming valid convolutions
+      // This output_dimension = (input - filter + 1) assuming valid correlates
       let output_dimension_width = prev_out_dimensions.0 - filter_dimension + 1;
       let output_dimension_height = prev_out_dimensions.1 - filter_dimension + 1;
 
@@ -153,7 +153,7 @@ impl SimplifiedConvolutionalNeuralNetworkTensorRust {
       BasicNeuralNetworkRust::new(Vec::new(), num_features, num_classifications);
 
     // Create the CNN object
-    let network = SimplifiedConvolutionalNeuralNetworkTensorRust {
+    let network = SimplifiedConvolutionuralNetworkTensorRust {
       num_classifications,
       input_width,
       input_height,
@@ -291,7 +291,7 @@ impl SimplifiedConvolutionalNeuralNetworkTensorRust {
 
         // Filter
         for filter in layer_filters.iter() {
-          let filter_output = current_layer_input.convolution(filter, PaddingType::VALID);
+          let filter_output = current_layer_input.correlate(filter, PaddingType::VALID);
 
           layer_outputs.push(filter_output);
         }
@@ -353,12 +353,12 @@ impl SimplifiedConvolutionalNeuralNetworkTensorRust {
       .map(|(filter, next_error)| {
         // Xm' = Xm - sum(de/dy * conv_full * Knm)
 
-        // We can use 3D convolutions with tensors
+        // We can use 3D correlates with tensors
         // First we have to duplicate the error for each channel
         let next_error = Tensor::from_children(vec![next_error.clone(); filter.dimensions[0]]);
 
         let rotated_filter = Self::rotate_filters_180(filter);
-        let delta_xm = next_error.convolution(&rotated_filter, PaddingType::FULL);
+        let delta_xm = next_error.correlate(&rotated_filter, PaddingType::FULL);
 
         return delta_xm;
       })
@@ -377,7 +377,7 @@ impl SimplifiedConvolutionalNeuralNetworkTensorRust {
         for (channel, prev_channel_output) in izip!(filter.iter(), prev_layer_outputs.iter()) {
           // Here the error is per channel. We cannot sum across the volume of filter.
           // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
-          let delta_channel = prev_channel_output.convolution(error, PaddingType::VALID);
+          let delta_channel = prev_channel_output.correlate(error, PaddingType::VALID);
           channel.element_subtract_inplace(&delta_channel.scalar_multiply(learning_rate));
         }
       }

@@ -269,7 +269,7 @@ extern "C" {
     mat_rows: usize,
     mat_cols: usize,
   );
-  pub fn cuda_convolution(
+  pub fn cuda_correlate(
     mat1_id: usize,
     mat1_rows: usize,
     mat1_cols: usize,
@@ -278,7 +278,7 @@ extern "C" {
     kernel_cols: usize,
     conv_type: PaddingType,
   ) -> usize;
-  pub fn cuda_convolution_packed(
+  pub fn cuda_correlate_packed(
     mat_ids: *const c_ulonglong,
     num_matrices: usize,
     mat_rows: usize,
