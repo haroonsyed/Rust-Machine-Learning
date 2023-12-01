@@ -2,7 +2,7 @@
 mod tests {
   use crate::{
     convolution_packed, cuda_bindings::*, element_add_packed, flatten_matrix_array, img2col,
-    matrix::*, matrix_cpu::MatrixCpu, unflatten_array_to_matrices, ConvolutionType,
+    matrix::*, matrix_cpu::MatrixCpu, unflatten_array_to_matrices, PaddingType,
   };
   use itertools::{izip, Itertools};
   use rand::{prelude::Distribution, random};
@@ -1669,7 +1669,7 @@ mod tests {
       vec![106.0, 154.0, 94.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::SAME);
+    let observed_result = test_data.convolution(&kernel, PaddingType::SAME);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -1694,7 +1694,7 @@ mod tests {
       vec![133.0, 190.0, 211.0, 127.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::SAME);
+    let observed_result = test_data.convolution(&kernel, PaddingType::SAME);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -1738,12 +1738,12 @@ mod tests {
     let mut observed_result = convolution_packed(
       &vec![test_data.clone(); 16],
       &vec![kernel; 16],
-      ConvolutionType::SAME,
+      PaddingType::SAME,
     );
     observed_result.extend(convolution_packed(
       &vec![test_data.clone(); 16],
       &vec![kernel_2; 16],
-      ConvolutionType::SAME,
+      PaddingType::SAME,
     ));
 
     izip!(observed_result, expected_result).for_each(|(observed, expected)| {
@@ -1763,7 +1763,7 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![37.0, 47.0], vec![67.0, 77.0]]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::VALID);
+    let observed_result = test_data.convolution(&kernel, PaddingType::VALID);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -1780,7 +1780,7 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![106.0, 127.0], vec![190.0, 211.0]]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::VALID);
+    let observed_result = test_data.convolution(&kernel, PaddingType::VALID);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -1797,7 +1797,7 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![44.0, 54.0, 64.0], vec![84.0, 94.0, 104.0]]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::VALID);
+    let observed_result = test_data.convolution(&kernel, PaddingType::VALID);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -1825,12 +1825,12 @@ mod tests {
     let mut observed_result = convolution_packed(
       &vec![test_data.clone(); 16],
       &vec![kernel; 16],
-      ConvolutionType::VALID,
+      PaddingType::VALID,
     );
     observed_result.extend(convolution_packed(
       &vec![test_data.clone(); 16],
       &vec![kernel_2; 16],
-      ConvolutionType::VALID,
+      PaddingType::VALID,
     ));
 
     izip!(observed_result, expected_result).for_each(|(observed, expected)| {
@@ -1855,7 +1855,7 @@ mod tests {
       vec![14.0, 23.0, 26.0, 9.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::FULL);
+    let observed_result = test_data.convolution(&kernel, PaddingType::FULL);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -1882,7 +1882,7 @@ mod tests {
       vec![21.0, 38.0, 50.0, 26.0, 9.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::FULL);
+    let observed_result = test_data.convolution(&kernel, PaddingType::FULL);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -1930,12 +1930,12 @@ mod tests {
     let mut observed_result = convolution_packed(
       &vec![test_data.clone(); 16],
       &vec![kernel; 16],
-      ConvolutionType::FULL,
+      PaddingType::FULL,
     );
     observed_result.extend(convolution_packed(
       &vec![test_data.clone(); 16],
       &vec![kernel_2; 16],
-      ConvolutionType::FULL,
+      PaddingType::FULL,
     ));
 
     izip!(observed_result, expected_result).for_each(|(observed, expected)| {
@@ -1964,7 +1964,7 @@ mod tests {
       vec![7.0, 8.0, 9.0],
     ];
 
-    let mat_gpu = Matrix::new_2d(&data).convolution(&Matrix::new_2d(kernel), ConvolutionType::SAME);
+    let mat_gpu = Matrix::new_2d(&data).convolution(&Matrix::new_2d(kernel), PaddingType::SAME);
     let mat_cpu = MatrixCpu::new_2d(&data).convolution(&MatrixCpu::new_2d(kernel));
 
     assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 2));
@@ -2141,7 +2141,7 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![37.0, 47.0], vec![67.0, 77.0]]);
 
-    let observed_result = test_data.convolution_v2(&kernel, ConvolutionType::VALID);
+    let observed_result = test_data.convolution_v2(&kernel, PaddingType::VALID);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -2158,7 +2158,7 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![106.0, 127.0], vec![190.0, 211.0]]);
 
-    let observed_result = test_data.convolution_v2(&kernel, ConvolutionType::VALID);
+    let observed_result = test_data.convolution_v2(&kernel, PaddingType::VALID);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
@@ -2175,7 +2175,7 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![44.0, 54.0, 64.0], vec![84.0, 94.0, 104.0]]);
 
-    let observed_result = test_data.convolution_v2(&kernel, ConvolutionType::VALID);
+    let observed_result = test_data.convolution_v2(&kernel, PaddingType::VALID);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }

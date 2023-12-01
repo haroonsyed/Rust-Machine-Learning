@@ -291,7 +291,7 @@ impl SimplifiedConvolutionalNeuralNetworkTensorRust {
 
         // Filter
         for filter in layer_filters.iter() {
-          let filter_output = current_layer_input.convolution(filter, ConvolutionType::VALID);
+          let filter_output = current_layer_input.convolution(filter, PaddingType::VALID);
 
           layer_outputs.push(filter_output);
         }
@@ -358,7 +358,7 @@ impl SimplifiedConvolutionalNeuralNetworkTensorRust {
         let next_error = Tensor::from_children(vec![next_error.clone(); filter.dimensions[0]]);
 
         let rotated_filter = Self::rotate_filters_180(filter);
-        let delta_xm = next_error.convolution(&rotated_filter, ConvolutionType::FULL);
+        let delta_xm = next_error.convolution(&rotated_filter, PaddingType::FULL);
 
         return delta_xm;
       })
@@ -377,7 +377,7 @@ impl SimplifiedConvolutionalNeuralNetworkTensorRust {
         for (channel, prev_channel_output) in izip!(filter.iter(), prev_layer_outputs.iter()) {
           // Here the error is per channel. We cannot sum across the volume of filter.
           // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
-          let delta_channel = prev_channel_output.convolution(error, ConvolutionType::VALID);
+          let delta_channel = prev_channel_output.convolution(error, PaddingType::VALID);
           channel.element_subtract_inplace(&delta_channel.scalar_multiply(learning_rate));
         }
       }

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub enum ConvolutionType {
+pub enum PaddingType {
   VALID,
   SAME,
   FULL,
@@ -692,10 +692,10 @@ impl Matrix {
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn convolution(&self, kernel: &Matrix, conv_type: ConvolutionType) -> Self {
+  pub fn convolution(&self, kernel: &Matrix, padding_type: PaddingType) -> Self {
     let result_id: usize;
 
-    if matches!(conv_type, ConvolutionType::SAME)
+    if matches!(padding_type, PaddingType::SAME)
       && (kernel.rows != kernel.columns || kernel.rows % 2 == 0)
     {
       panic!("Kernel must be square and odd for same convolution!");
@@ -709,27 +709,27 @@ impl Matrix {
         kernel.get_id(),
         kernel.rows,
         kernel.columns,
-        conv_type,
+        padding_type,
       )
     }
 
-    let output_rows = match conv_type {
-      ConvolutionType::VALID => self.rows - kernel.rows + 1,
-      ConvolutionType::SAME => self.rows,
-      ConvolutionType::FULL => self.rows + kernel.rows - 1,
+    let output_rows = match padding_type {
+      PaddingType::VALID => self.rows - kernel.rows + 1,
+      PaddingType::SAME => self.rows,
+      PaddingType::FULL => self.rows + kernel.rows - 1,
     };
 
-    let output_columns = match conv_type {
-      ConvolutionType::VALID => self.columns - kernel.columns + 1,
-      ConvolutionType::SAME => self.columns,
-      ConvolutionType::FULL => self.columns + kernel.columns - 1,
+    let output_columns = match padding_type {
+      PaddingType::VALID => self.columns - kernel.columns + 1,
+      PaddingType::SAME => self.columns,
+      PaddingType::FULL => self.columns + kernel.columns - 1,
     };
 
     return Matrix::new(result_id, output_rows, output_columns);
   }
 
-  pub fn convolution_v2(&self, kernel: &Matrix, conv_type: ConvolutionType) -> Self {
-    if matches!(conv_type, ConvolutionType::SAME)
+  pub fn convolution_v2(&self, kernel: &Matrix, padding_type: PaddingType) -> Self {
+    if matches!(padding_type, PaddingType::SAME)
       && (kernel.rows != kernel.columns || kernel.rows % 2 == 0)
     {
       panic!("Kernel must be square and odd for same convolution!");
@@ -746,16 +746,16 @@ impl Matrix {
     // Now perform a matrix multiplication
     let mut result = flattened_kernel.matrix_multiply(&transformed_img);
 
-    let output_rows = match conv_type {
-      ConvolutionType::VALID => self.rows - kernel.rows + 1,
-      ConvolutionType::SAME => self.rows,
-      ConvolutionType::FULL => self.rows + kernel.rows - 1,
+    let output_rows = match padding_type {
+      PaddingType::VALID => self.rows - kernel.rows + 1,
+      PaddingType::SAME => self.rows,
+      PaddingType::FULL => self.rows + kernel.rows - 1,
     };
 
-    let output_columns = match conv_type {
-      ConvolutionType::VALID => self.columns - kernel.columns + 1,
-      ConvolutionType::SAME => self.columns,
-      ConvolutionType::FULL => self.columns + kernel.columns - 1,
+    let output_columns = match padding_type {
+      PaddingType::VALID => self.columns - kernel.columns + 1,
+      PaddingType::SAME => self.columns,
+      PaddingType::FULL => self.columns + kernel.columns - 1,
     };
 
     // Unflatten the result
@@ -895,7 +895,7 @@ pub fn img2col(image: &Vec<Matrix>, filter_rows: usize, filter_cols: usize) -> M
       image_cols,
       filter_rows,
       filter_cols,
-      ConvolutionType::VALID,
+      PaddingType::VALID,
     )
   };
 
@@ -1566,7 +1566,7 @@ pub fn rotate_180_packed(matrices: &Vec<Matrix>) -> Vec<Matrix> {
 pub fn convolution_packed(
   matrices: &Vec<Matrix>,
   kernels: &Vec<Matrix>,
-  conv_type: ConvolutionType,
+  padding_type: PaddingType,
 ) -> Vec<Matrix> {
   let num_matrices = matrices.len();
   let num_kernels = kernels.len();
@@ -1587,7 +1587,7 @@ pub fn convolution_packed(
   let kernel_rows = kernels[0].rows;
   let kernel_cols = kernels[0].columns;
 
-  if matches!(conv_type, ConvolutionType::SAME)
+  if matches!(padding_type, PaddingType::SAME)
     && (kernel_rows != kernel_cols || kernel_rows % 2 == 0)
   {
     panic!("Kernel must be square and odd for same convolution!");
@@ -1607,20 +1607,20 @@ pub fn convolution_packed(
       kernel_rows,
       kernel_cols,
       result_ids.as_mut_ptr() as *mut c_ulonglong,
-      conv_type,
+      padding_type,
     );
   }
 
-  let output_rows = match conv_type {
-    ConvolutionType::VALID => mat_rows - kernel_rows + 1,
-    ConvolutionType::SAME => mat_rows,
-    ConvolutionType::FULL => mat_rows + kernel_rows - 1,
+  let output_rows = match padding_type {
+    PaddingType::VALID => mat_rows - kernel_rows + 1,
+    PaddingType::SAME => mat_rows,
+    PaddingType::FULL => mat_rows + kernel_rows - 1,
   };
 
-  let output_columns = match conv_type {
-    ConvolutionType::VALID => mat_cols - kernel_cols + 1,
-    ConvolutionType::SAME => mat_cols,
-    ConvolutionType::FULL => mat_cols + kernel_cols - 1,
+  let output_columns = match padding_type {
+    PaddingType::VALID => mat_cols - kernel_cols + 1,
+    PaddingType::SAME => mat_cols,
+    PaddingType::FULL => mat_cols + kernel_cols - 1,
   };
 
   return result_ids

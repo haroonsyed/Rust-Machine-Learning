@@ -1,4 +1,4 @@
-enum ConvolutionType {
+enum PaddingType {
     VALID,
     SAME,
     FULL

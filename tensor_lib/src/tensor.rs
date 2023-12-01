@@ -489,7 +489,7 @@ impl Tensor {
     return Tensor::from_matrices(&vec![result], vec![result_rows, result_cols]);
   }
 
-  pub fn convolution(&self, kernels: &Tensor, conv_type: ConvolutionType) -> Tensor {
+  pub fn convolution(&self, kernels: &Tensor, conv_type: PaddingType) -> Tensor {
     // Check rank
     if self.get_rank() > 3 || kernels.get_rank() > 3 {
       panic!("Cannot currently convolve a tensor with rank greater than 3");

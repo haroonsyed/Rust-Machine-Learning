@@ -307,14 +307,14 @@ impl CNN_Layer for ConvolutionalLayerRust {
     for sample in input {
       // Filter
       for (filter, bias) in izip!(self.filters.iter(), self.biases.iter()) {
-        // let filter_output = sample[0].convolution(&filter[0], ConvolutionType::VALID);
+        // let filter_output = sample[0].convolution(&filter[0], PaddingType::VALID);
         channels_to_convolve.push(sample[0].clone());
         kernels_to_convolve.push(filter[0].clone());
         let index_to_sum_to = channels_to_convolve.len() - 1;
 
         // Channel
         for (channel, kernel) in izip!(sample[1..].iter(), filter[1..].iter()) {
-          // let channel_output = channel.convolution(kernel, ConvolutionType::VALID);
+          // let channel_output = channel.convolution(kernel, PaddingType::VALID);
           channels_to_convolve.push(channel.clone());
           kernels_to_convolve.push(kernel.clone());
 
@@ -339,7 +339,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
     let mut convolved_channels = convolution_packed(
       &channels_to_convolve,
       &kernels_to_convolve,
-      ConvolutionType::VALID,
+      PaddingType::VALID,
     );
 
     // Sum
@@ -416,12 +416,12 @@ impl CNN_Layer for ConvolutionalLayerRust {
       let mut sample_input_error = Vec::new();
       for (filter_error, filter) in izip!(sample_output_error.iter(), self.filters.iter()) {
         // deltaXm = sum(de/dy * conv_full * Knm)
-        let delta_xm = filter_error.convolution(&filter[0].rotate_180(), ConvolutionType::FULL);
+        let delta_xm = filter_error.convolution(&filter[0].rotate_180(), PaddingType::FULL);
 
         // PER CHANNEL
         for channel in filter[1..].iter() {
           delta_xm.element_add_inplace(
-            &filter_error.convolution(&channel.rotate_180(), ConvolutionType::FULL),
+            &filter_error.convolution(&channel.rotate_180(), PaddingType::FULL),
           );
         }
 
@@ -455,7 +455,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
         {
           // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
           let delta_channel =
-            prev_channel_input.convolution(filter_output_error, ConvolutionType::VALID);
+            prev_channel_input.convolution(filter_output_error, PaddingType::VALID);
           let channel_step = optimizer.calculate_step(&delta_channel);
           channel
             .element_subtract_inplace(&channel_step.scalar_multiply_inplace(normalization_factor));

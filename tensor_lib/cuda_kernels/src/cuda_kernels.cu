@@ -2704,12 +2704,12 @@ size_t cuda_convolution_full(size_t mat1_id, size_t mat1_rows, size_t mat1_cols,
     return out_mat_id;
 }
 
-size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, ConvolutionType conv_type) {
-    if (conv_type == ConvolutionType::VALID) {
+size_t cuda_convolution(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, PaddingType padding_type) {
+    if (padding_type == PaddingType::VALID) {
         return cuda_convolution_valid(mat1_id, mat1_rows, mat1_cols, kernel_id, kernel_rows, kernel_cols);
-    } else if (conv_type == ConvolutionType::SAME) {
+    } else if (padding_type == PaddingType::SAME) {
         return cuda_convolution_same(mat1_id, mat1_rows, mat1_cols, kernel_id, kernel_rows, kernel_cols);
-    } else if (conv_type == ConvolutionType::FULL) {
+    } else if (padding_type == PaddingType::FULL) {
         return cuda_convolution_full(mat1_id, mat1_rows, mat1_cols, kernel_id, kernel_rows, kernel_cols);
     }
 }
@@ -3003,12 +3003,12 @@ void cuda_convolution_full_packed(size_t* matrices_ids, size_t num_matrices, siz
     memory_manager_free(gpu_kernel_buffers_block.first, sizeof(float*) * num_matrices);
     memory_manager_free(gpu_out_buffers_block.first, sizeof(float*) * num_matrices);
 }
-void cuda_convolution_packed(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_ids, ConvolutionType conv_type) {
-    if (conv_type == ConvolutionType::VALID) {
+void cuda_convolution_packed(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_ids, PaddingType padding_type) {
+    if (padding_type == PaddingType::VALID) {
         return cuda_convolution_valid_packed(mat_ids, num_matrices, mat_rows, mat_cols, kernel_ids, kernel_rows, kernel_cols, out_ids);
-    } else if (conv_type == ConvolutionType::SAME) {
+    } else if (padding_type == PaddingType::SAME) {
         return cuda_convolution_same_packed(mat_ids, num_matrices, mat_rows, mat_cols, kernel_ids, kernel_rows, kernel_cols, out_ids);
-    } else if (conv_type == ConvolutionType::FULL) {
+    } else if (padding_type == PaddingType::FULL) {
         return cuda_convolution_full_packed(mat_ids, num_matrices, mat_rows, mat_cols, kernel_ids, kernel_rows, kernel_cols, out_ids);
     }
 }
@@ -3088,12 +3088,12 @@ size_t cuda_img2col_valid(size_t* mat_ids, size_t num_matrices, size_t mat_rows,
 }
 
 // Take an image and convert it to a matrix of columns based on patches (with specified padding) the filter makes of image
-size_t cuda_img2col(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t kernel_rows, size_t kernel_cols, ConvolutionType conv_type) {
-    if (conv_type == ConvolutionType::VALID) {
+size_t cuda_img2col(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t kernel_rows, size_t kernel_cols, PaddingType padding_type) {
+    if (padding_type == PaddingType::VALID) {
         return cuda_img2col_valid(mat_ids, num_matrices, mat_rows, mat_cols, kernel_rows, kernel_cols);
-    } else if (conv_type == ConvolutionType::SAME) {
+    } else if (padding_type == PaddingType::SAME) {
         return 0;
-    } else if (conv_type == ConvolutionType::FULL) {
+    } else if (padding_type == PaddingType::FULL) {
         return 0;
     }
 }

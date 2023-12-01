@@ -1,7 +1,7 @@
 use std::ffi::c_float;
 use std::ffi::c_ulonglong;
 
-use crate::ConvolutionType;
+use crate::PaddingType;
 
 #[derive(Clone)]
 #[repr(C)] // Used to return a tuple from C
@@ -276,7 +276,7 @@ extern "C" {
     kernel_id: usize,
     kernel_rows: usize,
     kernel_cols: usize,
-    conv_type: ConvolutionType,
+    conv_type: PaddingType,
   ) -> usize;
   pub fn cuda_convolution_packed(
     mat_ids: *const c_ulonglong,
@@ -287,7 +287,7 @@ extern "C" {
     kernel_rows: usize,
     kernel_cols: usize,
     out_ids: *mut c_ulonglong,
-    conv_type: ConvolutionType,
+    conv_type: PaddingType,
   );
   pub fn cuda_img2col(
     mat_ids: *const c_ulonglong,
@@ -296,7 +296,7 @@ extern "C" {
     mat_cols: usize,
     kernel_rows: usize,
     kernel_cols: usize,
-    conv_type: ConvolutionType,
+    conv_type: PaddingType,
   ) -> usize;
   pub fn cuda_flatten_array(
     mat_ids: *const c_ulonglong,
