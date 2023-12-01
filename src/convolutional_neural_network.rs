@@ -308,9 +308,9 @@ impl CNN_Layer for ConvolutionalLayerRust {
       // Filter
       for (filter, bias) in izip!(self.filters.iter(), self.biases.iter()) {
         // let filter_output = sample[0].convolution(&filter[0], ConvolutionType::VALID);
-        let index_to_sum_to = channels_to_convolve.len();
         channels_to_convolve.push(sample[0].clone());
         kernels_to_convolve.push(filter[0].clone());
+        let index_to_sum_to = channels_to_convolve.len() - 1;
 
         // Channel
         for (channel, kernel) in izip!(sample[1..].iter(), filter[1..].iter()) {
@@ -345,6 +345,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
     // Sum
     let mut sum_to = Vec::new();
     let mut to_add = Vec::new();
+    let mut raw_filter_outputs = Vec::new();
 
     for (index_to_sum_to, index_to_sum) in izip!(
       filter_result_index_to_sum_filter_result_to,
@@ -354,17 +355,16 @@ impl CNN_Layer for ConvolutionalLayerRust {
       to_add.push(convolved_channels[index_to_sum].clone());
     }
 
+    for index in raw_filter_output_indices {
+      raw_filter_outputs.push(convolved_channels[index].clone());
+    }
+
     for (index_to_sum_to, bias) in izip!(filter_result_index_to_sum_bias_to, biases_to_sum) {
       sum_to.push(convolved_channels[index_to_sum_to].clone());
       to_add.push(bias);
     }
 
-    let summed = element_add_packed(&sum_to, &to_add, true);
-
-    let raw_filter_outputs = raw_filter_output_indices
-      .iter()
-      .map(|index| summed[*index].clone())
-      .collect_vec();
+    element_add_packed(&sum_to, &to_add, true);
 
     // ReLU
     let filter_outputs = element_ReLU_packed(&raw_filter_outputs, true);
@@ -390,12 +390,22 @@ impl CNN_Layer for ConvolutionalLayerRust {
     // m is the channel
 
     // Apply relu prime
-    for (sample_error, sample_output) in izip!(sample_output_errors.iter(), self.prev_output.iter())
-    {
-      for (filter_error, filter_output) in izip!(sample_error, sample_output) {
-        filter_error.element_multiply_inplace(&filter_output.element_ReLU_prime_inplace());
-      }
-    }
+
+    let filter_error_flattened = sample_output_errors
+      .to_owned()
+      .into_iter()
+      .flatten()
+      .collect_vec();
+
+    let prev_output_flattened = self
+      .prev_output
+      .to_owned()
+      .into_iter()
+      .flatten()
+      .collect_vec();
+
+    element_ReLU_prime_packed(&prev_output_flattened, true);
+    element_multiply_packed(&filter_error_flattened, &prev_output_flattened, true);
 
     // PER SAMPLE
     for (sample_output_error, sample_prev_input) in
