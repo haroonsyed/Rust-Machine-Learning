@@ -288,7 +288,7 @@ impl MatrixCpu {
     return result;
   }
 
-  pub fn convolution(&self, kernel: &MatrixCpu) -> Self {
+  pub fn correlate(&self, kernel: &MatrixCpu) -> Self {
     let result_rows = self.rows;
     let result_cols = self.columns;
     let mut result = Self::zeros(result_rows, result_cols);

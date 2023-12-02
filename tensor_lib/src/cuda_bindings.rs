@@ -289,6 +289,26 @@ extern "C" {
     out_ids: *mut c_ulonglong,
     conv_type: PaddingType,
   );
+  pub fn cuda_convolve(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    kernel_id: usize,
+    kernel_rows: usize,
+    kernel_cols: usize,
+    conv_type: PaddingType,
+  ) -> usize;
+  pub fn cuda_convolve_packed(
+    mat_ids: *const c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    kernel_ids: *const c_ulonglong,
+    kernel_rows: usize,
+    kernel_cols: usize,
+    out_ids: *mut c_ulonglong,
+    conv_type: PaddingType,
+  );
   pub fn cuda_img2col(
     mat_ids: *const c_ulonglong,
     num_matrices: usize,

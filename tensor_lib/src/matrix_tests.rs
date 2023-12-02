@@ -1600,7 +1600,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution() {
+  fn correlation() {
     let test_data = MatrixCpu::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -1619,13 +1619,13 @@ mod tests {
       vec![106.0, 154.0, 94.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel);
+    let observed_result = test_data.correlate(&kernel);
 
     assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
   }
 
   #[test]
-  fn convolution_2() {
+  fn correlation_2() {
     let test_data = MatrixCpu::new_2d(&vec![
       vec![1.0, 2.0, 3.0, 4.0],
       vec![5.0, 6.0, 7.0, 8.0],
@@ -1644,13 +1644,13 @@ mod tests {
       vec![133.0, 190.0, 211.0, 127.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel);
+    let observed_result = test_data.correlate(&kernel);
 
     assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
   }
 
   #[test]
-  fn convolution_gpu_same() {
+  fn correlation_gpu_same() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -1675,7 +1675,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_gpu_same_2() {
+  fn correlation_gpu_same_2() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0, 4.0],
       vec![5.0, 6.0, 7.0, 8.0],
@@ -1700,7 +1700,7 @@ mod tests {
   }
 
   #[test]
-  fn packed_convolution_same_1() {
+  fn packed_correlation_same_1() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -1752,7 +1752,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_gpu_valid_1() {
+  fn correlation_gpu_valid_1() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -1769,7 +1769,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_gpu_valid_2() {
+  fn correlation_gpu_valid_2() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0, 4.0],
       vec![5.0, 6.0, 7.0, 8.0],
@@ -1786,7 +1786,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_gpu_valid_3() {
+  fn correlation_gpu_valid_3() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0, 4.0],
       vec![5.0, 6.0, 7.0, 8.0],
@@ -1803,7 +1803,7 @@ mod tests {
   }
 
   #[test]
-  fn packed_convolution_valid_1() {
+  fn packed_correlation_valid_1() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -1839,7 +1839,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_gpu_full_1() {
+  fn correlation_gpu_full_1() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -1861,7 +1861,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_gpu_full_2() {
+  fn correlation_gpu_full_2() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -1888,7 +1888,7 @@ mod tests {
   }
 
   #[test]
-  fn packed_convolution_full_1() {
+  fn packed_correlation_full_1() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -1944,7 +1944,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_cpu_gpu_agreement() {
+  fn correlation_cpu_gpu_agreement() {
     let mut rng = rand::thread_rng();
     let range = Normal::new(0.0, 1e2).unwrap();
 
@@ -1965,9 +1965,142 @@ mod tests {
     ];
 
     let mat_gpu = Matrix::new_2d(&data).correlate(&Matrix::new_2d(kernel), PaddingType::SAME);
-    let mat_cpu = MatrixCpu::new_2d(&data).convolution(&MatrixCpu::new_2d(kernel));
+    let mat_cpu = MatrixCpu::new_2d(&data).correlate(&MatrixCpu::new_2d(kernel));
 
     assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 2));
+  }
+
+  #[test]
+  fn convolution_gpu_same() {
+    // Generate random data of different sizes
+    for i in 1..25 {
+      for j in 1..25 {
+        let random_input = Matrix::new_random(0.0, 100.0, i, j);
+
+        // Grab closes odd number to j
+        let kernel_size = j + 1 - (j % 2);
+
+        let random_kernel = Matrix::new_random(0.0, 100.0, kernel_size, kernel_size);
+
+        let expected_result =
+          random_input.correlate(&random_kernel.rotate_180(), PaddingType::SAME);
+        let observed_result = random_input.convolve(&random_kernel, PaddingType::SAME);
+
+        assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      }
+    }
+  }
+
+  #[test]
+  fn packed_convolution_gpu_same() {
+    // Generate random data of different sizes
+    for i in 2..25 {
+      for j in 2..25 {
+        let random_inputs = (0..i * j)
+          .map(|_| Matrix::new_random(0.0, 100.0, i, j))
+          .collect_vec();
+
+        let kernel_size = j + 1 - (j % 2);
+        let random_kernels = (0..i * j)
+          .map(|_| Matrix::new_random(0.0, 100.0, kernel_size, kernel_size))
+          .collect_vec();
+
+        let rotated_kernels = rotate_180_packed(&random_kernels);
+        let expected_results =
+          correlate_packed(&random_inputs, &rotated_kernels, PaddingType::SAME);
+        let observed_results = convolve_packed(&random_inputs, &random_kernels, PaddingType::SAME);
+
+        izip!(observed_results, expected_results).for_each(|(observed, expected)| {
+          assert!(matrix_are_equal(&observed, &expected, 8));
+        });
+      }
+    }
+  }
+
+  #[test]
+  fn convolution_gpu_valid() {
+    // Generate random data of different sizes
+    for i in 2..25 {
+      for j in 2..25 {
+        let random_input = Matrix::new_random(0.0, 100.0, i, j);
+
+        let random_kernel = Matrix::new_random(0.0, 100.0, i / 2, j / 2);
+
+        let expected_result =
+          random_input.correlate(&random_kernel.rotate_180(), PaddingType::VALID);
+        let observed_result = random_input.convolve(&random_kernel, PaddingType::VALID);
+
+        assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      }
+    }
+  }
+
+  #[test]
+  fn packed_convolution_gpu_valid() {
+    // Generate random data of different sizes
+    for i in 2..25 {
+      for j in 2..25 {
+        let random_inputs = (0..i * j)
+          .map(|_| Matrix::new_random(0.0, 100.0, i, j))
+          .collect_vec();
+
+        let random_kernels = (0..i * j)
+          .map(|_| Matrix::new_random(0.0, 100.0, i / 2, j / 2))
+          .collect_vec();
+
+        let rotated_kernels = rotate_180_packed(&random_kernels);
+        let expected_results =
+          correlate_packed(&random_inputs, &rotated_kernels, PaddingType::VALID);
+        let observed_results = convolve_packed(&random_inputs, &random_kernels, PaddingType::VALID);
+
+        izip!(observed_results, expected_results).for_each(|(observed, expected)| {
+          assert!(matrix_are_equal(&observed, &expected, 8));
+        });
+      }
+    }
+  }
+
+  #[test]
+  fn convolution_gpu_full() {
+    // Generate random data of different sizes
+    for i in 2..25 {
+      for j in 2..25 {
+        let random_input = Matrix::new_random(0.0, 100.0, i, j);
+
+        let random_kernel = Matrix::new_random(0.0, 100.0, i / 2, j / 2);
+
+        let expected_result =
+          random_input.correlate(&random_kernel.rotate_180(), PaddingType::FULL);
+        let observed_result = random_input.convolve(&random_kernel, PaddingType::FULL);
+
+        assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      }
+    }
+  }
+
+  #[test]
+  fn packed_convolution_gpu_full() {
+    // Generate random data of different sizes
+    for i in 2..25 {
+      for j in 2..25 {
+        let random_inputs = (0..i * j)
+          .map(|_| Matrix::new_random(0.0, 100.0, i, j))
+          .collect_vec();
+
+        let random_kernels = (0..i * j)
+          .map(|_| Matrix::new_random(0.0, 100.0, i / 2, j / 2))
+          .collect_vec();
+
+        let rotated_kernels = rotate_180_packed(&random_kernels);
+        let expected_results =
+          correlate_packed(&random_inputs, &rotated_kernels, PaddingType::FULL);
+        let observed_results = convolve_packed(&random_inputs, &random_kernels, PaddingType::FULL);
+
+        izip!(observed_results, expected_results).for_each(|(observed, expected)| {
+          assert!(matrix_are_equal(&observed, &expected, 8));
+        });
+      }
+    }
   }
 
   #[test]
@@ -2130,7 +2263,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_v2_gpu_valid_1() {
+  fn correlation_v2_gpu_valid_1() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -2147,7 +2280,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_v2_gpu_valid_2() {
+  fn correlation_v2_gpu_valid_2() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0, 4.0],
       vec![5.0, 6.0, 7.0, 8.0],
@@ -2164,7 +2297,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_v2_gpu_valid_3() {
+  fn correlation_v2_gpu_valid_3() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0, 4.0],
       vec![5.0, 6.0, 7.0, 8.0],

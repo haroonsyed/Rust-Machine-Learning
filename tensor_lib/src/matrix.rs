@@ -764,6 +764,42 @@ impl Matrix {
     return result;
   }
 
+  pub fn convolve(&self, kernel: &Matrix, padding_type: PaddingType) -> Self {
+    let result_id: usize;
+
+    if matches!(padding_type, PaddingType::SAME)
+      && (kernel.rows != kernel.columns || kernel.rows % 2 == 0)
+    {
+      panic!("Kernel must be square and odd for same convolution!");
+    }
+
+    unsafe {
+      result_id = cuda_convolve(
+        self.get_id(),
+        self.rows,
+        self.columns,
+        kernel.get_id(),
+        kernel.rows,
+        kernel.columns,
+        padding_type,
+      )
+    }
+
+    let output_rows = match padding_type {
+      PaddingType::VALID => self.rows - kernel.rows + 1,
+      PaddingType::SAME => self.rows,
+      PaddingType::FULL => self.rows + kernel.rows - 1,
+    };
+
+    let output_columns = match padding_type {
+      PaddingType::VALID => self.columns - kernel.columns + 1,
+      PaddingType::SAME => self.columns,
+      PaddingType::FULL => self.columns + kernel.columns - 1,
+    };
+
+    return Matrix::new(result_id, output_rows, output_columns);
+  }
+
   pub fn center_pad(&self, pad_rows: usize, pad_cols: usize) -> Self {
     let result_id: usize;
 
@@ -1599,6 +1635,72 @@ pub fn correlate_packed(
 
   unsafe {
     cuda_correlate_packed(
+      mat_ids.as_ptr() as *const c_ulonglong,
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      kernel_ids.as_ptr() as *const c_ulonglong,
+      kernel_rows,
+      kernel_cols,
+      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      padding_type,
+    );
+  }
+
+  let output_rows = match padding_type {
+    PaddingType::VALID => mat_rows - kernel_rows + 1,
+    PaddingType::SAME => mat_rows,
+    PaddingType::FULL => mat_rows + kernel_rows - 1,
+  };
+
+  let output_columns = match padding_type {
+    PaddingType::VALID => mat_cols - kernel_cols + 1,
+    PaddingType::SAME => mat_cols,
+    PaddingType::FULL => mat_cols + kernel_cols - 1,
+  };
+
+  return result_ids
+    .iter()
+    .map(|result_id| Matrix::new(*result_id, output_rows, output_columns))
+    .collect_vec();
+}
+
+pub fn convolve_packed(
+  matrices: &Vec<Matrix>,
+  kernels: &Vec<Matrix>,
+  padding_type: PaddingType,
+) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
+  let num_kernels = kernels.len();
+
+  if num_matrices != num_kernels {
+    panic!(
+      "Number of matrices must be equal to number of kernels! {} {}",
+      num_matrices, num_kernels
+    );
+  }
+
+  if num_matrices == 0 {
+    return Vec::new();
+  }
+
+  let mat_rows = matrices[0].rows;
+  let mat_cols = matrices[0].columns;
+  let kernel_rows = kernels[0].rows;
+  let kernel_cols = kernels[0].columns;
+
+  if matches!(padding_type, PaddingType::SAME)
+    && (kernel_rows != kernel_cols || kernel_rows % 2 == 0)
+  {
+    panic!("Kernel must be square and odd for same correlation!");
+  }
+
+  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
+  let kernel_ids = kernels.iter().map(|kernel| kernel.get_id()).collect_vec();
+  let mut result_ids = vec![0; num_matrices];
+
+  unsafe {
+    cuda_convolve_packed(
       mat_ids.as_ptr() as *const c_ulonglong,
       num_matrices,
       mat_rows,

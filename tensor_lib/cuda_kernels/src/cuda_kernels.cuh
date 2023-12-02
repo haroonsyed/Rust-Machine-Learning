@@ -54,6 +54,8 @@ size_t cuda_rotate_180(size_t mat_id, size_t mat_rows, size_t mat_cols);
 void cuda_rotate_180_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
 size_t cuda_correlate(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, PaddingType padding_type);
 void cuda_correlate_packed(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_ids, PaddingType padding_type);
+size_t cuda_convolve(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, PaddingType padding_type);
+void cuda_convolve_packed(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_ids, PaddingType padding_type);
 size_t cuda_img2col(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t kernel_rows, size_t kernel_cols, PaddingType padding_type);  // Take an image and convert it to a matrix of columns based on patches (with specified padding) the filter makes of image
 size_t cuda_flatten_array(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);                                                              // Take n same_dimension matrices and flatten them into an array
 void cuda_unflatten_array(size_t array_id, size_t arr_size, size_t mat_rows, size_t mat_cols, size_t* mat_ids);                                                 // Take an array and unflatten it into n same_dimension matrices

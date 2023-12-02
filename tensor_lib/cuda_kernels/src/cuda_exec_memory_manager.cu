@@ -24,7 +24,7 @@ bool parallel_stream_execution = false;
 cublasHandle_t handle;
 size_t mat_generated_count(0);
 size_t chunks_generated_count(0);
-const size_t chunk_size(sizeof(char) * 1024 * 1024 * 1);  // 1 MB
+const size_t chunk_size(sizeof(char) * 1);  // 1 MB
 std::vector<MatrixMemBlock> matrix_map;
 std::vector<size_t> free_mat_ids;
 std::vector<ChunkMemBlock> gpu_mem_blocks;
