@@ -1,7 +1,7 @@
 use std::ffi::c_float;
 use std::ffi::c_ulonglong;
 
-use crate::ConvolutionType;
+use crate::PaddingType;
 
 #[derive(Clone)]
 #[repr(C)] // Used to return a tuple from C
@@ -269,16 +269,16 @@ extern "C" {
     mat_rows: usize,
     mat_cols: usize,
   );
-  pub fn cuda_convolution(
+  pub fn cuda_correlate(
     mat1_id: usize,
     mat1_rows: usize,
     mat1_cols: usize,
     kernel_id: usize,
     kernel_rows: usize,
     kernel_cols: usize,
-    conv_type: ConvolutionType,
+    conv_type: PaddingType,
   ) -> usize;
-  pub fn cuda_convolution_packed(
+  pub fn cuda_correlate_packed(
     mat_ids: *const c_ulonglong,
     num_matrices: usize,
     mat_rows: usize,
@@ -287,7 +287,27 @@ extern "C" {
     kernel_rows: usize,
     kernel_cols: usize,
     out_ids: *mut c_ulonglong,
-    conv_type: ConvolutionType,
+    conv_type: PaddingType,
+  );
+  pub fn cuda_convolve(
+    mat1_id: usize,
+    mat1_rows: usize,
+    mat1_cols: usize,
+    kernel_id: usize,
+    kernel_rows: usize,
+    kernel_cols: usize,
+    conv_type: PaddingType,
+  ) -> usize;
+  pub fn cuda_convolve_packed(
+    mat_ids: *const c_ulonglong,
+    num_matrices: usize,
+    mat_rows: usize,
+    mat_cols: usize,
+    kernel_ids: *const c_ulonglong,
+    kernel_rows: usize,
+    kernel_cols: usize,
+    out_ids: *mut c_ulonglong,
+    conv_type: PaddingType,
   );
   pub fn cuda_img2col(
     mat_ids: *const c_ulonglong,
@@ -296,7 +316,7 @@ extern "C" {
     mat_cols: usize,
     kernel_rows: usize,
     kernel_cols: usize,
-    conv_type: ConvolutionType,
+    conv_type: PaddingType,
   ) -> usize;
   pub fn cuda_flatten_array(
     mat_ids: *const c_ulonglong,

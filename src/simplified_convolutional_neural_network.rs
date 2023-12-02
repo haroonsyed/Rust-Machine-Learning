@@ -114,7 +114,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
         filter_output_dimensions_per_layer[layer_index - 1]
       };
 
-      // This output_dimension = (input - filter + 1) assuming valid convolutions
+      // This output_dimension = (input - filter + 1) assuming valid correlates
       let output_dimension_width = prev_out_dimensions.0 - filter_dimension + 1;
       let output_dimension_height = prev_out_dimensions.1 - filter_dimension + 1;
 
@@ -281,7 +281,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
 
           // Channel
           for (channel, kernel) in izip!(current_layer_input, filter) {
-            let channel_output = channel.convolution(kernel, ConvolutionType::VALID);
+            let channel_output = channel.correlate(kernel, PaddingType::VALID);
             filter_output.element_add_inplace(&channel_output);
           }
 
@@ -328,12 +328,11 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
         // Xm' = Xm - sum(de/dy * conv_full * Knm)
 
         // PER DEPTH
-        let delta_xm = next_error.convolution(&filter[0].rotate_180(), ConvolutionType::FULL);
+        let delta_xm = next_error.correlate(&filter[0].rotate_180(), PaddingType::FULL);
         filter.iter().enumerate().for_each(|(index, channel)| {
           if index > 0 {
-            delta_xm.element_add_inplace(
-              &next_error.convolution(&channel.rotate_180(), ConvolutionType::FULL),
-            );
+            delta_xm
+              .element_add_inplace(&next_error.correlate(&channel.rotate_180(), PaddingType::FULL));
           }
         });
         return delta_xm;
@@ -351,7 +350,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
         // PER DEPTH
         for (channel, prev_channel_output) in izip!(filter.iter(), prev_layer_outputs.iter()) {
           // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
-          let delta_channel = prev_channel_output.convolution(error, ConvolutionType::VALID);
+          let delta_channel = prev_channel_output.correlate(error, PaddingType::VALID);
           channel.element_subtract_inplace(&delta_channel.scalar_multiply(learning_rate));
         }
       }

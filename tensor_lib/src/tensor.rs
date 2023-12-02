@@ -489,35 +489,35 @@ impl Tensor {
     return Tensor::from_matrices(&vec![result], vec![result_rows, result_cols]);
   }
 
-  pub fn convolution(&self, kernels: &Tensor, conv_type: ConvolutionType) -> Tensor {
+  pub fn correlate(&self, kernels: &Tensor, padding_type: PaddingType) -> Tensor {
     // Check rank
     if self.get_rank() > 3 || kernels.get_rank() > 3 {
       panic!("Cannot currently convolve a tensor with rank greater than 3");
     }
 
     if self.get_rank() < 3 && kernels.get_rank() < 3 {
-      let conv_result = self.get_data().convolution(&kernels.get_data(), conv_type);
-      let conv_result_rows = conv_result.rows;
-      let conv_result_cols = conv_result.columns;
-      return Tensor::from_matrices(&vec![conv_result], vec![conv_result_rows, conv_result_cols]);
+      let corr_result = self.get_data().correlate(&kernels.get_data(), padding_type);
+      let corr_result_rows = corr_result.rows;
+      let corr_result_cols = corr_result.columns;
+      return Tensor::from_matrices(&vec![corr_result], vec![corr_result_rows, corr_result_cols]);
     }
 
     // Ensure the number of kernels matches the number of channels
     if self.dimensions[0] != kernels.dimensions[0] {
-      panic!("Number of kernels must match number of channels (currently for 3d convolution)");
+      panic!("Number of kernels must match number of channels (currently for 3d correlation)");
     }
 
-    let mut conv_results = Vec::new();
+    let mut corr_results = Vec::new();
     for (channel, kernel) in izip!(self.iter(), kernels.iter()) {
       let channel_matrix = channel.get_data();
       let kernel_matrix = kernel.get_data();
-      let result = channel_matrix.convolution(&kernel_matrix, conv_type);
-      conv_results.push(result);
+      let result = channel_matrix.correlate(&kernel_matrix, padding_type);
+      corr_results.push(result);
     }
 
-    let result = &conv_results[0];
-    for conv_result in &conv_results[1..] {
-      result.element_add_inplace(&conv_result);
+    let result = &corr_results[0];
+    for corr_result in &corr_results[1..] {
+      result.element_add_inplace(&corr_result);
     }
 
     let result_rows = result.rows;
