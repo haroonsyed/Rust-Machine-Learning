@@ -383,7 +383,6 @@ impl CNN_Layer for ConvolutionalLayerRust {
   }
 
   fn backpropogation(&mut self, sample_output_errors: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
-    let mut sample_input_errors = Vec::new();
     let normalization_factor = 1.0 / sample_output_errors.len() as f32;
 
     // n is the filter
@@ -391,7 +390,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
 
     // Apply relu prime
 
-    let filter_error_flattened = sample_output_errors
+    let filter_output_error_flattened = sample_output_errors
       .to_owned()
       .into_iter()
       .flatten()
@@ -405,7 +404,20 @@ impl CNN_Layer for ConvolutionalLayerRust {
       .collect_vec();
 
     element_ReLU_prime_packed(&prev_output_flattened, true);
-    element_multiply_packed(&filter_error_flattened, &prev_output_flattened, true);
+    element_multiply_packed(&filter_output_error_flattened, &prev_output_flattened, true);
+
+    // Delta Input Packed
+    let mut delta_input_output_errors = Vec::new();
+    let mut delta_input_filters = Vec::new();
+    let mut delta_input_to_sum_to = Vec::new();
+    let mut delta_input_to_sum = Vec::new();
+
+    // Bias Update Packed
+    let bias_gradients = filter_output_error_flattened.clone();
+
+    // Filter Update Packed
+    let mut delta_filter_prev_input = Vec::new();
+    let mut delta_filter_output_error = Vec::new();
 
     // PER SAMPLE
     for (sample_output_error, sample_prev_input) in
@@ -413,33 +425,35 @@ impl CNN_Layer for ConvolutionalLayerRust {
     {
       // Calculate the input error
       // PER FILTER
-      let mut sample_input_error = Vec::new();
       for (filter_error, filter) in izip!(sample_output_error.iter(), self.filters.iter()) {
         // deltaXm = sum(de/dy * conv_full * Knm)
-        let delta_xm = filter_error.correlate(&filter[0].rotate_180(), PaddingType::FULL);
+        // let delta_xm = filter_error.convolve(&filter[0], PaddingType::FULL);
+        delta_input_output_errors.push(filter_error.clone());
+        delta_input_filters.push(filter[0].clone());
+        let index_to_sum_to = delta_input_output_errors.len() - 1;
 
         // PER CHANNEL
         for channel in filter[1..].iter() {
-          delta_xm
-            .element_add_inplace(&filter_error.correlate(&channel.rotate_180(), PaddingType::FULL));
+          // delta_xm.element_add_inplace(&filter_error.convolve(&channel, PaddingType::FULL));
+          delta_input_output_errors.push(filter_error.clone());
+          delta_input_filters.push(channel.clone());
+          delta_input_to_sum_to.push(index_to_sum_to);
+          delta_input_to_sum.push(delta_input_output_errors.len() - 1);
         }
-
-        sample_input_error.push(delta_xm);
       }
-      sample_input_errors.push(sample_input_error);
 
       // Update the biases
       // PER FILTER
-      for (filter_output_error, bias, optimizer) in izip!(
-        sample_output_error.iter(),
-        self.biases.iter_mut(),
-        self.bias_optimizers.iter_mut()
-      ) {
-        // b' = b - de/dy * learning_rate
-        let bias_gradient = filter_output_error;
-        let bias_step = optimizer.calculate_step(&bias_gradient);
-        bias.element_subtract_inplace(&bias_step.scalar_multiply_inplace(normalization_factor));
-      }
+      // for (filter_output_error, bias, optimizer) in izip!(
+      //   sample_output_error.iter(),
+      //   self.biases.iter_mut(),
+      //   self.bias_optimizers.iter_mut()
+      // ) {
+      //   // b' = b - de/dy * learning_rate
+      //   let bias_gradient = filter_output_error;
+      //   let bias_step = optimizer.calculate_step(&bias_gradient);
+      //   bias.element_subtract_inplace(&bias_step.scalar_multiply_inplace(normalization_factor));
+      // }
 
       // Update the filters
       // PER FILTER
@@ -453,13 +467,101 @@ impl CNN_Layer for ConvolutionalLayerRust {
           izip!(sample_prev_input, filter, filter_optimizer)
         {
           // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
-          let delta_channel = prev_channel_input.correlate(filter_output_error, PaddingType::VALID);
-          let channel_step = optimizer.calculate_step(&delta_channel);
-          channel
-            .element_subtract_inplace(&channel_step.scalar_multiply_inplace(normalization_factor));
+          // let delta_channel = prev_channel_input.correlate(filter_output_error, PaddingType::VALID);
+          delta_filter_prev_input.push(prev_channel_input.clone());
+          delta_filter_output_error.push(filter_output_error.clone());
+
+          // let channel_step = optimizer.calculate_step(&delta_channel);
+          // channel
+          //   .element_subtract_inplace(&channel_step.scalar_multiply_inplace(normalization_factor));
         }
       }
     }
+
+    ///////////////////
+    /// DELTA BIASES
+    ///////////////////
+    let bias_steps = izip!(self.bias_optimizers.iter_mut(), bias_gradients)
+      .map(|(optimizer, gradient)| optimizer.calculate_step(&gradient))
+      .collect_vec();
+    scalar_multiply_packed(
+      &bias_steps,
+      &vec![normalization_factor; bias_steps.len()],
+      true,
+    );
+    element_subtract_packed(&self.biases, &bias_steps, true);
+
+    ///////////////////
+    /// DELTA FILTERS
+    ///////////////////
+    let channel_gradients = correlate_packed(
+      &delta_filter_prev_input,
+      &delta_filter_output_error,
+      PaddingType::VALID,
+    );
+
+    // // Group the filter gradients per channel
+    // let filter_gradients = channel_gradients
+    //   .into_iter()
+    //   .chunks(self.output_dimensions.2)
+    //   .into_iter()
+    //   .map(|sample| sample.into_iter().collect_vec())
+    //   .collect_vec();
+
+    // let filter_steps = izip!(self.filter_optimizers.iter_mut(), filter_gradients)
+    //   .map(|(optimizer, filter_gradient)| {
+    //     izip!(optimizer.iter_mut(), filter_gradient)
+    //       .map(|(optimizer, gradient)| optimizer.calculate_step(&gradient))
+    //       .collect_vec()
+    //   })
+    //   .collect_vec();
+
+    let mut flattened_optimizers = Vec::new();
+    for filter_optimizer in self.filter_optimizers.iter_mut() {
+      for channel_optimizer in filter_optimizer.iter_mut() {
+        flattened_optimizers.push(channel_optimizer);
+      }
+    }
+
+    let filter_steps = izip!(flattened_optimizers, channel_gradients)
+      .map(|(optimizer, gradient)| optimizer.calculate_step(&gradient))
+      .collect_vec();
+    scalar_multiply_packed(
+      &filter_steps,
+      &vec![normalization_factor; filter_steps.len()],
+      true,
+    );
+
+    let flattened_filters = self.filters.to_owned().into_iter().flatten().collect_vec();
+    element_subtract_packed(&flattened_filters, &filter_steps, true);
+
+    ///////////////////
+    /// DELTA INPUTS
+    ///////////////////
+    let delta_input_convolutions = convolve_packed(
+      &delta_input_output_errors,
+      &delta_input_filters,
+      PaddingType::FULL,
+    );
+
+    let delta_input_sum_to = delta_input_to_sum_to
+      .iter()
+      .map(|index| delta_input_convolutions[*index].clone())
+      .collect_vec();
+    let delta_input_to_sum = delta_input_to_sum
+      .iter()
+      .map(|index| delta_input_convolutions[*index].clone())
+      .collect_vec();
+    element_add_packed(&delta_input_sum_to, &delta_input_to_sum, true);
+    let delta_input_final_indices = delta_input_to_sum_to.into_iter().unique().collect_vec();
+
+    let sample_input_errors = delta_input_final_indices
+      .iter()
+      .map(|&index| delta_input_convolutions[index].clone())
+      .chunks(self.filters.len())
+      .into_iter()
+      .map(|sample| sample.into_iter().collect_vec())
+      .collect_vec();
 
     return sample_input_errors;
   }
