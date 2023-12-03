@@ -6,9 +6,9 @@ use tensor_lib::cuda_bindings::cuda_synchronize;
 use crate::{
   convolutional_neural_network::ConvolutionalNeuralNetworkRust,
   image_util::ImageBatchLoaderRust,
-  optimizers::{
-    AdagradOptimizer, AdamOptimizer, MomentumOptimizer, RMSPropOptimizer,
-    StochasticGradientDescentOptimizer,
+  packed_optimizers::{
+    PackedAdagradOptimizer, PackedAdamOptimizer, PackedMomentumOptimizer, PackedRMSPropOptimizer,
+    PackedStochasticGradientDescentOptimizer,
   },
 };
 
@@ -42,27 +42,27 @@ impl ConvolutionalNeuralNetwork {
   }
 
   fn set_optimizer_stochastic_gradient_descent(&mut self, learning_rate: f32) {
-    let optimizer = Box::new(StochasticGradientDescentOptimizer::new(learning_rate));
+    let optimizer = Box::new(PackedStochasticGradientDescentOptimizer::new(learning_rate));
     self.network.set_optimizer(optimizer);
   }
 
   fn set_optimizer_momentum(&mut self, learning_rate: f32, beta: f32) {
-    let optimizer = Box::new(MomentumOptimizer::new(learning_rate, beta));
+    let optimizer = Box::new(PackedMomentumOptimizer::new(learning_rate, beta));
     self.network.set_optimizer(optimizer);
   }
 
   fn set_optimizer_adagrad(&mut self, learning_rate: f32) {
-    let optimizer = Box::new(AdagradOptimizer::new(learning_rate));
+    let optimizer = Box::new(PackedAdagradOptimizer::new(learning_rate));
     self.network.set_optimizer(optimizer);
   }
 
   fn set_optimizer_RMSProp(&mut self, learning_rate: f32, beta: f32) {
-    let optimizer = Box::new(RMSPropOptimizer::new(learning_rate, beta));
+    let optimizer = Box::new(PackedRMSPropOptimizer::new(learning_rate, beta));
     self.network.set_optimizer(optimizer);
   }
 
   fn set_optimizer_adam(&mut self, learning_rate: f32, beta1: f32, beta2: f32) {
-    let optimizer = Box::new(AdamOptimizer::new(learning_rate, beta1, beta2));
+    let optimizer = Box::new(PackedAdamOptimizer::new(learning_rate, beta1, beta2));
     self.network.set_optimizer(optimizer);
   }
 

@@ -3,7 +3,7 @@ use tensor_lib::*;
 
 use crate::{
   basic_neural_network::BasicNeuralNetworkRust,
-  optimizers::{AdamOptimizer, Optimizer},
+  packed_optimizers::{PackedAdamOptimizer, PackedOptimizer},
 };
 
 pub struct ConvolutionalNeuralNetworkRust {
@@ -11,7 +11,7 @@ pub struct ConvolutionalNeuralNetworkRust {
   pub num_classifications: usize,
   pub layers: Vec<Box<dyn CNN_Layer>>,
   fully_connected_layer: Option<FullyConnectedLayer>,
-  optimizer: Box<dyn Optimizer>,
+  optimizer: Box<dyn PackedOptimizer>,
 }
 
 impl ConvolutionalNeuralNetworkRust {
@@ -26,7 +26,7 @@ impl ConvolutionalNeuralNetworkRust {
       num_classifications,
       layers: Vec::new(),
       fully_connected_layer: None,
-      optimizer: Box::new(AdamOptimizer::new(1e-2, 0.9, 0.999)), // Default optimizer
+      optimizer: Box::new(PackedAdamOptimizer::new(1e-2, 0.9, 0.999)), // Default optimizer
     };
   }
 
@@ -88,10 +88,10 @@ impl ConvolutionalNeuralNetworkRust {
       .as_mut()
       .unwrap()
       .fully_connected_layer
-      .set_optimizer(self.optimizer.clone());
+      .set_optimizer(self.optimizer.get_single_optimizer());
   }
 
-  pub fn set_optimizer(&mut self, optimizer: Box<dyn Optimizer>) {
+  pub fn set_optimizer(&mut self, optimizer: Box<dyn PackedOptimizer>) {
     self.optimizer = optimizer;
 
     // TODO: Work out nice way to set optimizer after adding layers (although this is not really needed, but it would be nice)
@@ -211,14 +211,14 @@ pub trait CNN_Layer: Send {
 }
 
 pub struct ConvolutionalLayerRust {
-  pub filters: Vec<Vec<Matrix>>,                       // Filter -> Depth
-  pub biases: Vec<Matrix>,                             // Filter
-  pub filter_optimizers: Vec<Vec<Box<dyn Optimizer>>>, // Filter -> Depth
-  pub bias_optimizers: Vec<Box<dyn Optimizer>>,        // Bias
-  pub prev_input: Vec<Vec<Matrix>>,                    // Sample -> Depth
-  pub prev_output: Vec<Vec<Matrix>>,                   // Sample -> Depth
-  pub input_dimensions: (usize, usize, usize),         // Height, Width, Depth
-  pub output_dimensions: (usize, usize, usize),        // Height, Width, Depth
+  pub filters: Vec<Vec<Matrix>>, // Filter -> Depth
+  pub biases: Vec<Matrix>,       // Filter
+  pub packed_filter_optimizer: Box<dyn PackedOptimizer>, // Filter -> Depth
+  pub packed_bias_optimizer: Box<dyn PackedOptimizer>, // Bias
+  pub prev_input: Vec<Vec<Matrix>>, // Sample -> Depth
+  pub prev_output: Vec<Vec<Matrix>>, // Sample -> Depth
+  pub input_dimensions: (usize, usize, usize), // Height, Width, Depth
+  pub output_dimensions: (usize, usize, usize), // Height, Width, Depth
 }
 
 impl ConvolutionalLayerRust {
@@ -229,7 +229,7 @@ impl ConvolutionalLayerRust {
     filter_height: usize,
     filter_width: usize,
     filter_count: usize,
-    optimizer: &Box<dyn Optimizer>,
+    optimizer: &Box<dyn PackedOptimizer>,
   ) -> Self {
     let input_dimensions = (input_height, input_width, input_depth);
     let output_dimensions = (
@@ -239,16 +239,13 @@ impl ConvolutionalLayerRust {
     );
 
     let mut filters = Vec::new();
-    let mut filter_optimizers = Vec::new();
     let mut biases = Vec::new();
-    let mut bias_optimizers = Vec::new();
     let prev_input = Vec::new();
     let prev_output = Vec::new();
 
     // Create the filters
     for _ in 0..filter_count {
       let mut filter = Vec::new();
-      let mut channel_optimizers = Vec::new();
       for _ in 0..input_depth {
         filter.push(Matrix::new_random(
           0.0,
@@ -256,23 +253,20 @@ impl ConvolutionalLayerRust {
           filter_height,
           filter_width,
         ));
-        channel_optimizers.push(optimizer.clone());
       }
       filters.push(filter);
-      filter_optimizers.push(channel_optimizers);
     }
 
     // Create the biases
     for _ in 0..filter_count {
       biases.push(Matrix::zeros(output_dimensions.0, output_dimensions.1));
-      bias_optimizers.push(optimizer.clone());
     }
 
     return Self {
       filters,
       biases,
-      filter_optimizers,
-      bias_optimizers,
+      packed_filter_optimizer: optimizer.clone(),
+      packed_bias_optimizer: optimizer.clone(),
       prev_input,
       prev_output,
       input_dimensions,
@@ -383,6 +377,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
   }
 
   fn backpropogation(&mut self, sample_output_errors: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
+    let sample_count = sample_output_errors.len();
     let normalization_factor = 1.0 / sample_output_errors.len() as f32;
 
     // n is the filter
@@ -420,6 +415,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
     let mut delta_filter_output_error = Vec::new();
 
     // PER SAMPLE
+    let mut current_sample_index = 0;
     for (sample_output_error, sample_prev_input) in
       izip!(sample_output_errors, self.prev_input.iter())
     {
@@ -427,105 +423,61 @@ impl CNN_Layer for ConvolutionalLayerRust {
       // PER FILTER
       for (filter_error, filter) in izip!(sample_output_error.iter(), self.filters.iter()) {
         // deltaXm = sum(de/dy * conv_full * Knm)
-        // let delta_xm = filter_error.convolve(&filter[0], PaddingType::FULL);
-        delta_input_output_errors.push(filter_error.clone());
-        delta_input_filters.push(filter[0].clone());
-        let index_to_sum_to = delta_input_output_errors.len() - 1;
+        let sum_to_offset = current_sample_index * self.input_dimensions.2;
 
         // PER CHANNEL
-        for channel in filter[1..].iter() {
-          // delta_xm.element_add_inplace(&filter_error.convolve(&channel, PaddingType::FULL));
+        for (channel_index, channel) in filter.iter().enumerate() {
           delta_input_output_errors.push(filter_error.clone());
           delta_input_filters.push(channel.clone());
-          delta_input_to_sum_to.push(index_to_sum_to);
+          delta_input_to_sum_to.push(sum_to_offset + channel_index);
           delta_input_to_sum.push(delta_input_output_errors.len() - 1);
         }
       }
 
-      // Update the biases
-      // PER FILTER
-      // for (filter_output_error, bias, optimizer) in izip!(
-      //   sample_output_error.iter(),
-      //   self.biases.iter_mut(),
-      //   self.bias_optimizers.iter_mut()
-      // ) {
-      //   // b' = b - de/dy * learning_rate
-      //   let bias_gradient = filter_output_error;
-      //   let bias_step = optimizer.calculate_step(&bias_gradient);
-      //   bias.element_subtract_inplace(&bias_step.scalar_multiply_inplace(normalization_factor));
-      // }
-
       // Update the filters
       // PER FILTER
-      for (filter_output_error, filter, filter_optimizer) in izip!(
-        sample_output_error,
-        self.filters.iter(),
-        self.filter_optimizers.iter_mut()
-      ) {
+      for (filter_output_error, filter) in izip!(sample_output_error, self.filters.iter(),) {
         // PER CHANNEL
-        for (prev_channel_input, channel, optimizer) in
-          izip!(sample_prev_input, filter, filter_optimizer)
-        {
+        for (prev_channel_input, channel) in izip!(sample_prev_input, filter) {
           // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
-          // let delta_channel = prev_channel_input.correlate(filter_output_error, PaddingType::VALID);
           delta_filter_prev_input.push(prev_channel_input.clone());
           delta_filter_output_error.push(filter_output_error.clone());
-
-          // let channel_step = optimizer.calculate_step(&delta_channel);
-          // channel
-          //   .element_subtract_inplace(&channel_step.scalar_multiply_inplace(normalization_factor));
         }
       }
+
+      current_sample_index += 1;
     }
 
     ///////////////////
     /// DELTA BIASES
     ///////////////////
-    let bias_steps = izip!(self.bias_optimizers.iter_mut(), bias_gradients)
-      .map(|(optimizer, gradient)| optimizer.calculate_step(&gradient))
+    // b' = b - de/dy * learning_rate
+    let repeated_bias = (0..sample_count)
+      .flat_map(|_| self.biases.clone())
       .collect_vec();
+    let bias_steps = self.packed_bias_optimizer.calculate_steps(&bias_gradients);
+
     scalar_multiply_packed(
       &bias_steps,
       &vec![normalization_factor; bias_steps.len()],
       true,
     );
-    element_subtract_packed(&self.biases, &bias_steps, true);
+    element_subtract_packed(&repeated_bias, &bias_steps, true);
 
     ///////////////////
     /// DELTA FILTERS
     ///////////////////
+    // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
     let channel_gradients = correlate_packed(
       &delta_filter_prev_input,
       &delta_filter_output_error,
       PaddingType::VALID,
     );
 
-    // // Group the filter gradients per channel
-    // let filter_gradients = channel_gradients
-    //   .into_iter()
-    //   .chunks(self.output_dimensions.2)
-    //   .into_iter()
-    //   .map(|sample| sample.into_iter().collect_vec())
-    //   .collect_vec();
+    let filter_steps = self
+      .packed_filter_optimizer
+      .calculate_steps(&channel_gradients);
 
-    // let filter_steps = izip!(self.filter_optimizers.iter_mut(), filter_gradients)
-    //   .map(|(optimizer, filter_gradient)| {
-    //     izip!(optimizer.iter_mut(), filter_gradient)
-    //       .map(|(optimizer, gradient)| optimizer.calculate_step(&gradient))
-    //       .collect_vec()
-    //   })
-    //   .collect_vec();
-
-    let mut flattened_optimizers = Vec::new();
-    for filter_optimizer in self.filter_optimizers.iter_mut() {
-      for channel_optimizer in filter_optimizer.iter_mut() {
-        flattened_optimizers.push(channel_optimizer);
-      }
-    }
-
-    let filter_steps = izip!(flattened_optimizers, channel_gradients)
-      .map(|(optimizer, gradient)| optimizer.calculate_step(&gradient))
-      .collect_vec();
     scalar_multiply_packed(
       &filter_steps,
       &vec![normalization_factor; filter_steps.len()],
@@ -533,11 +485,15 @@ impl CNN_Layer for ConvolutionalLayerRust {
     );
 
     let flattened_filters = self.filters.to_owned().into_iter().flatten().collect_vec();
-    element_subtract_packed(&flattened_filters, &filter_steps, true);
+    let repeated_flattened_filters = (0..sample_count)
+      .flat_map(|_| flattened_filters.clone())
+      .collect_vec();
+    element_subtract_packed(&repeated_flattened_filters, &filter_steps, true);
 
     ///////////////////
     /// DELTA INPUTS
     ///////////////////
+    // deltaXm = sum(de/dy * conv_full * Knm)
     let delta_input_convolutions = convolve_packed(
       &delta_input_output_errors,
       &delta_input_filters,
