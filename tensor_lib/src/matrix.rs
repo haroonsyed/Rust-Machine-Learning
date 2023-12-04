@@ -60,6 +60,33 @@ impl Matrix {
     return (*self.id).0;
   }
 
+  pub fn set_data(&self, data: &Vec<Vec<f32>>) {
+    if data.len() == 0 {
+      panic!("Cannot set data to empty matrix!");
+    }
+
+    if (self.rows, self.columns) != (data.len(), data[0].len()) {
+      panic!("Data shape does not match matrix shape!");
+    }
+
+    let mut flattened = Vec::<f32>::with_capacity(self.get_data_length());
+    data.iter().for_each(|row| flattened.extend(row));
+
+    unsafe {
+      upload_matrix_data(self.get_id(), flattened.as_ptr(), self.rows, self.columns);
+    }
+  }
+
+  pub fn set_data_1d(&self, data: &Vec<f32>) {
+    if data.len() != self.get_data_length() {
+      panic!("Data shape does not match matrix shape!");
+    }
+
+    unsafe {
+      upload_matrix_data(self.get_id(), data.as_ptr(), self.rows, self.columns);
+    }
+  }
+
   pub fn get_data(&self) -> Vec<Vec<f32>> {
     let mut data = Vec::<c_float>::with_capacity(self.get_data_length());
     unsafe {
@@ -885,6 +912,24 @@ impl Matrix {
 
     return self;
   }
+}
+
+pub fn create_matrix_group(rows: usize, columns: usize, count: usize) -> Vec<Matrix> {
+  let mut mat_ids = vec![0; count];
+
+  unsafe {
+    register_matrix_group(
+      rows,
+      columns,
+      count,
+      mat_ids.as_mut_ptr() as *mut c_ulonglong,
+    );
+  }
+
+  return mat_ids
+    .iter()
+    .map(|mat_id| Matrix::new(*mat_id, rows, columns))
+    .collect_vec();
 }
 
 // All matrices are required to be the same shape

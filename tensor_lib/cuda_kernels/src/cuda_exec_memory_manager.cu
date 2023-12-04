@@ -1,35 +1,26 @@
 #include "./cuda_exec_memory_manager.cuh"
 
-struct MatrixMemBlock {
-    size_t chunk_id;
-    size_t chunk_offset;
-    size_t rows;
-    size_t columns;
+struct MatrixBlock {
+    size_t block_id;
+    size_t block_offset;
+    size_t block_size_requested;
 };
 
-struct ChunkMemBlock {
+struct MemBlock {
     char* address;
-    size_t chunk_id;
-    size_t used_size;             // Size of the chunk allocated to matrices
-    size_t allocation_size_left;  // The amount of contiguous free space at the end of the chunk.
-    size_t total_size;            // Not necessarily the same as used_size + allocation_size_left. This is the size of the chunk.
+    size_t requested_size_used;
 };
 
 bool library_init = false;
-cudaStream_t mem_stream;
 cudaMemPool_t mempool;
-std::vector<cudaStream_t> exec_streams;
-bool parallel_stream_execution = false;
 
 cublasHandle_t handle;
-size_t mat_generated_count(0);
-size_t chunks_generated_count(0);
-const size_t chunk_size(sizeof(char) * 1);  // 1 MB
-std::vector<MatrixMemBlock> matrix_map;
+size_t matrices_generated_count(0);
+std::vector<MatrixBlock> matrix_blocks;
 std::vector<size_t> free_mat_ids;
-std::vector<ChunkMemBlock> gpu_mem_blocks;
-std::vector<size_t> free_chunk_ids;
-ChunkMemBlock* current_chunk = nullptr;
+size_t blocks_generated_count(0);
+std::vector<MemBlock> mem_blocks;
+std::vector<size_t> free_block_ids;
 
 /////////////////////
 /// INIT API
@@ -46,84 +37,38 @@ void init_min_pool_size() {
     cudaMemPoolSetAttribute(mempool, cudaMemPoolAttrReleaseThreshold, &threshold);
 }
 void init_library() {
-    // Init streams
-    int exec_stream_count = 4;
-    for (int i = 0; i < exec_stream_count; i++) {
-        cudaStream_t stream;
-        cudaStreamCreate(&stream);
-        exec_streams.push_back(stream);
-    }
-
-    // Init mem stream, for now we will just use stream 0
-    mem_stream = 0;
-    // cudaStreamCreate(&mem_stream);
-
     // Init cublas
-    init_cublas_handle();
+    // init_cublas_handle();
 
     // Init pool
     init_min_pool_size();
 
     library_init = true;
 }
-void enable_parallel_stream_execution() {
-    // Wait for all streams to finish
-    cudaDeviceSynchronize();
-    parallel_stream_execution = true;
-}
-void disable_parallel_stream_execution() {
-    // Wait for all streams to finish
-    cudaDeviceSynchronize();
-    parallel_stream_execution = false;
-}
 /////////////////////
 /// Stream Management
 /////////////////////
 cudaStream_t get_stream() {
-    if (parallel_stream_execution) {
-        return exec_streams[mat_generated_count % exec_streams.size()];
-    }
     return 0;
 }
 /////////////////////
 /// Memory Allocation
 /////////////////////
 void* get_block_gpu_address(size_t block_id, size_t block_offset) {
-    ChunkMemBlock block = gpu_mem_blocks[block_id];
-    return block.address + block_offset;
+    MemBlock* block = &mem_blocks[block_id];
+    return block->address + block_offset;
 }
-std::pair<size_t, size_t> allocate_from_chunk(size_t size) {
-    // Check if we have enough space in the current chunk
-    if (current_chunk->allocation_size_left < size) {
-        printf("CHUNK NOT BIG ENOUGH FOR REQUESTED ALLOCATION");
-        abort();
-    }
-    size_t current_allocation_offset = current_chunk->total_size - current_chunk->allocation_size_left;
-    current_chunk->allocation_size_left -= size;
-    current_chunk->used_size += size;
-    return std::make_pair(current_chunk->chunk_id, current_allocation_offset);
-}
-void memory_manager_delete_block(ChunkMemBlock* block) {
-    gpuErrchk(cudaFreeAsync(block->address, mem_stream));
-    free_chunk_ids.push_back(block->chunk_id);
+void memory_manager_delete(size_t block_id) {
+    MemBlock* block = &mem_blocks[block_id];
+    gpuErrchk(cudaFreeAsync(block->address, 0));
+    free_block_ids.push_back(block_id);
 }
 void memory_manager_free(size_t block_id, size_t size) {
-    // Align size to 16 bytes
-    size = ((size / 16) + (size % 16 > 0 ? 1 : 0)) * 16;
+    MemBlock* block = &mem_blocks[block_id];
+    block->requested_size_used -= size;
 
-    ChunkMemBlock* block = &gpu_mem_blocks[block_id];
-    block->used_size -= size;
-
-    // Keep current chunk if it has allocatable space left
-    bool is_current_chunk = block == current_chunk;
-
-    // If the block is empty, free it
-    if (block->used_size == 0) {
-        if (is_current_chunk) {
-            current_chunk->allocation_size_left = current_chunk->total_size;
-        } else {
-            memory_manager_delete_block(block);
-        }
+    if (block->requested_size_used == 0) {
+        memory_manager_delete(block_id);
     }
 }
 void memory_manager_upload_to_allocation(size_t block_id, size_t block_offset, void* data, size_t size) {
@@ -132,106 +77,107 @@ void memory_manager_upload_to_allocation(size_t block_id, size_t block_offset, v
     void* address = get_block_gpu_address(block_id, block_offset);
     gpuErrchk(cudaMemcpy(address, data, size, cudaMemcpyHostToDevice));
 }
-// Allocate a chunk in multiple of chunk_size. Returns the chunkID and chunk offset
-std::pair<size_t, size_t> memory_manager_allocate(size_t size) {
+size_t memory_manager_allocate(size_t size) {
     if (!library_init) {
         init_library();
     }
 
-    // Round up size to a multiple of 16 bytes to ensure alignment
-    size = ((size / 16) + (size % 16 > 0 ? 1 : 0)) * 16;
-
-    if (current_chunk != nullptr && current_chunk->allocation_size_left >= size) {
-        return allocate_from_chunk(size);
-    }
-
-    // Delete current block if empty
-    if (current_chunk != nullptr && current_chunk->used_size == 0) {
-        memory_manager_delete_block(current_chunk);
-    }
-
-    // Determine the multiple of chunk_size that is greater than size
-    size_t min_chunk_multiple = ((size - 1) / chunk_size) + 1;
-    size_t curr_chunk_size = min_chunk_multiple * chunk_size;
-
     // Allocate a new chunk
     char* address;
-    gpuErrchk(cudaMallocAsync(&address, curr_chunk_size, mempool, mem_stream));
+    gpuErrchk(cudaMallocAsync(&address, size, mempool, 0));
 
-    ChunkMemBlock block;
+    MemBlock block;
     block.address = address;
-    block.used_size = 0;
-    block.allocation_size_left = curr_chunk_size;
-    block.total_size = curr_chunk_size;
+    block.requested_size_used = size;
 
-    // Determine Chunk ID
-    size_t chunk_id = free_chunk_ids.size() > 0 ? free_chunk_ids.back() : chunks_generated_count++;
-    if (free_chunk_ids.size() > 0) {
-        gpu_mem_blocks[chunk_id] = block;
-        free_chunk_ids.pop_back();
+    // Store the block
+    size_t block_id = free_block_ids.size() > 0 ? free_block_ids.back() : blocks_generated_count++;
+    if (free_block_ids.size() > 0) {
+        mem_blocks[block_id] = block;
+        free_block_ids.pop_back();
     } else {
-        gpu_mem_blocks.emplace_back(block);
+        mem_blocks.push_back(block);
     }
-    gpu_mem_blocks[chunk_id].chunk_id = chunk_id;
-    current_chunk = &gpu_mem_blocks[chunk_id];
 
-    return allocate_from_chunk(size);
+    return block_id;
 }
 /////////////////////
 /// Matrix Allocation
 /////////////////////
 float* get_matrix_gpu_address(size_t mat_id) {
-    MatrixMemBlock* mat = &matrix_map[mat_id];
-    size_t chunk = mat->chunk_id;
-    size_t offset = mat->chunk_offset;
-    return (float*)get_block_gpu_address(chunk, offset);
+    MatrixBlock* mat = &matrix_blocks[mat_id];
+    size_t block_id = mat->block_id;
+    size_t offset = mat->block_offset;
+    return (float*)get_block_gpu_address(block_id, offset);
 }
-size_t register_matrix_block(MatrixMemBlock mat) {
+size_t register_matrix_block(MatrixBlock mat) {
     // Register with the map for retrieval later
-    size_t mat_id = free_mat_ids.size() > 0 ? free_mat_ids.back() : mat_generated_count;
+    size_t mat_id = free_mat_ids.size() > 0 ? free_mat_ids.back() : matrices_generated_count++;
     if (free_mat_ids.size() > 0) {
-        matrix_map[mat_id] = mat;
+        matrix_blocks[mat_id] = mat;
         free_mat_ids.pop_back();
     } else {
-        matrix_map.emplace_back(mat);
-        mat_generated_count++;
+        matrix_blocks.push_back(mat);
     }
     return mat_id;
 }
 size_t register_matrix(size_t rows, size_t columns) {
     // Allocate the memory
-    auto chunk_info = memory_manager_allocate(sizeof(float) * rows * columns);
-    size_t chunk_id = chunk_info.first;
-    size_t chunk_offset = chunk_info.second;
+    size_t block_size = sizeof(float) * rows * columns;
+    size_t block_id = memory_manager_allocate(block_size);
 
     // Create the matrix block
-    MatrixMemBlock mat;
-    mat.chunk_id = chunk_id;
-    mat.chunk_offset = chunk_offset;
-    mat.rows = rows;
-    mat.columns = columns;
+    MatrixBlock mat;
+    mat.block_id = block_id;
+    mat.block_offset = 0;
+    mat.block_size_requested = block_size;
 
     return register_matrix_block(mat);
+}
+void register_matrix_group(size_t rows, size_t columns, size_t count, size_t* mat_ids) {
+    size_t requested_size = sizeof(float) * rows * columns;
+
+    // Ensure alignment of matrices to 256 bytes
+    size_t alignment = 16;
+    size_t aligned_requested_size = requested_size + (alignment - (requested_size % alignment));
+    size_t real_block_size = aligned_requested_size * count;
+
+    // Allocate the memory
+    size_t block_id = memory_manager_allocate(real_block_size);
+
+    for (size_t i = 0; i < count; i++) {
+        // Create the matrix block
+        MatrixBlock mat;
+        mat.block_id = block_id;
+        mat.block_offset = i * aligned_requested_size;
+        mat.block_size_requested = aligned_requested_size;
+
+        mat_ids[i] = register_matrix_block(mat);
+    }
+}
+void upload_matrix_data(size_t mat_id, float* data, size_t rows, size_t columns) {
+    // Block information
+    MatrixBlock* mat = &matrix_blocks[mat_id];
+    size_t block_id = mat->block_id;
+    size_t block_offset = mat->block_offset;
+    size_t data_size = sizeof(float) * rows * columns;
+
+    // Upload the data
+    memory_manager_upload_to_allocation(block_id, block_offset, data, data_size);
 }
 size_t register_matrix_with_data(float* data, size_t rows, size_t columns) {
     // Create the matrix block
     size_t matrix_id = register_matrix(rows, columns);
 
-    // Block information
-    MatrixMemBlock* mat = &matrix_map[matrix_id];
-    size_t chunk_id = mat->chunk_id;
-    size_t chunk_offset = mat->chunk_offset;
-    size_t mat_size = sizeof(float) * rows * columns;
-
     // Upload the data
-    memory_manager_upload_to_allocation(chunk_id, chunk_offset, data, mat_size);
+    upload_matrix_data(matrix_id, data, rows, columns);
     return matrix_id;
 }
 void unregister_matrix(size_t mat_id) {
-    MatrixMemBlock* mat = &matrix_map[mat_id];
-    size_t chunk_id = mat->chunk_id;
-    size_t matrix_size = mat->rows * mat->columns * sizeof(float);
-    memory_manager_free(chunk_id, matrix_size);
+    MatrixBlock* mat = &matrix_blocks[mat_id];
+    size_t block_id = mat->block_id;
+    size_t matrix_size = mat->block_size_requested;
+    memory_manager_free(block_id, matrix_size);
     free_mat_ids.push_back(mat_id);
 }
 void get_matrix_data(size_t mat_id, int rows, int columns, float* data_buffer) {

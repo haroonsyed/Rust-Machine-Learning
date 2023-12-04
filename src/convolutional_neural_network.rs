@@ -105,15 +105,29 @@ impl ConvolutionalNeuralNetworkRust {
     observations: &Vec<Vec<Vec<f32>>>,
   ) -> Vec<Vec<Matrix>> {
     let (input_height, input_width, _) = self.input_dimensions;
-    return observations
-      .iter()
-      .map(|sample| {
-        sample
-          .iter()
-          .map(|channel_data| Matrix::new_1d(channel_data, input_height, input_width))
-          .collect_vec()
-      })
+    let sample_count = observations.len();
+    let channel_count = observations[0].len();
+    let matrix_count = sample_count * channel_count;
+
+    let matrices = create_matrix_group(input_height, input_width, matrix_count);
+
+    let mut current_matrix_index = 0;
+    for sample in observations {
+      for channel in sample {
+        matrices[current_matrix_index].set_data_1d(channel);
+        current_matrix_index += 1;
+      }
+    }
+
+    // Now group into sample -> depth
+    let grouped_matrices = matrices
+      .into_iter()
+      .chunks(channel_count)
+      .into_iter()
+      .map(|sample| sample.into_iter().collect_vec())
       .collect_vec();
+
+    return grouped_matrices;
   }
 
   pub fn classify(&mut self, features_test: &Vec<Vec<Vec<f32>>>) -> Vec<f32> {
