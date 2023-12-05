@@ -528,7 +528,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
     let sample_input_errors = delta_input_final_indices
       .iter()
       .map(|&index| delta_input_convolutions[index].clone())
-      .chunks(self.filters.len())
+      .chunks(self.input_dimensions.2)
       .into_iter()
       .map(|sample| sample.into_iter().collect_vec())
       .collect_vec();
