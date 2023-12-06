@@ -105,7 +105,7 @@ extern "C" {
     num_matrices: usize,
     mat_rows: usize,
     mat_cols: usize,
-    scalars: *const c_float,
+    scalar: f32,
     inplace: bool,
   );
   pub fn cuda_scalar_divide(
@@ -121,7 +121,7 @@ extern "C" {
     num_matrices: usize,
     mat_rows: usize,
     mat_cols: usize,
-    scalars: *const c_float,
+    scalar: f32,
     inplace: bool,
   );
   pub fn cuda_scalar_add(
@@ -137,7 +137,7 @@ extern "C" {
     num_matrices: usize,
     mat_rows: usize,
     mat_cols: usize,
-    scalars: *const c_float,
+    scalar: f32,
     inplace: bool,
   );
   pub fn cuda_scalar_subtract(
@@ -153,7 +153,7 @@ extern "C" {
     num_matrices: usize,
     mat_rows: usize,
     mat_cols: usize,
-    scalars: *const c_float,
+    scalar: f32,
     inplace: bool,
   );
   pub fn cuda_matrix_multiply(

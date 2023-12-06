@@ -1239,11 +1239,7 @@ pub fn element_divide_packed(
   }
 }
 
-pub fn scalar_multiply_packed(
-  matrices: &Vec<Matrix>,
-  scalars: &Vec<f32>,
-  inplace: bool,
-) -> Vec<Matrix> {
+pub fn scalar_multiply_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1263,7 +1259,7 @@ pub fn scalar_multiply_packed(
       num_matrices,
       mat_rows,
       mat_cols,
-      scalars.as_ptr() as *const c_float,
+      scalar,
       inplace,
     );
   }
@@ -1279,11 +1275,7 @@ pub fn scalar_multiply_packed(
   }
 }
 
-pub fn scalar_divide_packed(
-  matrices: &Vec<Matrix>,
-  scalars: &Vec<f32>,
-  inplace: bool,
-) -> Vec<Matrix> {
+pub fn scalar_divide_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1303,7 +1295,7 @@ pub fn scalar_divide_packed(
       num_matrices,
       mat_rows,
       mat_cols,
-      scalars.as_ptr() as *const c_float,
+      scalar,
       inplace,
     );
   }
@@ -1319,7 +1311,7 @@ pub fn scalar_divide_packed(
   }
 }
 
-pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalars: &Vec<f32>, inplace: bool) -> Vec<Matrix> {
+pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1339,7 +1331,7 @@ pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalars: &Vec<f32>, inplace: bo
       num_matrices,
       mat_rows,
       mat_cols,
-      scalars.as_ptr() as *const c_float,
+      scalar,
       inplace,
     );
   }
@@ -1355,11 +1347,7 @@ pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalars: &Vec<f32>, inplace: bo
   }
 }
 
-pub fn scalar_subtract_packed(
-  matrices: &Vec<Matrix>,
-  scalars: &Vec<f32>,
-  inplace: bool,
-) -> Vec<Matrix> {
+pub fn scalar_subtract_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1379,7 +1367,7 @@ pub fn scalar_subtract_packed(
       num_matrices,
       mat_rows,
       mat_cols,
-      scalars.as_ptr() as *const c_float,
+      scalar,
       inplace,
     );
   }

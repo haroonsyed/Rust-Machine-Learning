@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use itertools::{izip, Itertools};
 use tensor_lib::*;
 
@@ -299,14 +301,19 @@ impl CNN_Layer for ConvolutionalLayerRust {
   }
 
   fn feed_forward(&mut self, input: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
-    let mut channels_to_correlate = Vec::new();
-    let mut kernels_to_correlate = Vec::new();
-    let mut filter_result_index_to_sum_filter_result_to = Vec::new();
-    let mut filter_result_index_to_sum = Vec::new();
-    let mut filter_result_index_to_sum_bias_to = Vec::new();
-    let mut biases_to_sum = Vec::new();
+    // Record time here
+    let start = Instant::now();
 
-    let mut raw_filter_output_indices = Vec::new();
+    let vec_capacity = input.len() * self.filters.len() * self.filters[0].len();
+    let mut channels_to_correlate = Vec::with_capacity(vec_capacity);
+    let mut kernels_to_correlate = Vec::with_capacity(vec_capacity);
+    let mut filter_result_index_to_sum_filter_result_to = Vec::with_capacity(vec_capacity);
+    let mut filter_result_index_to_sum = Vec::with_capacity(vec_capacity);
+    let mut filter_result_index_to_sum_bias_to =
+      Vec::with_capacity(input.len() * self.filters.len());
+    let mut biases_to_sum = Vec::with_capacity(input.len() * self.filters.len());
+
+    let mut raw_filter_output_indices = Vec::with_capacity(input.len() * self.filters.len());
 
     // The below logic is used to setup the packed operation.
     // It follows from doing the operations non-packed (commented out below)
@@ -343,6 +350,8 @@ impl CNN_Layer for ConvolutionalLayerRust {
       }
     }
 
+    let setup_overhead = start.elapsed();
+
     // correlate
     let mut correlated_channels = correlate_packed(
       &channels_to_correlate,
@@ -350,10 +359,12 @@ impl CNN_Layer for ConvolutionalLayerRust {
       PaddingType::VALID,
     );
 
+    let correlation_time = start.elapsed() - setup_overhead;
+
     // Sum
-    let mut sum_to = Vec::new();
-    let mut to_add = Vec::new();
-    let mut raw_filter_outputs = Vec::new();
+    let mut sum_to = Vec::with_capacity(filter_result_index_to_sum_filter_result_to.len());
+    let mut to_add = Vec::with_capacity(filter_result_index_to_sum.len());
+    let mut raw_filter_outputs = Vec::with_capacity(raw_filter_output_indices.len());
 
     for (index_to_sum_to, index_to_sum) in izip!(
       filter_result_index_to_sum_filter_result_to,
@@ -372,10 +383,15 @@ impl CNN_Layer for ConvolutionalLayerRust {
       to_add.push(bias);
     }
 
+    let pure_element_packed = Instant::now();
     element_add_packed(&sum_to, &to_add, true);
+    let pure_element_packed_time = pure_element_packed.elapsed();
+    let sum_time = start.elapsed() - correlation_time - setup_overhead;
 
     // ReLU
     let filter_outputs = element_ReLU_packed(&raw_filter_outputs, true);
+
+    let relu_time = start.elapsed() - sum_time - correlation_time - setup_overhead;
 
     // Group into sample outputs of chunk size filter count
     let sample_filter_outputs = filter_outputs
@@ -384,6 +400,17 @@ impl CNN_Layer for ConvolutionalLayerRust {
       .into_iter()
       .map(|sample| sample.into_iter().collect_vec())
       .collect_vec();
+
+    let group_time = start.elapsed() - relu_time - sum_time - correlation_time - setup_overhead;
+    let total_time = start.elapsed();
+
+    // println!("Time to setup packed operations: {:?}", setup_overhead);
+    // println!("Time to correlate: {:?}", correlation_time);
+    // println!("Pure element packed: {:?}", pure_element_packed_time);
+    // println!("Time to sum: {:?}", sum_time);
+    // println!("Time to relu: {:?}", relu_time);
+    // println!("Time to group: {:?}", group_time);
+    // println!("Total feed forward time: {:?}", total_time);
 
     self.prev_input = input.clone();
     self.prev_output = sample_filter_outputs.clone();
@@ -399,6 +426,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
 
     // Apply relu prime
 
+    let start = Instant::now();
     let filter_output_error_flattened = sample_output_errors
       .to_owned()
       .into_iter()
@@ -415,18 +443,20 @@ impl CNN_Layer for ConvolutionalLayerRust {
     element_ReLU_prime_packed(&prev_output_flattened, true);
     element_multiply_packed(&filter_output_error_flattened, &prev_output_flattened, true);
 
+    let vec_capacity = sample_output_errors.len() * self.filters.len() * self.filters[0].len();
+
     // Delta Input Packed
-    let mut delta_input_output_errors = Vec::new();
-    let mut delta_input_filters = Vec::new();
-    let mut delta_input_to_sum_to = Vec::new();
-    let mut delta_input_to_sum = Vec::new();
+    let mut delta_input_output_errors = Vec::with_capacity(vec_capacity);
+    let mut delta_input_filters = Vec::with_capacity(vec_capacity);
+    let mut delta_input_to_sum_to = Vec::with_capacity(vec_capacity);
+    let mut delta_input_to_sum = Vec::with_capacity(vec_capacity);
 
     // Bias Update Packed
     let bias_gradients = filter_output_error_flattened.clone();
 
     // Filter Update Packed
-    let mut delta_filter_prev_input = Vec::new();
-    let mut delta_filter_output_error = Vec::new();
+    let mut delta_filter_prev_input = Vec::with_capacity(vec_capacity);
+    let mut delta_filter_output_error = Vec::with_capacity(vec_capacity);
 
     // PER SAMPLE
     let mut current_sample_index = 0;
@@ -450,7 +480,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
 
       // Update the filters
       // PER FILTER
-      for (filter_output_error, filter) in izip!(sample_output_error, self.filters.iter(),) {
+      for (filter_output_error, filter) in izip!(sample_output_error, self.filters.iter()) {
         // PER CHANNEL
         for (prev_channel_input, channel) in izip!(sample_prev_input, filter) {
           // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
@@ -469,13 +499,10 @@ impl CNN_Layer for ConvolutionalLayerRust {
     let repeated_bias = (0..sample_count)
       .flat_map(|_| self.biases.clone())
       .collect_vec();
-    let bias_steps = self.packed_bias_optimizer.calculate_steps(&bias_gradients);
+    let bias_steps = self
+      .packed_bias_optimizer
+      .calculate_steps(&bias_gradients, normalization_factor);
 
-    scalar_multiply_packed(
-      &bias_steps,
-      &vec![normalization_factor; bias_steps.len()],
-      true,
-    );
     element_subtract_packed(&repeated_bias, &bias_steps, true);
 
     ///////////////////
@@ -490,13 +517,7 @@ impl CNN_Layer for ConvolutionalLayerRust {
 
     let filter_steps = self
       .packed_filter_optimizer
-      .calculate_steps(&channel_gradients);
-
-    scalar_multiply_packed(
-      &filter_steps,
-      &vec![normalization_factor; filter_steps.len()],
-      true,
-    );
+      .calculate_steps(&channel_gradients, normalization_factor);
 
     let flattened_filters = self.filters.to_owned().into_iter().flatten().collect_vec();
     let repeated_flattened_filters = (0..sample_count)

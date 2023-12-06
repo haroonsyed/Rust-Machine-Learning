@@ -10,7 +10,11 @@ use crate::optimizers::{
 };
 
 pub trait PackedOptimizer: Send {
-  fn calculate_steps(&mut self, curr_gradients: &Vec<Matrix>) -> Vec<Matrix>;
+  fn calculate_steps(
+    &mut self,
+    curr_gradients: &Vec<Matrix>,
+    normalization_factor: f32,
+  ) -> Vec<Matrix>;
   fn get_single_optimizer(&self) -> Box<dyn Optimizer>;
   fn clone_box(&self) -> Box<dyn PackedOptimizer>;
 }
@@ -33,10 +37,14 @@ impl PackedStochasticGradientDescentOptimizer {
 }
 
 impl PackedOptimizer for PackedStochasticGradientDescentOptimizer {
-  fn calculate_steps(&mut self, curr_gradients: &Vec<Matrix>) -> Vec<Matrix> {
+  fn calculate_steps(
+    &mut self,
+    curr_gradients: &Vec<Matrix>,
+    normalization_factor: f32,
+  ) -> Vec<Matrix> {
     return scalar_multiply_packed(
       curr_gradients,
-      &vec![self.learning_rate; curr_gradients.len()],
+      self.learning_rate * normalization_factor,
       false,
     );
   }
@@ -66,17 +74,17 @@ impl PackedMomentumOptimizer {
 }
 
 impl PackedOptimizer for PackedMomentumOptimizer {
-  fn calculate_steps(&mut self, curr_gradient: &Vec<Matrix>) -> Vec<Matrix> {
+  fn calculate_steps(
+    &mut self,
+    curr_gradient: &Vec<Matrix>,
+    normalization_factor: f32,
+  ) -> Vec<Matrix> {
     let adjusted_gradients = match &self.prev_gradients {
       Some(prev_gradients) => {
         // dW = (beta * prev_grad + (1 - beta) * curr_gradient)
 
-        scalar_multiply_packed(prev_gradients, &vec![self.beta; prev_gradients.len()], true);
-        let scaled_curr_gradient = scalar_multiply_packed(
-          curr_gradient,
-          &vec![1.0 - self.beta; curr_gradient.len()],
-          false,
-        );
+        scalar_multiply_packed(prev_gradients, self.beta, true);
+        let scaled_curr_gradient = scalar_multiply_packed(curr_gradient, 1.0 - self.beta, false);
         element_add_packed(prev_gradients, &scaled_curr_gradient, true);
 
         prev_gradients.clone()
@@ -93,7 +101,7 @@ impl PackedOptimizer for PackedMomentumOptimizer {
 
     return scalar_multiply_packed(
       &adjusted_gradients,
-      &vec![self.learning_rate; adjusted_gradients.len()],
+      self.learning_rate * normalization_factor,
       false,
     );
   }
@@ -123,7 +131,11 @@ impl PackedAdagradOptimizer {
 }
 
 impl PackedOptimizer for PackedAdagradOptimizer {
-  fn calculate_steps(&mut self, curr_gradients: &Vec<Matrix>) -> Vec<Matrix> {
+  fn calculate_steps(
+    &mut self,
+    curr_gradients: &Vec<Matrix>,
+    normalization_factor: f32,
+  ) -> Vec<Matrix> {
     let adjusted_gradients = match &mut self.accumulated_gradients {
       Some(accumulated_gradients) => {
         // accumulated_gradient = accumulated_gradient + curr_gradient^2
@@ -135,11 +147,7 @@ impl PackedOptimizer for PackedAdagradOptimizer {
         element_add_packed(&accumulated_gradients, &curr_gradients_squared, true);
 
         let accumulated_gradient_sqrt = element_sqrt_packed(&accumulated_gradients, false);
-        scalar_add_packed(
-          &accumulated_gradient_sqrt,
-          &vec![self.epsilon; accumulated_gradient_sqrt.len()],
-          true,
-        );
+        scalar_add_packed(&accumulated_gradient_sqrt, self.epsilon, true);
 
         let adjusted_gradients =
           element_divide_packed(curr_gradients, &accumulated_gradient_sqrt, false);
@@ -161,7 +169,7 @@ impl PackedOptimizer for PackedAdagradOptimizer {
 
     return scalar_multiply_packed(
       &adjusted_gradients,
-      &vec![self.learning_rate; adjusted_gradients.len()],
+      self.learning_rate * normalization_factor,
       true,
     );
   }
@@ -193,7 +201,11 @@ impl PackedRMSPropOptimizer {
 }
 
 impl PackedOptimizer for PackedRMSPropOptimizer {
-  fn calculate_steps(&mut self, curr_gradients: &Vec<Matrix>) -> Vec<Matrix> {
+  fn calculate_steps(
+    &mut self,
+    curr_gradients: &Vec<Matrix>,
+    normalization_factor: f32,
+  ) -> Vec<Matrix> {
     let adjusted_gradients = match &mut self.accumulated_gradients {
       Some(prev_accumulated_gradients) => {
         // adjusted_gradient = curr_gradient/sqrt(accumulated_gradient)
@@ -203,45 +215,26 @@ impl PackedOptimizer for PackedRMSPropOptimizer {
         // This means that the learning rate will decay over time, but not as aggressively as Adagrad
         // This is because older weights are continually decayed by beta
 
-        scalar_multiply_packed(
-          &prev_accumulated_gradients,
-          &vec![self.beta; prev_accumulated_gradients.len()],
-          true,
-        );
+        scalar_multiply_packed(&prev_accumulated_gradients, self.beta, true);
         let curr_grad_squared = element_multiply_packed(curr_gradients, curr_gradients, false);
-        scalar_multiply_packed(
-          &curr_grad_squared,
-          &vec![1.0 - self.beta; curr_grad_squared.len()],
-          true,
-        );
+        scalar_multiply_packed(&curr_grad_squared, 1.0 - self.beta, true);
         element_add_packed(&prev_accumulated_gradients, &curr_grad_squared, true);
 
         let sqrt_accumulated_gradient = element_sqrt_packed(&prev_accumulated_gradients, false);
-        scalar_add_packed(
-          &sqrt_accumulated_gradient,
-          &vec![self.epsilon; sqrt_accumulated_gradient.len()],
-          true,
-        );
+        scalar_add_packed(&sqrt_accumulated_gradient, self.epsilon, true);
         let adjusted_gradients =
           element_divide_packed(curr_gradients, &sqrt_accumulated_gradient, false);
         adjusted_gradients
       }
       None => {
         let curr_grad_squared = element_multiply_packed(curr_gradients, curr_gradients, false);
-        let times_one_minus_beta = scalar_multiply_packed(
-          &curr_grad_squared,
-          &vec![1.0 - self.beta; curr_grad_squared.len()],
-          true,
-        );
+        let times_one_minus_beta =
+          scalar_multiply_packed(&curr_grad_squared, 1.0 - self.beta, true);
 
         self.accumulated_gradients = Some(times_one_minus_beta.clone());
 
         let sqrt_accumulated = element_sqrt_packed(&times_one_minus_beta, false);
-        scalar_add_packed(
-          &sqrt_accumulated,
-          &vec![self.epsilon; sqrt_accumulated.len()],
-          true,
-        );
+        scalar_add_packed(&sqrt_accumulated, self.epsilon, true);
         let adjusted_gradients = element_divide_packed(curr_gradients, &sqrt_accumulated, false);
         adjusted_gradients
       }
@@ -249,7 +242,7 @@ impl PackedOptimizer for PackedRMSPropOptimizer {
 
     return scalar_multiply_packed(
       &adjusted_gradients,
-      &vec![self.learning_rate; adjusted_gradients.len()],
+      self.learning_rate * normalization_factor,
       true,
     );
   }
@@ -289,26 +282,22 @@ impl PackedAdamOptimizer {
 }
 
 impl PackedOptimizer for PackedAdamOptimizer {
-  fn calculate_steps(&mut self, curr_gradients: &Vec<Matrix>) -> Vec<Matrix> {
+  fn calculate_steps(
+    &mut self,
+    curr_gradients: &Vec<Matrix>,
+    normalization_factor: f32,
+  ) -> Vec<Matrix> {
     let momentum_gradient = match &mut self.d_v {
       Some(prev_d_v) => {
         // dv = (beta * prev_grad + (1 - beta) * curr_gradient)
-        scalar_multiply_packed(prev_d_v, &vec![self.beta1; prev_d_v.len()], true);
-        let scaled_curr_gradient = scalar_multiply_packed(
-          curr_gradients,
-          &vec![1.0 - self.beta1; curr_gradients.len()],
-          false,
-        );
+        scalar_multiply_packed(prev_d_v, self.beta1, true);
+        let scaled_curr_gradient = scalar_multiply_packed(curr_gradients, 1.0 - self.beta1, false);
         element_add_packed(prev_d_v, &scaled_curr_gradient, true);
 
         prev_d_v.clone()
       }
       None => {
-        let d_v = scalar_multiply_packed(
-          curr_gradients,
-          &vec![1.0 - self.beta1; curr_gradients.len()],
-          false,
-        );
+        let d_v = scalar_multiply_packed(curr_gradients, 1.0 - self.beta1, false);
         self.d_v = Some(d_v.clone());
         d_v
       }
@@ -319,48 +308,36 @@ impl PackedOptimizer for PackedAdamOptimizer {
         // adjusted_gradient = 1/sqrt(accumulated_gradient)
         // accumulated_gradient = (beta * prev_accumulated_gradient + (1 - beta) * curr_gradient ^ 2)
 
-        scalar_multiply_packed(prev_d_s, &vec![self.beta2; prev_d_s.len()], true);
+        scalar_multiply_packed(prev_d_s, self.beta2, true);
         let curr_curr_times_one_minus_beta =
           element_multiply_packed(curr_gradients, curr_gradients, false);
-        scalar_multiply_packed(
-          &curr_curr_times_one_minus_beta,
-          &vec![1.0 - self.beta2; curr_curr_times_one_minus_beta.len()],
-          true,
-        );
+        scalar_multiply_packed(&curr_curr_times_one_minus_beta, 1.0 - self.beta2, true);
         element_add_packed(prev_d_s, &curr_curr_times_one_minus_beta, true);
 
         let prev_d_s_sqrt = element_sqrt_packed(prev_d_s, false);
-        scalar_add_packed(&prev_d_s_sqrt, &vec![self.epsilon; prev_d_s.len()], true)
+        scalar_add_packed(&prev_d_s_sqrt, self.epsilon, true)
       }
       None => {
         let curr_curr_times_one_minus_beta =
           element_multiply_packed(curr_gradients, curr_gradients, false);
-        scalar_multiply_packed(
-          &curr_curr_times_one_minus_beta,
-          &vec![1.0 - self.beta2; curr_curr_times_one_minus_beta.len()],
-          true,
-        );
+        scalar_multiply_packed(&curr_curr_times_one_minus_beta, 1.0 - self.beta2, true);
         self.d_s = Some(curr_curr_times_one_minus_beta.clone());
 
         let d_s_sqrt = element_sqrt_packed(&curr_curr_times_one_minus_beta, false);
-        scalar_add_packed(
-          &d_s_sqrt,
-          &vec![self.epsilon; curr_curr_times_one_minus_beta.len()],
-          true,
-        )
+        scalar_add_packed(&d_s_sqrt, self.epsilon, true)
       }
     };
 
     // Correct gradients to have similar magnitude
     let corrected_momentum = scalar_multiply_packed(
       &momentum_gradient,
-      &vec![1.0 / (1.0 - self.beta1.powf(self.t as f32)); momentum_gradient.len()],
+      1.0 / (1.0 - self.beta1.powf(self.t as f32)),
       true,
     );
 
     let corrected_rms_prop = scalar_multiply_packed(
       &rms_prop_gradient,
-      &vec![1.0 / (1.0 - self.beta2.powf(self.t as f32)); rms_prop_gradient.len()],
+      1.0 / (1.0 - self.beta2.powf(self.t as f32)),
       true,
     );
     self.t += 1;
@@ -370,7 +347,7 @@ impl PackedOptimizer for PackedAdamOptimizer {
 
     return scalar_multiply_packed(
       &adjusted_gradient,
-      &vec![self.learning_rate; adjusted_gradient.len()],
+      self.learning_rate * normalization_factor,
       true,
     );
   }

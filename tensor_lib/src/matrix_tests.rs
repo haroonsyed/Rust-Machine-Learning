@@ -651,10 +651,10 @@ mod tests {
     let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
 
     let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
-      .map(|(mat, &scalar)| mat.scalar_multiply(scalar))
+      .map(|(mat, &scalar)| mat.scalar_multiply(random_scalars[0]))
       .collect_vec();
 
-    let observed_result = scalar_multiply_packed(&random_matrices, &random_scalars, false);
+    let observed_result = scalar_multiply_packed(&random_matrices, random_scalars[0], false);
 
     izip!(observed_result, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
@@ -669,10 +669,10 @@ mod tests {
     let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
 
     let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
-      .map(|(mat, &scalar)| mat.scalar_multiply(scalar))
+      .map(|(mat, &scalar)| mat.scalar_multiply(random_scalars[0]))
       .collect_vec();
 
-    let _ = scalar_multiply_packed(&random_matrices, &random_scalars, true);
+    let _ = scalar_multiply_packed(&random_matrices, random_scalars[0], true);
 
     izip!(random_matrices, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
@@ -686,14 +686,14 @@ mod tests {
 
     let expected_result = random_matrix.scalar_multiply(random_scalars[0]);
     random_scalars.iter().skip(1).for_each(|&scalar| {
-      expected_result.scalar_multiply_inplace(scalar);
+      expected_result.scalar_multiply_inplace(random_scalars[0]);
     });
 
     random_matrix.print();
 
     let _ = scalar_multiply_packed(
       &vec![random_matrix.clone(); random_scalars.len()],
-      &random_scalars,
+      random_scalars[0],
       true,
     );
 
@@ -734,10 +734,10 @@ mod tests {
     let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
 
     let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
-      .map(|(mat, &scalar)| mat.scalar_divide(scalar))
+      .map(|(mat, &scalar)| mat.scalar_divide(random_scalars[0]))
       .collect_vec();
 
-    let observed_result = scalar_divide_packed(&random_matrices, &random_scalars, false);
+    let observed_result = scalar_divide_packed(&random_matrices, random_scalars[0], false);
 
     izip!(observed_result, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
@@ -752,10 +752,10 @@ mod tests {
     let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
 
     let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
-      .map(|(mat, &scalar)| mat.scalar_divide(scalar))
+      .map(|(mat, &scalar)| mat.scalar_divide(random_scalars[0]))
       .collect_vec();
 
-    let _ = scalar_divide_packed(&random_matrices, &random_scalars, true);
+    let _ = scalar_divide_packed(&random_matrices, random_scalars[0], true);
 
     izip!(random_matrices, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
@@ -769,12 +769,12 @@ mod tests {
 
     let expected_result = random_matrix.scalar_divide(random_scalars[0]);
     random_scalars.iter().skip(1).for_each(|&scalar| {
-      expected_result.scalar_divide_inplace(scalar);
+      expected_result.scalar_divide_inplace(random_scalars[0]);
     });
 
     let _ = scalar_divide_packed(
       &vec![random_matrix.clone(); random_scalars.len()],
-      &random_scalars,
+      random_scalars[0],
       true,
     );
 
@@ -815,10 +815,10 @@ mod tests {
     let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
 
     let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
-      .map(|(mat, &scalar)| mat.scalar_add(scalar))
+      .map(|(mat, &scalar)| mat.scalar_add(random_scalars[0]))
       .collect_vec();
 
-    let observed_result = scalar_add_packed(&random_matrices, &random_scalars, false);
+    let observed_result = scalar_add_packed(&random_matrices, random_scalars[0], false);
 
     izip!(observed_result, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
@@ -833,10 +833,10 @@ mod tests {
     let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
 
     let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
-      .map(|(mat, &scalar)| mat.scalar_add(scalar))
+      .map(|(mat, &scalar)| mat.scalar_add(random_scalars[0]))
       .collect_vec();
 
-    let _ = scalar_add_packed(&random_matrices, &random_scalars, true);
+    let _ = scalar_add_packed(&random_matrices, random_scalars[0], true);
 
     izip!(random_matrices, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
@@ -849,13 +849,14 @@ mod tests {
     let random_scalars = &Matrix::new_random(0.0, 10.0, 1, 5).get_data()[0];
 
     let expected_result = random_matrix.scalar_add(random_scalars[0]);
+
     random_scalars.iter().skip(1).for_each(|&scalar| {
-      expected_result.scalar_add_inplace(scalar);
+      expected_result.scalar_add_inplace(random_scalars[0]);
     });
 
     let _ = scalar_add_packed(
       &vec![random_matrix.clone(); random_scalars.len()],
-      &random_scalars,
+      random_scalars[0],
       true,
     );
 
@@ -896,10 +897,10 @@ mod tests {
     let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
 
     let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
-      .map(|(mat, &scalar)| mat.scalar_subtract(scalar))
+      .map(|(mat, &scalar)| mat.scalar_subtract(random_scalars[0]))
       .collect_vec();
 
-    let observed_result = scalar_subtract_packed(&random_matrices, &random_scalars, false);
+    let observed_result = scalar_subtract_packed(&random_matrices, random_scalars[0], false);
 
     izip!(observed_result, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
@@ -914,10 +915,10 @@ mod tests {
     let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
 
     let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
-      .map(|(mat, &scalar)| mat.scalar_subtract(scalar))
+      .map(|(mat, &scalar)| mat.scalar_subtract(random_scalars[0]))
       .collect_vec();
 
-    let _ = scalar_subtract_packed(&random_matrices, &random_scalars, true);
+    let _ = scalar_subtract_packed(&random_matrices, random_scalars[0], true);
 
     izip!(random_matrices, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
@@ -931,12 +932,12 @@ mod tests {
 
     let expected_result = random_matrix.scalar_subtract(random_scalars[0]);
     random_scalars.iter().skip(1).for_each(|&scalar| {
-      expected_result.scalar_subtract_inplace(scalar);
+      expected_result.scalar_subtract_inplace(random_scalars[0]);
     });
 
     let _ = scalar_subtract_packed(
       &vec![random_matrix.clone(); random_scalars.len()],
-      &random_scalars,
+      random_scalars[0],
       true,
     );
 
@@ -2260,57 +2261,6 @@ mod tests {
     let observed_output = img2col(&vec![input], 1, 1);
 
     assert!(matrix_are_equal(&observed_output, &expected_output, 8));
-  }
-
-  #[test]
-  fn correlation_v2_gpu_valid_1() {
-    let test_data = Matrix::new_2d(&vec![
-      vec![1.0, 2.0, 3.0],
-      vec![4.0, 5.0, 6.0],
-      vec![7.0, 8.0, 9.0],
-    ]);
-
-    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
-
-    let expected_result = Matrix::new_2d(&vec![vec![37.0, 47.0], vec![67.0, 77.0]]);
-
-    let observed_result = test_data.correlate_v2(&kernel, PaddingType::VALID);
-
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
-  }
-
-  #[test]
-  fn correlation_v2_gpu_valid_2() {
-    let test_data = Matrix::new_2d(&vec![
-      vec![1.0, 2.0, 3.0, 4.0],
-      vec![5.0, 6.0, 7.0, 8.0],
-      vec![9.0, 10.0, 11.0, 12.0],
-    ]);
-
-    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
-
-    let expected_result = Matrix::new_2d(&vec![vec![106.0, 127.0], vec![190.0, 211.0]]);
-
-    let observed_result = test_data.correlate_v2(&kernel, PaddingType::VALID);
-
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
-  }
-
-  #[test]
-  fn correlation_v2_gpu_valid_3() {
-    let test_data = Matrix::new_2d(&vec![
-      vec![1.0, 2.0, 3.0, 4.0],
-      vec![5.0, 6.0, 7.0, 8.0],
-      vec![9.0, 10.0, 11.0, 12.0],
-    ]);
-
-    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
-
-    let expected_result = Matrix::new_2d(&vec![vec![44.0, 54.0, 64.0], vec![84.0, 94.0, 104.0]]);
-
-    let observed_result = test_data.correlate_v2(&kernel, PaddingType::VALID);
-
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   #[test]
