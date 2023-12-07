@@ -362,26 +362,22 @@ impl CNN_Layer for ConvolutionalLayerRust {
     let correlation_time = start.elapsed() - setup_overhead;
 
     // Sum
-    let mut sum_to = Vec::with_capacity(filter_result_index_to_sum_filter_result_to.len());
-    let mut to_add = Vec::with_capacity(filter_result_index_to_sum.len());
-    let mut raw_filter_outputs = Vec::with_capacity(raw_filter_output_indices.len());
+    let sum_to = filter_result_index_to_sum_filter_result_to
+      .iter()
+      .chain(filter_result_index_to_sum_bias_to.iter())
+      .map(|index| correlated_channels[*index].clone())
+      .collect_vec();
 
-    for (index_to_sum_to, index_to_sum) in izip!(
-      filter_result_index_to_sum_filter_result_to,
-      filter_result_index_to_sum
-    ) {
-      sum_to.push(correlated_channels[index_to_sum_to].clone());
-      to_add.push(correlated_channels[index_to_sum].clone());
-    }
+    let to_add = filter_result_index_to_sum
+      .iter()
+      .map(|index| correlated_channels[*index].clone())
+      .chain(biases_to_sum.into_iter())
+      .collect_vec();
 
-    for index in raw_filter_output_indices {
-      raw_filter_outputs.push(correlated_channels[index].clone());
-    }
-
-    for (index_to_sum_to, bias) in izip!(filter_result_index_to_sum_bias_to, biases_to_sum) {
-      sum_to.push(correlated_channels[index_to_sum_to].clone());
-      to_add.push(bias);
-    }
+    let raw_filter_outputs = raw_filter_output_indices
+      .iter()
+      .map(|index| correlated_channels[*index].clone())
+      .collect_vec();
 
     let pure_element_packed = Instant::now();
     element_add_packed(&sum_to, &to_add, true);
@@ -591,9 +587,13 @@ impl CNN_Layer for MaxPoolLayerRust {
   }
 
   fn feed_forward(&mut self, input: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
+    let start = Instant::now();
+
     // Pack the input and pool
     let to_pool = input.to_owned().into_iter().flatten().collect_vec();
+    let setup_time = start.elapsed();
     let (pooled_samples, bitmasks) = max_pool_packed(&to_pool);
+    let pool_time = start.elapsed() - setup_time;
 
     // Unpack the pooled results and bitmasks
     let input_depth = self.input_dimensions.2;
@@ -610,6 +610,12 @@ impl CNN_Layer for MaxPoolLayerRust {
       .into_iter()
       .map(|sample| sample.into_iter().collect_vec())
       .collect_vec();
+
+    let ungroup_time = start.elapsed() - pool_time - setup_time;
+
+    // println!("Time to setup packed operations: {:?}", setup_time);
+    // println!("Time to pool: {:?}", pool_time);
+    // println!("Time to ungroup: {:?}", ungroup_time);
 
     self.prev_input_bm = grouped_bitmasks;
     return grouped_pooled_samples;

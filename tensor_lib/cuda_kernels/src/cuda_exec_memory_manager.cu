@@ -1,9 +1,13 @@
+#include <chrono>
+#include <queue>
+
 #include "./cuda_exec_memory_manager.cuh"
 
 struct MatrixBlock {
     size_t block_id;
     size_t block_offset;
     size_t block_size_requested;
+    size_t ref_count;
 };
 
 struct MemBlock {
@@ -14,6 +18,15 @@ struct MemBlock {
 bool library_init = false;
 cudaMemPool_t mempool;
 
+cudaStream_t main_exec_stream;
+cudaStream_t io_to_device_stream;
+
+void* pinned_buffer;
+const size_t pinned_buffer_size = 1024 * 1024 * 512;  // 512 MB
+size_t pinned_buffer_offset = 0;
+size_t pinned_buffer_free_space = pinned_buffer_size;
+std::queue<std::pair<cudaEvent_t, size_t>> pinned_buffer_events;
+
 cublasHandle_t handle;
 size_t matrices_generated_count(0);
 std::vector<MatrixBlock> matrix_blocks;
@@ -21,6 +34,11 @@ std::vector<size_t> free_mat_ids;
 size_t blocks_generated_count(0);
 std::vector<MemBlock> mem_blocks;
 std::vector<size_t> free_block_ids;
+
+// Optimization, malloc a buffer for arguments to kernels
+// Reduces calls to malloc and free for each kernel call
+void* kernel_args_buffer;
+const size_t kernel_args_buffer_size = 1024 * 1024 * 128;  // 128 MB
 
 /////////////////////
 /// INIT API
@@ -43,13 +61,23 @@ void init_library() {
     // Init pool
     init_min_pool_size();
 
+    // Init streams
+    cudaStreamCreate(&main_exec_stream);
+    cudaStreamCreate(&io_to_device_stream);
+
+    // Init pinned buffer
+    cudaMallocHost(&pinned_buffer, (size_t)(pinned_buffer_size));
+
+    // Init kernel args device buffer
+    cudaMallocAsync(&kernel_args_buffer, kernel_args_buffer_size, main_exec_stream);
+
     library_init = true;
 }
 /////////////////////
 /// Stream Management
 /////////////////////
 cudaStream_t get_stream() {
-    return 0;
+    return main_exec_stream;
 }
 /////////////////////
 /// Memory Allocation
@@ -60,8 +88,8 @@ void* get_block_gpu_address(size_t block_id, size_t block_offset) {
 }
 void memory_manager_delete(size_t block_id) {
     MemBlock* block = &mem_blocks[block_id];
-    gpuErrchk(cudaFreeAsync(block->address, 0));
-    free_block_ids.push_back(block_id);
+    gpuErrchk(cudaFreeAsync(block->address, main_exec_stream));
+    free_block_ids.emplace_back(block_id);
 }
 void memory_manager_free(size_t block_id, size_t size) {
     MemBlock* block = &mem_blocks[block_id];
@@ -71,20 +99,78 @@ void memory_manager_free(size_t block_id, size_t size) {
         memory_manager_delete(block_id);
     }
 }
+void memory_manager_upload_from_pinned_buffer(void* pinned_data, void* device_address, size_t size) {
+    gpuErrchk(cudaMemcpyAsync(device_address, pinned_data, size, cudaMemcpyHostToDevice, main_exec_stream));
+
+    // Use event with callback to free pinned buffer
+    cudaEvent_t event;
+    cudaEventCreate(&event);
+    cudaEventRecord(event, main_exec_stream);
+
+    // Store the event and pinned buffer address
+    pinned_buffer_events.emplace(event, size);
+}
+void memory_manager_upload_async_from_pinned_buffer(void* pinned_data, void* device_address, size_t size) {
+    gpuErrchk(cudaMemcpyAsync(device_address, pinned_data, size, cudaMemcpyHostToDevice, io_to_device_stream));
+
+    // Use event with callback to free pinned buffer
+    cudaEvent_t event;
+    cudaEventCreate(&event);
+    cudaEventRecord(event, io_to_device_stream);
+    cudaStreamWaitEvent(main_exec_stream, event, 0);
+
+    // Store the event and pinned buffer address
+    pinned_buffer_events.emplace(event, size);
+}
 void memory_manager_upload_to_allocation(size_t block_id, size_t block_offset, void* data, size_t size) {
-    // TODO: Copy data to pinned buffer, then from pinned buffer to gpu
-    // This should allow pipeline to be more asynchronous
     void* address = get_block_gpu_address(block_id, block_offset);
     gpuErrchk(cudaMemcpy(address, data, size, cudaMemcpyHostToDevice));
+}
+void* memory_get_pinned_allocation(size_t size) {
+    if (pinned_buffer_offset + size > pinned_buffer_size) {
+        // Adjust size to wait for space on wrap around
+        size += pinned_buffer_size - pinned_buffer_offset;
+
+        // Reset the offset
+        pinned_buffer_offset = 0;
+    }
+
+    while (pinned_buffer_free_space < size) {
+        // Wait for space to be available
+        std::pair<cudaEvent_t, size_t> event = pinned_buffer_events.front();
+        cudaEventSynchronize(event.first);
+        pinned_buffer_free_space += event.second;
+        pinned_buffer_events.pop();
+    }
+
+    void* address = (char*)pinned_buffer + pinned_buffer_offset;
+    pinned_buffer_offset += size;
+
+    return address;
+}
+
+// The default maximum number size of each buffer is 128 MB / num_buffers
+// That means in most cases (3 buffers), the maximum size is 42 MB, which is 5.5 million matrix pointers
+// MUST BE USED WITH ONE THREAD AND cudaMallocAsync in execution stream!
+std::vector<void*> get_device_kernel_args_pointers(size_t num_buffers) {
+    std::vector<void*> pointers;
+    for (size_t i = 0; i < num_buffers; i++) {
+        // Align to 256 bytes
+        size_t offset = (i * kernel_args_buffer_size / num_buffers);
+        offset = ((offset + 255) / 256) * 256;
+
+        void* pointer = (char*)kernel_args_buffer + offset;
+        pointers.emplace_back(pointer);
+    }
+    return pointers;
 }
 size_t memory_manager_allocate(size_t size) {
     if (!library_init) {
         init_library();
     }
 
-    // Allocate a new chunk
     char* address;
-    gpuErrchk(cudaMallocAsync(&address, size, mempool, 0));
+    gpuErrchk(cudaMallocAsync(&address, size, mempool, main_exec_stream));
 
     MemBlock block;
     block.address = address;
@@ -96,7 +182,7 @@ size_t memory_manager_allocate(size_t size) {
         mem_blocks[block_id] = block;
         free_block_ids.pop_back();
     } else {
-        mem_blocks.push_back(block);
+        mem_blocks.emplace_back(block);
     }
 
     return block_id;
@@ -110,16 +196,16 @@ float* get_matrix_gpu_address(size_t mat_id) {
     size_t offset = mat->block_offset;
     return (float*)get_block_gpu_address(block_id, offset);
 }
-size_t register_matrix_block(MatrixBlock mat) {
-    // Register with the map for retrieval later
-    size_t mat_id = free_mat_ids.size() > 0 ? free_mat_ids.back() : matrices_generated_count++;
+size_t register_matrix_block(MatrixBlock& mat) {
     if (free_mat_ids.size() > 0) {
+        size_t mat_id = free_mat_ids.back();
         matrix_blocks[mat_id] = mat;
         free_mat_ids.pop_back();
-    } else {
-        matrix_blocks.push_back(mat);
+        return mat_id;
     }
-    return mat_id;
+
+    matrix_blocks.emplace_back(mat);
+    return matrices_generated_count++;
 }
 size_t register_matrix(size_t rows, size_t columns) {
     // Allocate the memory
@@ -131,6 +217,7 @@ size_t register_matrix(size_t rows, size_t columns) {
     mat.block_id = block_id;
     mat.block_offset = 0;
     mat.block_size_requested = block_size;
+    mat.ref_count = 1;
 
     return register_matrix_block(mat);
 }
@@ -151,6 +238,7 @@ void register_matrix_group(size_t rows, size_t columns, size_t count, size_t* ma
         mat.block_id = block_id;
         mat.block_offset = i * aligned_requested_size;
         mat.block_size_requested = aligned_requested_size;
+        mat.ref_count = 1;
 
         mat_ids[i] = register_matrix_block(mat);
     }
@@ -175,10 +263,22 @@ size_t register_matrix_with_data(float* data, size_t rows, size_t columns) {
 }
 void unregister_matrix(size_t mat_id) {
     MatrixBlock* mat = &matrix_blocks[mat_id];
+
     size_t block_id = mat->block_id;
     size_t matrix_size = mat->block_size_requested;
     memory_manager_free(block_id, matrix_size);
-    free_mat_ids.push_back(mat_id);
+    free_mat_ids.emplace_back(mat_id);
+}
+void increase_matrix_ref_count(size_t mat_id) {
+    MatrixBlock* mat = &matrix_blocks[mat_id];
+    mat->ref_count++;
+}
+void decrease_matrix_ref_count(size_t mat_id) {
+    MatrixBlock* mat = &matrix_blocks[mat_id];
+    mat->ref_count--;
+    if (mat->ref_count == 0) {
+        unregister_matrix(mat_id);
+    }
 }
 void get_matrix_data(size_t mat_id, int rows, int columns, float* data_buffer) {
     float* gpu_address = get_matrix_gpu_address(mat_id);

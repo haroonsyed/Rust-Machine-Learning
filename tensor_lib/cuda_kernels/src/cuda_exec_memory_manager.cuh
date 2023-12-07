@@ -15,6 +15,10 @@ void* get_block_gpu_address(size_t block_id, size_t block_offset);
 size_t memory_manager_allocate(size_t size);
 void memory_manager_free(size_t block_id, size_t size);
 void memory_manager_upload_to_allocation(size_t block_id, size_t block_offset, void* data, size_t size);
+void memory_manager_upload_from_pinned_buffer(void* pinned_data, void* device_address, size_t size);
+void memory_manager_upload_async_from_pinned_buffer(void* pinned_data, void* device_address, size_t size);
+void* memory_get_pinned_allocation(size_t size);
+std::vector<void*> get_device_kernel_args_pointers(size_t num_buffers);
 
 // Matrix Setup API
 cudaStream_t get_stream();
@@ -24,5 +28,7 @@ void register_matrix_group(size_t rows, size_t columns, size_t count, size_t* ma
 void upload_matrix_data(size_t mat_id, float* data, size_t rows, size_t columns);
 size_t register_matrix_with_data(float* data, size_t rows, size_t cols);
 void unregister_matrix(size_t mat_id);
+void increase_matrix_ref_count(size_t mat_id);
+void decrease_matrix_ref_count(size_t mat_id);
 void get_matrix_data(size_t mat_id, int rows, int cols, float* data_buffer);
 }

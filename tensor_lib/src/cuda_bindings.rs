@@ -18,6 +18,8 @@ extern "C" {
   pub fn register_matrix_group(rows: usize, cols: usize, count: usize, mat_ids: *mut c_ulonglong);
   pub fn upload_matrix_data(mat_id: usize, data: *const c_float, rows: usize, columns: usize);
   pub fn register_matrix_with_data(data: *const c_float, rows: usize, cols: usize) -> usize;
+  pub fn increase_matrix_ref_count(mat_id: usize);
+  pub fn decrease_matrix_ref_count(mat_id: usize);
   pub fn unregister_matrix(mat_id: usize) -> usize;
   pub fn get_matrix_data(mat_id: usize, rows: usize, cols: usize, data_buffer: *mut c_float);
   pub fn cuda_element_add(

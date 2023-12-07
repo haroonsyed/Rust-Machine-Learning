@@ -4,7 +4,7 @@ use rand::prelude::Distribution;
 use statrs::distribution::Normal;
 use std::ffi::{c_float, c_ulonglong};
 use std::io::{stdout, BufWriter, Write};
-use std::sync::Arc;
+use std::time::Instant;
 
 // IMPORTANT NOTE: THIS API IS THREADSAFE, BUT THE UNDERLYING CUDA LIBRARY IS NOT THREAD SAFE (yet).
 
@@ -25,10 +25,19 @@ impl MatrixId {
   }
 }
 
+impl Clone for MatrixId {
+  fn clone(&self) -> Self {
+    unsafe {
+      increase_matrix_ref_count(self.0);
+    }
+    return MatrixId(self.0);
+  }
+}
+
 impl Drop for MatrixId {
   fn drop(&mut self) {
     unsafe {
-      unregister_matrix(self.0);
+      decrease_matrix_ref_count(self.0);
     }
   }
 }
@@ -38,7 +47,7 @@ impl Drop for MatrixId {
 // Cloning is explicit to ensure this understanding
 #[derive(Clone)]
 pub struct Matrix {
-  id: Arc<MatrixId>,
+  id: MatrixId,
   pub rows: usize,
   pub columns: usize,
 }
@@ -50,14 +59,15 @@ impl Matrix {
 
   fn new(id: usize, rows: usize, columns: usize) -> Self {
     return Matrix {
-      id: Arc::new(MatrixId::new(id)),
+      id: MatrixId::new(id),
       rows,
       columns,
     };
   }
 
   pub fn get_id(&self) -> usize {
-    return (*self.id).0;
+    // return self.id.0;
+    return self.id.0;
   }
 
   pub fn set_data(&self, data: &Vec<Vec<f32>>) {
@@ -1067,7 +1077,10 @@ pub fn element_add_packed(
 
   let mat_1_ids = mat_1s.iter().map(|mat| mat.get_id()).collect_vec();
   let mat_2_ids = mat_2s.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   unsafe {
     cuda_element_add_packed(
@@ -1116,7 +1129,10 @@ pub fn element_subtract_packed(
 
   let mat_1_ids = mat_1s.iter().map(|mat| mat.get_id()).collect_vec();
   let mat_2_ids = mat_2s.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   unsafe {
     cuda_element_subtract_packed(
@@ -1165,7 +1181,10 @@ pub fn element_multiply_packed(
 
   let mat_1_ids = mat_1s.iter().map(|mat| mat.get_id()).collect_vec();
   let mat_2_ids = mat_2s.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   unsafe {
     cuda_element_multiply_packed(
@@ -1214,7 +1233,10 @@ pub fn element_divide_packed(
 
   let mat_1_ids = mat_1s.iter().map(|mat| mat.get_id()).collect_vec();
   let mat_2_ids = mat_2s.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   unsafe {
     cuda_element_divide_packed(
@@ -1250,7 +1272,10 @@ pub fn scalar_multiply_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
   let mat_cols = matrices[0].columns;
 
   let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   unsafe {
     cuda_scalar_multiply_packed(
@@ -1266,7 +1291,7 @@ pub fn scalar_multiply_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
 
   if inplace {
     // Return mat1s, but clone to keep arc
-    return matrices.to_owned();
+    return matrices.iter().map(|mat| mat.clone()).collect_vec();
   } else {
     return result_ids
       .iter()
@@ -1286,7 +1311,10 @@ pub fn scalar_divide_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) 
   let mat_cols = matrices[0].columns;
 
   let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   unsafe {
     cuda_scalar_divide_packed(
@@ -1302,7 +1330,7 @@ pub fn scalar_divide_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) 
 
   if inplace {
     // Return mat1s, but clone to keep arc
-    return matrices.to_owned();
+    return matrices.iter().map(|mat| mat.clone()).collect_vec();
   } else {
     return result_ids
       .iter()
@@ -1322,7 +1350,10 @@ pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> 
   let mat_cols = matrices[0].columns;
 
   let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   unsafe {
     cuda_scalar_add_packed(
@@ -1338,7 +1369,7 @@ pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> 
 
   if inplace {
     // Return mat1s, but clone to keep arc
-    return matrices.to_owned();
+    return matrices.iter().map(|mat| mat.clone()).collect_vec();
   } else {
     return result_ids
       .iter()
@@ -1358,7 +1389,10 @@ pub fn scalar_subtract_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
   let mat_cols = matrices[0].columns;
 
   let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   unsafe {
     cuda_scalar_subtract_packed(
@@ -1374,7 +1408,7 @@ pub fn scalar_subtract_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
 
   if inplace {
     // Return mat1s, but clone to keep arc
-    return matrices.to_owned();
+    return matrices.iter().map(|mat| mat.clone()).collect_vec();
   } else {
     return result_ids
       .iter()
@@ -1394,7 +1428,10 @@ pub fn element_sqrt_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix>
   let mat_cols = matrices[0].columns;
 
   let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   unsafe {
     cuda_element_sqrt_packed(
@@ -1409,7 +1446,7 @@ pub fn element_sqrt_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix>
 
   if inplace {
     // Return mat1s, but clone to keep arc
-    return matrices.to_owned();
+    return matrices.iter().map(|mat| mat.clone()).collect_vec();
   } else {
     return result_ids
       .iter()
@@ -1429,7 +1466,10 @@ pub fn element_exp_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> 
   let mat_cols = matrices[0].columns;
 
   let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   unsafe {
     cuda_element_exp_packed(
@@ -1444,7 +1484,7 @@ pub fn element_exp_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> 
 
   if inplace {
     // Return mat1s, but clone to keep arc
-    return matrices.to_owned();
+    return matrices.iter().map(|mat| mat.clone()).collect_vec();
   } else {
     return result_ids
       .iter()
@@ -1465,7 +1505,10 @@ pub fn element_ReLU_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix>
   let mat_cols = matrices[0].columns;
 
   let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   unsafe {
     cuda_element_ReLU_packed(
@@ -1480,7 +1523,7 @@ pub fn element_ReLU_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix>
 
   if inplace {
     // Return mat1s, but clone to keep arc
-    return matrices.to_owned();
+    return matrices.iter().map(|mat| mat.clone()).collect_vec();
   } else {
     return result_ids
       .iter()
@@ -1501,7 +1544,10 @@ pub fn element_ReLU_prime_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<M
   let mat_cols = matrices[0].columns;
 
   let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   unsafe {
     cuda_element_ReLU_prime_packed(
@@ -1516,7 +1562,7 @@ pub fn element_ReLU_prime_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<M
 
   if inplace {
     // Return mat1s, but clone to keep arc
-    return matrices.to_owned();
+    return matrices.iter().map(|mat| mat.clone()).collect_vec();
   } else {
     return result_ids
       .iter()
@@ -1575,7 +1621,10 @@ pub fn nearest_neighbor_2x_upsample_packed(
   }
 
   let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   let mat_rows = matrices[0].rows;
   let mat_cols = matrices[0].columns;
@@ -1608,7 +1657,10 @@ pub fn rotate_180_packed(matrices: &Vec<Matrix>) -> Vec<Matrix> {
   }
 
   let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   let mat_rows = matrices[0].rows;
   let mat_cols = matrices[0].columns;
@@ -1637,6 +1689,7 @@ pub fn correlate_packed(
   kernels: &Vec<Matrix>,
   padding_type: PaddingType,
 ) -> Vec<Matrix> {
+  let start = Instant::now();
   let num_matrices = matrices.len();
   let num_kernels = kernels.len();
 
@@ -1662,10 +1715,15 @@ pub fn correlate_packed(
     panic!("Kernel must be square and odd for same correlation!");
   }
 
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let kernel_ids = kernels.iter().map(|kernel| kernel.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mat_ids: Vec<usize> = matrices.iter().map(|mat| mat.get_id()).collect();
+  let kernel_ids: Vec<usize> = kernels.iter().map(|kernel| kernel.get_id()).collect();
+  let mut result_ids = Vec::with_capacity(num_matrices);
 
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
+
+  let setup = start.elapsed();
   unsafe {
     cuda_correlate_packed(
       mat_ids.as_ptr() as *const c_ulonglong,
@@ -1679,6 +1737,7 @@ pub fn correlate_packed(
       padding_type,
     );
   }
+  let call = start.elapsed() - setup;
 
   let output_rows = match padding_type {
     PaddingType::VALID => mat_rows - kernel_rows + 1,
@@ -1692,10 +1751,24 @@ pub fn correlate_packed(
     PaddingType::FULL => mat_cols + kernel_cols - 1,
   };
 
-  return result_ids
+  let padding_decision_time = start.elapsed() - setup - call;
+
+  let result = result_ids
     .iter()
     .map(|result_id| Matrix::new(*result_id, output_rows, output_columns))
-    .collect_vec();
+    .collect();
+
+  let result_id_time = start.elapsed() - setup - call - padding_decision_time;
+  let total = start.elapsed();
+  // println!("Correlate setup: {:?}", setup);
+  // println!("Correlate call: {:?}", call);
+  // println!(
+  //   "Correlate padding decision time: {:?}",
+  //   padding_decision_time
+  // );
+  // println!("Correlate result id time: {:?}", result_id_time);
+  // println!("Correlate total: {:?}", total);
+  return result;
 }
 
 pub fn convolve_packed(
@@ -1730,7 +1803,10 @@ pub fn convolve_packed(
 
   let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
   let kernel_ids = kernels.iter().map(|kernel| kernel.get_id()).collect_vec();
-  let mut result_ids = vec![0; num_matrices];
+  let mut result_ids = Vec::with_capacity(num_matrices);
+  unsafe {
+    result_ids.set_len(num_matrices);
+  }
 
   unsafe {
     cuda_convolve_packed(
