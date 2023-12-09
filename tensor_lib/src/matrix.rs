@@ -4,6 +4,7 @@ use rand::prelude::Distribution;
 use statrs::distribution::Normal;
 use std::ffi::{c_float, c_ulonglong};
 use std::io::{stdout, BufWriter, Write};
+use std::ptr::null_mut;
 use std::time::Instant;
 
 // IMPORTANT NOTE: THIS API IS THREADSAFE, BUT THE UNDERLYING CUDA LIBRARY IS NOT THREAD SAFE (yet).
@@ -907,7 +908,7 @@ pub fn create_matrix_group(rows: usize, columns: usize, count: usize) -> Vec<Mat
 }
 
 // All matrices are required to be the same shape
-pub fn flatten_matrix_array(to_flatten: &Vec<Matrix>) -> Matrix {
+pub fn flatten_matrix_array(to_flatten: &[Matrix]) -> Matrix {
   if to_flatten.len() == 0 {
     return Matrix::zeros(0, 0);
   }
@@ -929,7 +930,7 @@ pub fn flatten_matrix_array(to_flatten: &Vec<Matrix>) -> Matrix {
 }
 
 // Take an image and convert it to a matrix of columns based on patches (with specified padding) the filter makes of image
-pub fn img2col(image: &Vec<Matrix>, filter_rows: usize, filter_cols: usize) -> Matrix {
+pub fn img2col(image: &[Matrix], filter_rows: usize, filter_cols: usize) -> Matrix {
   let image_depth = image.len();
 
   let image_rows = image[0].get_rows();
@@ -1005,11 +1006,7 @@ pub fn unflatten_array_strided_to_matrices(
   return results;
 }
 
-pub fn element_add_packed(
-  mat_1s: &Vec<Matrix>,
-  mat_2s: &Vec<Matrix>,
-  inplace: bool,
-) -> Vec<Matrix> {
+pub fn element_add_packed(mat_1s: &[Matrix], mat_2s: &[Matrix]) -> Vec<Matrix> {
   let num_matrices = mat_1s.len();
 
   if num_matrices != mat_2s.len() {
@@ -1020,21 +1017,13 @@ pub fn element_add_packed(
     );
   }
 
-  if num_matrices == 0 {
-    return Vec::new();
-  }
-
   let mat_rows = mat_1s[0].get_columns();
   let mat_cols = mat_1s[0].get_columns();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = if inplace {
-    mat_1s.clone()
-  } else {
-    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
-  };
+  let mut results = Vec::with_capacity(num_matrices);
 
   unsafe {
+    results.set_len(num_matrices);
     cuda_element_add_packed(
       mat_1s.as_ptr() as *const c_ulonglong,
       mat_2s.as_ptr() as *const c_ulonglong,
@@ -1042,18 +1031,39 @@ pub fn element_add_packed(
       num_matrices,
       mat_rows,
       mat_cols,
-      inplace,
     );
   }
 
   return results;
 }
 
-pub fn element_subtract_packed(
-  mat_1s: &Vec<Matrix>,
-  mat_2s: &Vec<Matrix>,
-  inplace: bool,
-) -> Vec<Matrix> {
+pub fn element_add_packed_inplace(mat_1s: &[Matrix], mat_2s: &[Matrix]) {
+  let num_matrices = mat_1s.len();
+
+  if num_matrices != mat_2s.len() {
+    panic!(
+      "Number of matrices must be equal! {} {}",
+      mat_1s.len(),
+      mat_2s.len()
+    );
+  }
+
+  let mat_rows = mat_1s[0].get_columns();
+  let mat_cols = mat_1s[0].get_columns();
+
+  unsafe {
+    cuda_element_add_packed_inplace(
+      mat_1s.as_ptr() as *const c_ulonglong,
+      mat_2s.as_ptr() as *const c_ulonglong,
+      null_mut(),
+      num_matrices,
+      mat_rows,
+      mat_cols,
+    );
+  }
+}
+
+pub fn element_subtract_packed(mat_1s: &[Matrix], mat_2s: &[Matrix]) -> Vec<Matrix> {
   let num_matrices = mat_1s.len();
 
   if num_matrices != mat_2s.len() {
@@ -1071,14 +1081,10 @@ pub fn element_subtract_packed(
   let mat_rows = mat_1s[0].get_columns();
   let mat_cols = mat_1s[0].get_columns();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = if inplace {
-    mat_1s.clone()
-  } else {
-    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
-  };
+  let mut results = Vec::with_capacity(num_matrices);
 
   unsafe {
+    results.set_len(num_matrices);
     cuda_element_subtract_packed(
       mat_1s.as_ptr() as *const c_ulonglong,
       mat_2s.as_ptr() as *const c_ulonglong,
@@ -1086,18 +1092,39 @@ pub fn element_subtract_packed(
       num_matrices,
       mat_rows,
       mat_cols,
-      inplace,
     );
   }
 
   return results;
 }
 
-pub fn element_multiply_packed(
-  mat_1s: &Vec<Matrix>,
-  mat_2s: &Vec<Matrix>,
-  inplace: bool,
-) -> Vec<Matrix> {
+pub fn element_subtract_packed_inplace(mat_1s: &[Matrix], mat_2s: &[Matrix]) {
+  let num_matrices = mat_1s.len();
+
+  if num_matrices != mat_2s.len() {
+    panic!(
+      "Number of matrices must be equal! {} {}",
+      mat_1s.len(),
+      mat_2s.len()
+    );
+  }
+
+  let mat_rows = mat_1s[0].get_columns();
+  let mat_cols = mat_1s[0].get_columns();
+
+  unsafe {
+    cuda_element_subtract_packed_inplace(
+      mat_1s.as_ptr() as *const c_ulonglong,
+      mat_2s.as_ptr() as *const c_ulonglong,
+      null_mut(),
+      num_matrices,
+      mat_rows,
+      mat_cols,
+    );
+  }
+}
+
+pub fn element_multiply_packed(mat_1s: &[Matrix], mat_2s: &[Matrix]) -> Vec<Matrix> {
   let num_matrices = mat_1s.len();
 
   if num_matrices != mat_2s.len() {
@@ -1115,13 +1142,10 @@ pub fn element_multiply_packed(
   let mat_rows = mat_1s[0].get_columns();
   let mat_cols = mat_1s[0].get_columns();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = if inplace {
-    mat_1s.clone()
-  } else {
-    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
-  };
+  let mut results = Vec::with_capacity(num_matrices);
+
   unsafe {
+    results.set_len(num_matrices);
     cuda_element_multiply_packed(
       mat_1s.as_ptr() as *const c_ulonglong,
       mat_2s.as_ptr() as *const c_ulonglong,
@@ -1129,18 +1153,39 @@ pub fn element_multiply_packed(
       num_matrices,
       mat_rows,
       mat_cols,
-      inplace,
     );
   }
 
   return results;
 }
 
-pub fn element_divide_packed(
-  mat_1s: &Vec<Matrix>,
-  mat_2s: &Vec<Matrix>,
-  inplace: bool,
-) -> Vec<Matrix> {
+pub fn element_multiply_packed_inplace(mat_1s: &[Matrix], mat_2s: &[Matrix]) {
+  let num_matrices = mat_1s.len();
+
+  if num_matrices != mat_2s.len() {
+    panic!(
+      "Number of matrices must be equal! {} {}",
+      mat_1s.len(),
+      mat_2s.len()
+    );
+  }
+
+  let mat_rows = mat_1s[0].get_columns();
+  let mat_cols = mat_1s[0].get_columns();
+
+  unsafe {
+    cuda_element_multiply_packed_inplace(
+      mat_1s.as_ptr() as *const c_ulonglong,
+      mat_2s.as_ptr() as *const c_ulonglong,
+      null_mut(),
+      num_matrices,
+      mat_rows,
+      mat_cols,
+    );
+  }
+}
+
+pub fn element_divide_packed(mat_1s: &[Matrix], mat_2s: &[Matrix]) -> Vec<Matrix> {
   let num_matrices = mat_1s.len();
 
   if num_matrices != mat_2s.len() {
@@ -1158,13 +1203,10 @@ pub fn element_divide_packed(
   let mat_rows = mat_1s[0].get_columns();
   let mat_cols = mat_1s[0].get_columns();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = if inplace {
-    mat_1s.clone()
-  } else {
-    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
-  };
+  let mut results = Vec::with_capacity(num_matrices);
+
   unsafe {
+    results.set_len(num_matrices);
     cuda_element_divide_packed(
       mat_1s.as_ptr() as *const c_ulonglong,
       mat_2s.as_ptr() as *const c_ulonglong,
@@ -1172,14 +1214,39 @@ pub fn element_divide_packed(
       num_matrices,
       mat_rows,
       mat_cols,
-      inplace,
     );
   }
 
   return results;
 }
 
-pub fn scalar_multiply_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
+pub fn element_divide_packed_inplace(mat_1s: &[Matrix], mat_2s: &[Matrix]) {
+  let num_matrices = mat_1s.len();
+
+  if num_matrices != mat_2s.len() {
+    panic!(
+      "Number of matrices must be equal! {} {}",
+      mat_1s.len(),
+      mat_2s.len()
+    );
+  }
+
+  let mat_rows = mat_1s[0].get_columns();
+  let mat_cols = mat_1s[0].get_columns();
+
+  unsafe {
+    cuda_element_divide_packed_inplace(
+      mat_1s.as_ptr() as *const c_ulonglong,
+      mat_2s.as_ptr() as *const c_ulonglong,
+      null_mut(),
+      num_matrices,
+      mat_rows,
+      mat_cols,
+    );
+  }
+}
+
+pub fn scalar_multiply_packed(matrices: &[Matrix], scalar: f32) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1189,13 +1256,10 @@ pub fn scalar_multiply_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
   let mat_rows = matrices[0].get_rows();
   let mat_cols = matrices[0].get_columns();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = if inplace {
-    matrices.clone()
-  } else {
-    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
-  };
+  let mut results = Vec::with_capacity(num_matrices);
+
   unsafe {
+    results.set_len(num_matrices);
     cuda_scalar_multiply_packed(
       matrices.as_ptr() as *const c_ulonglong,
       results.as_mut_ptr() as *mut c_ulonglong,
@@ -1203,14 +1267,31 @@ pub fn scalar_multiply_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
       mat_rows,
       mat_cols,
       scalar,
-      inplace,
     );
   }
 
   return results;
 }
 
-pub fn scalar_divide_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
+pub fn scalar_multiply_packed_inplace(matrices: &[Matrix], scalar: f32) {
+  let num_matrices = matrices.len();
+
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
+
+  unsafe {
+    cuda_scalar_multiply_packed_inplace(
+      matrices.as_ptr() as *const c_ulonglong,
+      null_mut(),
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      scalar,
+    );
+  }
+}
+
+pub fn scalar_divide_packed(matrices: &[Matrix], scalar: f32) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1220,13 +1301,10 @@ pub fn scalar_divide_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) 
   let mat_rows = matrices[0].get_rows();
   let mat_cols = matrices[0].get_columns();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = if inplace {
-    matrices.clone()
-  } else {
-    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
-  };
+  let mut results = Vec::with_capacity(num_matrices);
+
   unsafe {
+    results.set_len(num_matrices);
     cuda_scalar_divide_packed(
       matrices.as_ptr() as *const c_ulonglong,
       results.as_mut_ptr() as *mut c_ulonglong,
@@ -1234,14 +1312,31 @@ pub fn scalar_divide_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) 
       mat_rows,
       mat_cols,
       scalar,
-      inplace,
     );
   }
 
   return results;
 }
 
-pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
+pub fn scalar_divide_packed_inplace(matrices: &[Matrix], scalar: f32) {
+  let num_matrices = matrices.len();
+
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
+
+  unsafe {
+    cuda_scalar_divide_packed_inplace(
+      matrices.as_ptr() as *const c_ulonglong,
+      null_mut(),
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      scalar,
+    );
+  }
+}
+
+pub fn scalar_add_packed(matrices: &[Matrix], scalar: f32) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1251,13 +1346,10 @@ pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> 
   let mat_rows = matrices[0].get_rows();
   let mat_cols = matrices[0].get_columns();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = if inplace {
-    matrices.clone()
-  } else {
-    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
-  };
+  let mut results = Vec::with_capacity(num_matrices);
+
   unsafe {
+    results.set_len(num_matrices);
     cuda_scalar_add_packed(
       matrices.as_ptr() as *const c_ulonglong,
       results.as_mut_ptr() as *mut c_ulonglong,
@@ -1265,14 +1357,31 @@ pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> 
       mat_rows,
       mat_cols,
       scalar,
-      inplace,
     );
   }
 
   return results;
 }
 
-pub fn scalar_subtract_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
+pub fn scalar_add_packed_inplace(matrices: &[Matrix], scalar: f32) {
+  let num_matrices = matrices.len();
+
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
+
+  unsafe {
+    cuda_scalar_add_packed_inplace(
+      matrices.as_ptr() as *const c_ulonglong,
+      null_mut(),
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      scalar,
+    );
+  }
+}
+
+pub fn scalar_subtract_packed(matrices: &[Matrix], scalar: f32) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1282,13 +1391,10 @@ pub fn scalar_subtract_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
   let mat_rows = matrices[0].get_rows();
   let mat_cols = matrices[0].get_columns();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = if inplace {
-    matrices.clone()
-  } else {
-    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
-  };
+  let mut results = Vec::with_capacity(num_matrices);
+
   unsafe {
+    results.set_len(num_matrices);
     cuda_scalar_subtract_packed(
       matrices.as_ptr() as *const c_ulonglong,
       results.as_mut_ptr() as *mut c_ulonglong,
@@ -1296,14 +1402,31 @@ pub fn scalar_subtract_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
       mat_rows,
       mat_cols,
       scalar,
-      inplace,
     );
   }
 
   return results;
 }
 
-pub fn element_sqrt_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> {
+pub fn scalar_subtract_packed_inplace(matrices: &[Matrix], scalar: f32) {
+  let num_matrices = matrices.len();
+
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
+
+  unsafe {
+    cuda_scalar_subtract_packed_inplace(
+      matrices.as_ptr() as *const c_ulonglong,
+      null_mut(),
+      num_matrices,
+      mat_rows,
+      mat_cols,
+      scalar,
+    );
+  }
+}
+
+pub fn element_sqrt_packed(matrices: &[Matrix]) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1313,27 +1436,40 @@ pub fn element_sqrt_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix>
   let mat_rows = matrices[0].get_rows();
   let mat_cols = matrices[0].get_columns();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = if inplace {
-    matrices.clone()
-  } else {
-    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
-  };
+  let mut results = Vec::with_capacity(num_matrices);
+
   unsafe {
+    results.set_len(num_matrices);
     cuda_element_sqrt_packed(
       matrices.as_ptr() as *const c_ulonglong,
       results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
-      inplace,
     );
   }
 
   return results;
 }
 
-pub fn element_exp_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> {
+pub fn element_sqrt_packed_inplace(matrices: &[Matrix]) {
+  let num_matrices = matrices.len();
+
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
+
+  unsafe {
+    cuda_element_sqrt_packed_inplace(
+      matrices.as_ptr() as *const c_ulonglong,
+      null_mut(),
+      num_matrices,
+      mat_rows,
+      mat_cols,
+    );
+  }
+}
+
+pub fn element_exp_packed(matrices: &[Matrix]) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1343,28 +1479,41 @@ pub fn element_exp_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> 
   let mat_rows = matrices[0].get_rows();
   let mat_cols = matrices[0].get_columns();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = if inplace {
-    matrices.clone()
-  } else {
-    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
-  };
+  let mut results = Vec::with_capacity(num_matrices);
+
   unsafe {
+    results.set_len(num_matrices);
     cuda_element_exp_packed(
       matrices.as_ptr() as *const c_ulonglong,
       results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
-      inplace,
     );
   }
 
   return results;
 }
 
+pub fn element_exp_packed_inplace(matrices: &[Matrix]) {
+  let num_matrices = matrices.len();
+
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
+
+  unsafe {
+    cuda_element_exp_packed_inplace(
+      matrices.as_ptr() as *const c_ulonglong,
+      null_mut(),
+      num_matrices,
+      mat_rows,
+      mat_cols,
+    );
+  }
+}
+
 #[allow(non_snake_case)]
-pub fn element_ReLU_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> {
+pub fn element_ReLU_packed(matrices: &[Matrix]) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1374,20 +1523,16 @@ pub fn element_ReLU_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix>
   let mat_rows = matrices[0].get_rows();
   let mat_cols = matrices[0].get_columns();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = if inplace {
-    matrices.clone()
-  } else {
-    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
-  };
+  let mut results = Vec::with_capacity(num_matrices);
+
   unsafe {
+    results.set_len(num_matrices);
     cuda_element_ReLU_packed(
       matrices.as_ptr() as *const c_ulonglong,
       results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
-      inplace,
     );
   }
 
@@ -1395,7 +1540,25 @@ pub fn element_ReLU_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix>
 }
 
 #[allow(non_snake_case)]
-pub fn element_ReLU_prime_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> {
+pub fn element_ReLU_packed_inplace(matrices: &[Matrix]) {
+  let num_matrices = matrices.len();
+
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
+
+  unsafe {
+    cuda_element_ReLU_packed_inplace(
+      matrices.as_ptr() as *const c_ulonglong,
+      null_mut(),
+      num_matrices,
+      mat_rows,
+      mat_cols,
+    );
+  }
+}
+
+#[allow(non_snake_case)]
+pub fn element_ReLU_prime_packed(matrices: &[Matrix]) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1405,27 +1568,41 @@ pub fn element_ReLU_prime_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<M
   let mat_rows = matrices[0].get_rows();
   let mat_cols = matrices[0].get_columns();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = if inplace {
-    matrices.clone()
-  } else {
-    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
-  };
+  let mut results = Vec::with_capacity(num_matrices);
+
   unsafe {
+    results.set_len(num_matrices);
     cuda_element_ReLU_prime_packed(
       matrices.as_ptr() as *const c_ulonglong,
       results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
-      inplace,
     );
   }
 
   return results;
 }
 
-pub fn max_pool_packed(matrices: &Vec<Matrix>) -> (Vec<Matrix>, Vec<Matrix>) {
+#[allow(non_snake_case)]
+pub fn element_ReLU_prime_packed_inplace(matrices: &[Matrix]) {
+  let num_matrices = matrices.len();
+
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
+
+  unsafe {
+    cuda_element_ReLU_prime_packed_inplace(
+      matrices.as_ptr() as *const c_ulonglong,
+      null_mut(),
+      num_matrices,
+      mat_rows,
+      mat_cols,
+    );
+  }
+}
+
+pub fn max_pool_packed(matrices: &[Matrix]) -> (Vec<Matrix>, Vec<Matrix>) {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1460,10 +1637,7 @@ pub fn max_pool_packed(matrices: &Vec<Matrix>) -> (Vec<Matrix>, Vec<Matrix>) {
   return (pooled_result, bitmask_result);
 }
 
-pub fn nearest_neighbor_2x_upsample_packed(
-  matrices: &Vec<Matrix>,
-  odd_upsample: bool,
-) -> Vec<Matrix> {
+pub fn nearest_neighbor_2x_upsample_packed(matrices: &[Matrix], odd_upsample: bool) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1489,7 +1663,7 @@ pub fn nearest_neighbor_2x_upsample_packed(
   return results;
 }
 
-pub fn rotate_180_packed(matrices: &Vec<Matrix>) -> Vec<Matrix> {
+pub fn rotate_180_packed(matrices: &[Matrix]) -> Vec<Matrix> {
   let num_matrices = matrices.len();
 
   if num_matrices == 0 {
@@ -1499,9 +1673,10 @@ pub fn rotate_180_packed(matrices: &Vec<Matrix>) -> Vec<Matrix> {
   let mat_rows = matrices[0].get_rows();
   let mat_cols = matrices[0].get_columns();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = (0..num_matrices).map(|_| Matrix::new(0)).collect_vec();
+  let mut results = Vec::with_capacity(num_matrices);
+
   unsafe {
+    results.set_len(num_matrices);
     cuda_rotate_180_packed(
       matrices.as_ptr() as *const c_ulonglong,
       results.as_mut_ptr() as *mut c_ulonglong,
@@ -1515,8 +1690,8 @@ pub fn rotate_180_packed(matrices: &Vec<Matrix>) -> Vec<Matrix> {
 }
 
 pub fn correlate_packed(
-  matrices: &Vec<Matrix>,
-  kernels: &Vec<Matrix>,
+  matrices: &[Matrix],
+  kernels: &[Matrix],
   padding_type: PaddingType,
 ) -> Vec<Matrix> {
   let start = Instant::now();
@@ -1547,9 +1722,10 @@ pub fn correlate_packed(
 
   let setup = start.elapsed();
 
-  // let mut results = vec![Matrix::new(0); num_matrices];
-  let mut results = (0..num_matrices).map(|_| Matrix::new(0)).collect_vec();
+  let mut results = Vec::with_capacity(num_matrices);
+
   unsafe {
+    results.set_len(num_matrices);
     cuda_correlate_packed(
       matrices.as_ptr() as *const c_ulonglong,
       num_matrices,
@@ -1580,8 +1756,8 @@ pub fn correlate_packed(
 }
 
 pub fn convolve_packed(
-  matrices: &Vec<Matrix>,
-  kernels: &Vec<Matrix>,
+  matrices: &[Matrix],
+  kernels: &[Matrix],
   padding_type: PaddingType,
 ) -> Vec<Matrix> {
   let num_matrices = matrices.len();
@@ -1610,11 +1786,9 @@ pub fn convolve_packed(
   }
 
   let mut results = Vec::with_capacity(num_matrices);
-  unsafe {
-    results.set_len(num_matrices);
-  }
 
   unsafe {
+    results.set_len(num_matrices);
     cuda_convolve_packed(
       matrices.as_ptr() as *const c_ulonglong,
       num_matrices,
