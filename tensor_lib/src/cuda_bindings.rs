@@ -13,15 +13,24 @@ pub struct Tuple {
 extern "C" {
   pub fn test();
   pub fn test_array_fill(out: *mut c_float, length: usize);
+
   pub fn cuda_synchronize();
+
   pub fn register_matrix(rows: usize, cols: usize) -> usize;
   pub fn register_matrix_group(rows: usize, cols: usize, count: usize, mat_ids: *mut c_ulonglong);
-  pub fn upload_matrix_data(mat_id: usize, data: *const c_float, rows: usize, columns: usize);
   pub fn register_matrix_with_data(data: *const c_float, rows: usize, cols: usize) -> usize;
+  pub fn upload_matrix_data(mat_id: usize, data: *const c_float);
+  pub fn unregister_matrix(mat_id: usize) -> usize;
+
   pub fn increase_matrix_ref_count(mat_id: usize);
   pub fn decrease_matrix_ref_count(mat_id: usize);
-  pub fn unregister_matrix(mat_id: usize) -> usize;
-  pub fn get_matrix_data(mat_id: usize, rows: usize, cols: usize, data_buffer: *mut c_float);
+
+  pub fn get_matrix_rows(mat_id: usize) -> usize;
+  pub fn get_matrix_columns(mat_id: usize) -> usize;
+  pub fn get_matrix_length(mat_id: usize) -> usize;
+  pub fn get_matrix_data(mat_id: usize, data_buffer: *mut c_float);
+  pub fn reshape_matrix(mat_id: usize, rows: usize, columns: usize);
+
   pub fn cuda_element_add(
     mat1_id: usize,
     mat1_rows: usize,

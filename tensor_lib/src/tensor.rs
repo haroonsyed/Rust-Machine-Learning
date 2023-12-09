@@ -460,8 +460,8 @@ impl Tensor {
     }
 
     let result = self.get_data().matrix_multiply(&other.get_data());
-    let result_rows = result.rows;
-    let result_cols = result.columns;
+    let result_rows = result.get_rows();
+    let result_cols = result.get_columns();
     return Tensor::from_matrices(&vec![result], vec![result_rows, result_cols]);
   }
 
@@ -472,8 +472,8 @@ impl Tensor {
     }
 
     let result = self.get_data().transpose();
-    let result_rows = result.rows;
-    let result_cols = result.columns;
+    let result_rows = result.get_rows();
+    let result_cols = result.get_columns();
     return Tensor::from_matrices(&vec![result], vec![result_rows, result_cols]);
   }
 
@@ -484,8 +484,8 @@ impl Tensor {
     }
 
     let (result, _) = self.get_data().max_pool();
-    let result_rows = result.rows;
-    let result_cols = result.columns;
+    let result_rows = result.get_rows();
+    let result_cols = result.get_columns();
     return Tensor::from_matrices(&vec![result], vec![result_rows, result_cols]);
   }
 
@@ -497,8 +497,8 @@ impl Tensor {
 
     if self.get_rank() < 3 && kernels.get_rank() < 3 {
       let corr_result = self.get_data().correlate(&kernels.get_data(), padding_type);
-      let corr_result_rows = corr_result.rows;
-      let corr_result_cols = corr_result.columns;
+      let corr_result_rows = corr_result.get_rows();
+      let corr_result_cols = corr_result.get_columns();
       return Tensor::from_matrices(&vec![corr_result], vec![corr_result_rows, corr_result_cols]);
     }
 
@@ -520,8 +520,8 @@ impl Tensor {
       result.element_add_inplace(&corr_result);
     }
 
-    let result_rows = result.rows;
-    let result_cols = result.columns;
+    let result_rows = result.get_rows();
+    let result_cols = result.get_columns();
 
     return Tensor::from_matrices(&vec![result.clone()], vec![result_rows, result_cols]);
   }

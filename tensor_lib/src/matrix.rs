@@ -17,6 +17,7 @@ pub enum PaddingType {
 }
 
 // Use newtype for id to ensure drop arc<id> does not apply to all usize
+#[repr(C)]
 struct MatrixId(usize);
 
 impl MatrixId {
@@ -48,20 +49,12 @@ impl Drop for MatrixId {
 #[derive(Clone)]
 pub struct Matrix {
   id: MatrixId,
-  pub rows: usize,
-  pub columns: usize,
 }
 
 impl Matrix {
-  pub fn get_data_length(&self) -> usize {
-    return self.rows * self.columns;
-  }
-
-  fn new(id: usize, rows: usize, columns: usize) -> Self {
+  fn new(id: usize) -> Self {
     return Matrix {
       id: MatrixId::new(id),
-      rows,
-      columns,
     };
   }
 
@@ -70,12 +63,36 @@ impl Matrix {
     return self.id.0;
   }
 
+  pub fn get_rows(&self) -> usize {
+    let rows;
+    unsafe {
+      rows = get_matrix_rows(self.get_id());
+    }
+    return rows;
+  }
+
+  pub fn get_columns(&self) -> usize {
+    let columns;
+    unsafe {
+      columns = get_matrix_columns(self.get_id());
+    }
+    return columns;
+  }
+
+  pub fn get_data_length(&self) -> usize {
+    let data_length;
+    unsafe {
+      data_length = get_matrix_length(self.get_id());
+    }
+    return data_length;
+  }
+
   pub fn set_data(&self, data: &Vec<Vec<f32>>) {
     if data.len() == 0 {
       panic!("Cannot set data to empty matrix!");
     }
 
-    if (self.rows, self.columns) != (data.len(), data[0].len()) {
+    if (self.get_rows(), self.get_columns()) != (data.len(), data[0].len()) {
       panic!("Data shape does not match matrix shape!");
     }
 
@@ -83,7 +100,7 @@ impl Matrix {
     data.iter().for_each(|row| flattened.extend(row));
 
     unsafe {
-      upload_matrix_data(self.get_id(), flattened.as_ptr(), self.rows, self.columns);
+      upload_matrix_data(self.get_id(), flattened.as_ptr());
     }
   }
 
@@ -93,23 +110,23 @@ impl Matrix {
     }
 
     unsafe {
-      upload_matrix_data(self.get_id(), data.as_ptr(), self.rows, self.columns);
+      upload_matrix_data(self.get_id(), data.as_ptr());
     }
   }
 
   pub fn get_data(&self) -> Vec<Vec<f32>> {
     let mut data = Vec::<c_float>::with_capacity(self.get_data_length());
     unsafe {
-      get_matrix_data(self.get_id(), self.rows, self.columns, data.as_mut_ptr());
+      get_matrix_data(self.get_id(), data.as_mut_ptr());
       data.set_len(self.get_data_length());
     }
 
     let mut index = 0;
     let mut result = Vec::new();
-    for _ in 0..self.rows {
-      let row_slice = data[index..index + self.columns as usize].to_vec();
+    for _ in 0..self.get_rows() {
+      let row_slice = data[index..index + self.get_columns() as usize].to_vec();
       result.push(row_slice);
-      index += self.columns as usize;
+      index += self.get_columns() as usize;
     }
 
     return result;
@@ -120,7 +137,7 @@ impl Matrix {
     unsafe {
       id = register_matrix(rows, columns);
     }
-    return Matrix::new(id, rows, columns);
+    return Matrix::new(id);
   }
 
   pub fn zeros(rows: usize, columns: usize) -> Self {
@@ -129,7 +146,7 @@ impl Matrix {
     unsafe {
       id = register_matrix_with_data(data.as_ptr(), rows, columns);
     }
-    return Matrix::new(id, rows, columns);
+    return Matrix::new(id);
   }
 
   pub fn new_1d(data: &Vec<f32>, rows: usize, columns: usize) -> Self {
@@ -142,7 +159,7 @@ impl Matrix {
       id = register_matrix_with_data(data.as_ptr(), rows, columns);
     }
 
-    return Matrix::new(id, rows, columns);
+    return Matrix::new(id);
   }
 
   pub fn new_2d(data: &Vec<Vec<f32>>) -> Self {
@@ -160,7 +177,7 @@ impl Matrix {
       id = register_matrix_with_data(flattened.as_ptr(), rows, columns);
     }
 
-    return Matrix::new(id, rows, columns);
+    return Matrix::new(id);
   }
 
   pub fn new_random(mean: f64, std: f64, rows: usize, columns: usize) -> Self {
@@ -188,8 +205,8 @@ impl Matrix {
 
     handle.write(b"\n").unwrap();
 
-    for row in 0..self.rows {
-      for index in 0..self.columns {
+    for row in 0..self.get_rows() {
+      for index in 0..self.get_columns() {
         let val = data[row][index];
         let formatted = format!(" {:<5} ", val);
         handle.write(formatted.as_bytes()).unwrap();
@@ -201,18 +218,25 @@ impl Matrix {
   }
 
   pub fn print_shape(&self) {
-    println!("Shape of matrix is: {} {}", self.rows, self.columns);
+    println!(
+      "Shape of matrix is: {} {}",
+      self.get_rows(),
+      self.get_columns()
+    );
   }
 
   pub fn same_shape(&self, other: &Matrix) -> bool {
-    return self.rows == other.rows && self.columns == other.columns;
+    return self.get_rows() == other.get_rows() && self.get_columns() == other.get_columns();
   }
 
   fn element_add_impl(&self, other: &Matrix, inplace: bool) -> usize {
     if !self.same_shape(other) {
       panic!(
         "Matrices not the same shape for addition! A: {} {} B: {} {}",
-        self.rows, self.columns, other.rows, other.columns
+        self.get_rows(),
+        self.get_columns(),
+        other.get_rows(),
+        other.get_columns()
       );
     }
 
@@ -220,11 +244,11 @@ impl Matrix {
     unsafe {
       result_id = cuda_element_add(
         self.get_id(),
-        self.rows,
-        self.columns,
+        self.get_rows(),
+        self.get_columns(),
         other.get_id(),
-        other.rows,
-        other.columns,
+        other.get_rows(),
+        other.get_columns(),
         inplace,
       )
     }
@@ -234,10 +258,8 @@ impl Matrix {
 
   pub fn element_add(&self, other: &Matrix) -> Self {
     let result_id = self.element_add_impl(other, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn element_add_inplace(&self, other: &Matrix) -> Self {
@@ -249,7 +271,10 @@ impl Matrix {
     if !self.same_shape(other) {
       panic!(
         "Matrices not the same shape for element_subtract! A: {} {} B: {} {}",
-        self.rows, self.columns, other.rows, other.columns
+        self.get_rows(),
+        self.get_columns(),
+        other.get_rows(),
+        other.get_columns()
       );
     }
 
@@ -257,11 +282,11 @@ impl Matrix {
     unsafe {
       result_id = cuda_element_subtract(
         self.get_id(),
-        self.rows,
-        self.columns,
+        self.get_rows(),
+        self.get_columns(),
         other.get_id(),
-        other.rows,
-        other.columns,
+        other.get_rows(),
+        other.get_columns(),
         inplace,
       )
     }
@@ -271,10 +296,8 @@ impl Matrix {
 
   pub fn element_subtract(&self, other: &Matrix) -> Self {
     let result_id = self.element_subtract_impl(other, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn element_subtract_inplace(&self, other: &Matrix) -> Self {
@@ -286,7 +309,10 @@ impl Matrix {
     if !self.same_shape(other) {
       panic!(
         "Matrices not the same shape for element_multiply! A: {} {} B: {} {}",
-        self.rows, self.columns, other.rows, other.columns
+        self.get_rows(),
+        self.get_columns(),
+        other.get_rows(),
+        other.get_columns()
       );
     }
 
@@ -294,11 +320,11 @@ impl Matrix {
     unsafe {
       result_id = cuda_element_multiply(
         self.get_id(),
-        self.rows,
-        self.columns,
+        self.get_rows(),
+        self.get_columns(),
         other.get_id(),
-        other.rows,
-        other.columns,
+        other.get_rows(),
+        other.get_columns(),
         inplace,
       )
     }
@@ -308,10 +334,8 @@ impl Matrix {
 
   pub fn element_multiply(&self, other: &Matrix) -> Self {
     let result_id = self.element_multiply_impl(other, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn element_multiply_inplace(&self, other: &Matrix) -> Self {
@@ -323,7 +347,10 @@ impl Matrix {
     if !self.same_shape(other) {
       panic!(
         "Matrices not the same shape for element_divide! A: {} {} B: {} {}",
-        self.rows, self.columns, other.rows, other.columns
+        self.get_rows(),
+        self.get_columns(),
+        other.get_rows(),
+        other.get_columns()
       );
     }
 
@@ -331,11 +358,11 @@ impl Matrix {
     unsafe {
       result_id = cuda_element_divide(
         self.get_id(),
-        self.rows,
-        self.columns,
+        self.get_rows(),
+        self.get_columns(),
         other.get_id(),
-        other.rows,
-        other.columns,
+        other.get_rows(),
+        other.get_columns(),
         inplace,
       )
     }
@@ -345,10 +372,8 @@ impl Matrix {
 
   pub fn element_divide(&self, other: &Matrix) -> Self {
     let result_id = self.element_divide_impl(other, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn element_divide_inplace(&self, other: &Matrix) -> Self {
@@ -359,7 +384,13 @@ impl Matrix {
   fn scalar_multiply_impl(&self, scalar: f32, inplace: bool) -> usize {
     let result_id: usize;
     unsafe {
-      result_id = cuda_scalar_multiply(self.get_id(), self.rows, self.columns, scalar, inplace)
+      result_id = cuda_scalar_multiply(
+        self.get_id(),
+        self.get_rows(),
+        self.get_columns(),
+        scalar,
+        inplace,
+      )
     }
 
     return result_id;
@@ -367,10 +398,8 @@ impl Matrix {
 
   pub fn scalar_multiply(&self, scalar: f32) -> Self {
     let result_id = self.scalar_multiply_impl(scalar, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn scalar_multiply_inplace(&self, scalar: f32) -> Self {
@@ -381,7 +410,13 @@ impl Matrix {
   fn scalar_divide_impl(&self, scalar: f32, inplace: bool) -> usize {
     let result_id: usize;
     unsafe {
-      result_id = cuda_scalar_divide(self.get_id(), self.rows, self.columns, scalar, inplace)
+      result_id = cuda_scalar_divide(
+        self.get_id(),
+        self.get_rows(),
+        self.get_columns(),
+        scalar,
+        inplace,
+      )
     }
 
     return result_id;
@@ -389,10 +424,8 @@ impl Matrix {
 
   pub fn scalar_divide(&self, scalar: f32) -> Self {
     let result_id = self.scalar_divide_impl(scalar, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn scalar_divide_inplace(&self, scalar: f32) -> Self {
@@ -402,17 +435,23 @@ impl Matrix {
 
   fn scalar_add_impl(&self, scalar: f32, inplace: bool) -> usize {
     let result_id: usize;
-    unsafe { result_id = cuda_scalar_add(self.get_id(), self.rows, self.columns, scalar, inplace) }
+    unsafe {
+      result_id = cuda_scalar_add(
+        self.get_id(),
+        self.get_rows(),
+        self.get_columns(),
+        scalar,
+        inplace,
+      )
+    }
 
     return result_id;
   }
 
   pub fn scalar_add(&self, scalar: f32) -> Self {
     let result_id = self.scalar_add_impl(scalar, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn scalar_add_inplace(&self, scalar: f32) -> Self {
@@ -423,7 +462,13 @@ impl Matrix {
   fn scalar_subtract_impl(&self, scalar: f32, inplace: bool) -> usize {
     let result_id: usize;
     unsafe {
-      result_id = cuda_scalar_subtract(self.get_id(), self.rows, self.columns, scalar, inplace)
+      result_id = cuda_scalar_subtract(
+        self.get_id(),
+        self.get_rows(),
+        self.get_columns(),
+        scalar,
+        inplace,
+      )
     }
 
     return result_id;
@@ -431,10 +476,8 @@ impl Matrix {
 
   pub fn scalar_subtract(&self, scalar: f32) -> Self {
     let result_id = self.scalar_subtract_impl(scalar, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn scalar_subtract_inplace(&self, scalar: f32) -> Self {
@@ -444,10 +487,13 @@ impl Matrix {
 
   pub fn matrix_multiply(&self, other: &Matrix) -> Self {
     // Bound Check
-    if self.columns != other.rows {
+    if self.get_columns() != other.get_rows() {
       panic!(
         "Matrices not compatible shape for mat mult! A: {} {} B: {} {}",
-        self.rows, self.columns, other.rows, other.columns
+        self.get_rows(),
+        self.get_columns(),
+        other.get_rows(),
+        other.get_columns()
       );
     }
 
@@ -455,27 +501,27 @@ impl Matrix {
     unsafe {
       result_id = cuda_matrix_multiply(
         self.get_id(),
-        self.rows,
-        self.columns,
+        self.get_rows(),
+        self.get_columns(),
         other.get_id(),
-        other.rows,
-        other.columns,
+        other.get_rows(),
+        other.get_columns(),
       )
     }
 
-    let output_rows = self.rows;
-    let output_columns = other.columns;
-
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   fn add_vector_impl(&self, other: &Matrix, inplace: bool) -> usize {
-    if !((self.rows == other.rows && other.columns == 1)
-      || (self.columns == other.columns && other.rows == 1))
+    if !((self.get_rows() == other.get_rows() && other.get_columns() == 1)
+      || (self.get_columns() == other.get_columns() && other.get_rows() == 1))
     {
       panic!(
         "Matrices not the correct shape for vector add! A: {} {} B: {} {}",
-        self.rows, self.columns, other.rows, other.columns
+        self.get_rows(),
+        self.get_columns(),
+        other.get_rows(),
+        other.get_columns()
       );
     }
 
@@ -483,11 +529,11 @@ impl Matrix {
     unsafe {
       result_id = cuda_add_vector(
         self.get_id(),
-        self.rows,
-        self.columns,
+        self.get_rows(),
+        self.get_columns(),
         other.get_id(),
-        other.rows,
-        other.columns,
+        other.get_rows(),
+        other.get_columns(),
         inplace,
       )
     }
@@ -497,10 +543,8 @@ impl Matrix {
 
   pub fn add_vector(&self, other: &Matrix) -> Self {
     let result_id = self.add_vector_impl(other, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn add_vector_inplace(&self, other: &Matrix) -> Self {
@@ -510,12 +554,15 @@ impl Matrix {
   }
 
   fn divide_by_vector_impl(&self, other: &Matrix, inplace: bool) -> usize {
-    if !((self.rows == other.rows && other.columns == 1)
-      || (self.columns == other.columns && other.rows == 1))
+    if !((self.get_rows() == other.get_rows() && other.get_columns() == 1)
+      || (self.get_columns() == other.get_columns() && other.get_rows() == 1))
     {
       panic!(
         "Matrices not the correct shape for division by vector! A: {} {} B: {} {}",
-        self.rows, self.columns, other.rows, other.columns
+        self.get_rows(),
+        self.get_columns(),
+        other.get_rows(),
+        other.get_columns()
       );
     }
 
@@ -523,11 +570,11 @@ impl Matrix {
     unsafe {
       result_id = cuda_divide_by_vector(
         self.get_id(),
-        self.rows,
-        self.columns,
+        self.get_rows(),
+        self.get_columns(),
         other.get_id(),
-        other.rows,
-        other.columns,
+        other.get_rows(),
+        other.get_columns(),
         inplace,
       )
     }
@@ -537,10 +584,8 @@ impl Matrix {
 
   pub fn divide_by_vector(&self, other: &Matrix) -> Self {
     let result_id = self.divide_by_vector_impl(other, false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn divide_by_vector_inplace(&self, other: &Matrix) -> Self {
@@ -551,16 +596,16 @@ impl Matrix {
 
   fn element_sqrt_impl(&self, inplace: bool) -> usize {
     let result_id: usize;
-    unsafe { result_id = cuda_element_sqrt(self.get_id(), self.rows, self.columns, inplace) }
+    unsafe {
+      result_id = cuda_element_sqrt(self.get_id(), self.get_rows(), self.get_columns(), inplace)
+    }
     return result_id;
   }
 
   pub fn element_sqrt(&self) -> Self {
     let result_id = self.element_sqrt_impl(false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn element_sqrt_inplace(&self) -> Self {
@@ -571,16 +616,16 @@ impl Matrix {
 
   fn element_exp_impl(&self, inplace: bool) -> usize {
     let result_id: usize;
-    unsafe { result_id = cuda_element_exp(self.get_id(), self.rows, self.columns, inplace) }
+    unsafe {
+      result_id = cuda_element_exp(self.get_id(), self.get_rows(), self.get_columns(), inplace)
+    }
     return result_id;
   }
 
   pub fn element_exp(&self) -> Self {
     let result_id = self.element_exp_impl(false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn element_exp_inplace(&self) -> Self {
@@ -592,7 +637,9 @@ impl Matrix {
   #[allow(non_snake_case)]
   fn element_ReLU_impl(&self, inplace: bool) -> usize {
     let result_id: usize;
-    unsafe { result_id = cuda_element_ReLU(self.get_id(), self.rows, self.columns, inplace) }
+    unsafe {
+      result_id = cuda_element_ReLU(self.get_id(), self.get_rows(), self.get_columns(), inplace)
+    }
 
     return result_id;
   }
@@ -600,10 +647,8 @@ impl Matrix {
   #[allow(non_snake_case)]
   pub fn element_ReLU(&self) -> Self {
     let result_id = self.element_ReLU_impl(false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   #[allow(non_snake_case)]
@@ -616,7 +661,10 @@ impl Matrix {
   #[allow(non_snake_case)]
   fn element_ReLU_prime_impl(&self, inplace: bool) -> usize {
     let result_id: usize;
-    unsafe { result_id = cuda_element_ReLU_prime(self.get_id(), self.rows, self.columns, inplace) }
+    unsafe {
+      result_id =
+        cuda_element_ReLU_prime(self.get_id(), self.get_rows(), self.get_columns(), inplace)
+    }
 
     return result_id;
   }
@@ -624,10 +672,8 @@ impl Matrix {
   #[allow(non_snake_case)]
   pub fn element_ReLU_prime(&self) -> Self {
     let result_id = self.element_ReLU_prime_impl(false);
-    let output_rows = self.rows;
-    let output_columns = self.columns;
 
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   #[allow(non_snake_case)]
@@ -639,32 +685,23 @@ impl Matrix {
 
   pub fn sum_rows_matrix(&self) -> Self {
     let result_id: usize;
-    unsafe { result_id = cuda_sum_rows(self.get_id(), self.rows, self.columns) }
+    unsafe { result_id = cuda_sum_rows(self.get_id(), self.get_rows(), self.get_columns()) }
 
-    let output_rows = self.rows;
-    let output_columns = 1;
-
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn sum_columns_matrix(&self) -> Self {
     let result_id: usize;
-    unsafe { result_id = cuda_sum_columns(self.get_id(), self.rows, self.columns) }
+    unsafe { result_id = cuda_sum_columns(self.get_id(), self.get_rows(), self.get_columns()) }
 
-    let output_rows = 1;
-    let output_columns = self.columns;
-
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn sum_columns(&self) -> Vec<f32> {
     let result_id: usize;
-    unsafe { result_id = cuda_sum_columns(self.get_id(), self.rows, self.columns) }
+    unsafe { result_id = cuda_sum_columns(self.get_id(), self.get_rows(), self.get_columns()) }
 
-    let output_rows = 1;
-    let output_columns = self.columns;
-
-    let result_matrix = Matrix::new(result_id, output_rows, output_columns);
+    let result_matrix = Matrix::new(result_id);
 
     let result = result_matrix.get_data()[0].to_vec();
     return result;
@@ -674,32 +711,29 @@ impl Matrix {
     let result_id: usize;
 
     // Fast transpose
-    if self.rows == 1 || self.columns == 1 {
+    if self.get_rows() == 1 || self.get_columns() == 1 {
       // Be very careful here, we need to clone the arc or we would delete the memory associated with this
-      let mut result = self.clone();
-      result.rows = self.columns;
-      result.columns = self.rows;
+      let result = self.clone();
+
+      unsafe {
+        reshape_matrix(result.get_id(), result.get_columns(), result.get_rows());
+      }
+
       return result;
     }
 
-    unsafe { result_id = cuda_transpose(self.get_id(), self.rows, self.columns) }
+    unsafe { result_id = cuda_transpose(self.get_id(), self.get_rows(), self.get_columns()) }
 
-    let output_rows = self.columns;
-    let output_columns = self.rows;
-
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn max_pool(&self) -> (Self, Self) {
     let result_ids: Tuple;
 
-    unsafe { result_ids = cuda_max_pool(self.get_id(), self.rows, self.columns) }
+    unsafe { result_ids = cuda_max_pool(self.get_id(), self.get_rows(), self.get_columns()) }
 
-    let output_rows = self.rows / 2 + self.rows % 2;
-    let output_columns = self.columns / 2 + self.columns % 2;
-
-    let pooled_matrix = Matrix::new(result_ids.a, output_rows, output_columns);
-    let bitmask_matrix = Matrix::new(result_ids.b, self.rows, self.columns);
+    let pooled_matrix = Matrix::new(result_ids.a);
+    let bitmask_matrix = Matrix::new(result_ids.b);
 
     return (pooled_matrix, bitmask_matrix);
   }
@@ -708,32 +742,30 @@ impl Matrix {
     let result_id: usize;
 
     unsafe {
-      result_id =
-        cuda_nearest_neighbor_2x_upsample(self.get_id(), self.rows, self.columns, odd_upsample)
+      result_id = cuda_nearest_neighbor_2x_upsample(
+        self.get_id(),
+        self.get_rows(),
+        self.get_columns(),
+        odd_upsample,
+      )
     }
 
-    let output_rows = self.rows * 2 - (odd_upsample as usize);
-    let output_columns = self.columns * 2 - (odd_upsample as usize);
-
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn rotate_180(&self) -> Self {
     let result_id: usize;
 
-    unsafe { result_id = cuda_rotate_180(self.get_id(), self.rows, self.columns) }
+    unsafe { result_id = cuda_rotate_180(self.get_id(), self.get_rows(), self.get_columns()) }
 
-    let output_rows = self.rows;
-    let output_columns = self.columns;
-
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn correlate(&self, kernel: &Matrix, padding_type: PaddingType) -> Self {
     let result_id: usize;
 
     if matches!(padding_type, PaddingType::SAME)
-      && (kernel.rows != kernel.columns || kernel.rows % 2 == 0)
+      && (kernel.get_rows() != kernel.get_columns() || kernel.get_rows() % 2 == 0)
     {
       panic!("Kernel must be square and odd for same convolution!");
     }
@@ -741,71 +773,23 @@ impl Matrix {
     unsafe {
       result_id = cuda_correlate(
         self.get_id(),
-        self.rows,
-        self.columns,
+        self.get_rows(),
+        self.get_columns(),
         kernel.get_id(),
-        kernel.rows,
-        kernel.columns,
+        kernel.get_rows(),
+        kernel.get_columns(),
         padding_type,
       )
     }
 
-    let output_rows = match padding_type {
-      PaddingType::VALID => self.rows - kernel.rows + 1,
-      PaddingType::SAME => self.rows,
-      PaddingType::FULL => self.rows + kernel.rows - 1,
-    };
-
-    let output_columns = match padding_type {
-      PaddingType::VALID => self.columns - kernel.columns + 1,
-      PaddingType::SAME => self.columns,
-      PaddingType::FULL => self.columns + kernel.columns - 1,
-    };
-
-    return Matrix::new(result_id, output_rows, output_columns);
-  }
-
-  pub fn correlate_v2(&self, kernel: &Matrix, padding_type: PaddingType) -> Self {
-    if matches!(padding_type, PaddingType::SAME)
-      && (kernel.rows != kernel.columns || kernel.rows % 2 == 0)
-    {
-      panic!("Kernel must be square and odd for same correlation!");
-    }
-
-    // Fast version using matrix multiplication
-
-    // First we need to flatten the kernel
-    let flattened_kernel = flatten_matrix_array(&vec![kernel.clone()]);
-
-    // Now transform the input matrix into a matrix of columns
-    let transformed_img = img2col(&vec![self.clone()], kernel.rows, kernel.columns);
-
-    // Now perform a matrix multiplication
-    let mut result = flattened_kernel.matrix_multiply(&transformed_img);
-
-    let output_rows = match padding_type {
-      PaddingType::VALID => self.rows - kernel.rows + 1,
-      PaddingType::SAME => self.rows,
-      PaddingType::FULL => self.rows + kernel.rows - 1,
-    };
-
-    let output_columns = match padding_type {
-      PaddingType::VALID => self.columns - kernel.columns + 1,
-      PaddingType::SAME => self.columns,
-      PaddingType::FULL => self.columns + kernel.columns - 1,
-    };
-
-    // Unflatten the result
-    result.reshape(output_rows, output_columns);
-
-    return result;
+    return Matrix::new(result_id);
   }
 
   pub fn convolve(&self, kernel: &Matrix, padding_type: PaddingType) -> Self {
     let result_id: usize;
 
     if matches!(padding_type, PaddingType::SAME)
-      && (kernel.rows != kernel.columns || kernel.rows % 2 == 0)
+      && (kernel.get_rows() != kernel.get_columns() || kernel.get_rows() % 2 == 0)
     {
       panic!("Kernel must be square and odd for same convolution!");
     }
@@ -813,52 +797,40 @@ impl Matrix {
     unsafe {
       result_id = cuda_convolve(
         self.get_id(),
-        self.rows,
-        self.columns,
+        self.get_rows(),
+        self.get_columns(),
         kernel.get_id(),
-        kernel.rows,
-        kernel.columns,
+        kernel.get_rows(),
+        kernel.get_columns(),
         padding_type,
       )
     }
 
-    let output_rows = match padding_type {
-      PaddingType::VALID => self.rows - kernel.rows + 1,
-      PaddingType::SAME => self.rows,
-      PaddingType::FULL => self.rows + kernel.rows - 1,
-    };
-
-    let output_columns = match padding_type {
-      PaddingType::VALID => self.columns - kernel.columns + 1,
-      PaddingType::SAME => self.columns,
-      PaddingType::FULL => self.columns + kernel.columns - 1,
-    };
-
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn center_pad(&self, pad_rows: usize, pad_cols: usize) -> Self {
     let result_id: usize;
 
     unsafe {
-      result_id = cuda_center_pad(self.get_id(), self.rows, self.columns, pad_rows, pad_cols)
+      result_id = cuda_center_pad(
+        self.get_id(),
+        self.get_rows(),
+        self.get_columns(),
+        pad_rows,
+        pad_cols,
+      )
     }
 
-    let output_rows = self.rows + 2 * pad_rows;
-    let output_columns = self.columns + 2 * pad_cols;
-
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn softmax(&self) -> Self {
     let result_id: usize;
 
-    unsafe { result_id = cuda_softmax(self.get_id(), self.rows, self.columns) }
+    unsafe { result_id = cuda_softmax(self.get_id(), self.get_rows(), self.get_columns()) }
 
-    let output_rows = self.rows;
-    let output_columns = self.columns;
-
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn crop(&self, row_offset: usize, column_offset: usize, rows: usize, columns: usize) -> Self {
@@ -867,8 +839,8 @@ impl Matrix {
     unsafe {
       result_id = cuda_crop(
         self.get_id(),
-        self.rows,
-        self.columns,
+        self.get_rows(),
+        self.get_columns(),
         row_offset,
         column_offset,
         rows,
@@ -876,70 +848,62 @@ impl Matrix {
       )
     }
 
-    let output_rows = rows;
-    let output_columns = columns;
-
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn deep_copy(&self) -> Self {
     let result_id: usize;
 
-    unsafe { result_id = cuda_copy(self.get_id(), self.rows, self.columns) }
+    unsafe { result_id = cuda_copy(self.get_id(), self.get_rows(), self.get_columns()) }
 
-    let output_rows = self.rows;
-    let output_columns = self.columns;
-
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   // pub fn cuda_sum_all_matrix_elements(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
   pub fn sum_all_matrix_elements(&self) -> Self {
     let result_id: usize;
 
-    unsafe { result_id = cuda_sum_all_matrix_elements(self.get_id(), self.rows, self.columns) }
+    unsafe {
+      result_id = cuda_sum_all_matrix_elements(self.get_id(), self.get_rows(), self.get_columns())
+    }
 
-    let output_rows = 1;
-    let output_columns = 1;
-
-    return Matrix::new(result_id, output_rows, output_columns);
+    return Matrix::new(result_id);
   }
 
   pub fn reshape(&mut self, new_rows: usize, new_columns: usize) -> &Self {
-    if new_rows * new_columns == self.get_data_length() {
-      self.rows = new_rows;
-      self.columns = new_columns;
-    } else {
-      panic!("Cannot reshape, matrices are not the same length!")
+    unsafe {
+      reshape_matrix(self.get_id(), new_rows, new_columns);
     }
 
     return self;
   }
 
   pub fn to_one_dimensional(&mut self) -> &Self {
-    self.columns = self.get_data_length();
-    self.rows = 1;
+    unsafe {
+      reshape_matrix(self.get_id(), self.get_data_length(), 1);
+    }
 
     return self;
   }
 }
 
 pub fn create_matrix_group(rows: usize, columns: usize, count: usize) -> Vec<Matrix> {
-  let mut mat_ids = vec![0; count];
+  let mut matrices = Vec::with_capacity(count);
+
+  unsafe {
+    matrices.set_len(count);
+  }
 
   unsafe {
     register_matrix_group(
       rows,
       columns,
       count,
-      mat_ids.as_mut_ptr() as *mut c_ulonglong,
+      matrices.as_mut_ptr() as *mut c_ulonglong,
     );
   }
 
-  return mat_ids
-    .iter()
-    .map(|mat_id| Matrix::new(*mat_id, rows, columns))
-    .collect_vec();
+  return matrices;
 }
 
 // All matrices are required to be the same shape
@@ -948,39 +912,33 @@ pub fn flatten_matrix_array(to_flatten: &Vec<Matrix>) -> Matrix {
     return Matrix::zeros(0, 0);
   }
 
-  let mat_ids = to_flatten.iter().map(|mat| mat.get_id()).collect_vec();
-
-  let mat_rows = to_flatten[0].rows;
-  let mat_cols = to_flatten[0].columns;
+  let mat_rows = to_flatten[0].get_rows();
+  let mat_cols = to_flatten[0].get_columns();
 
   let out_id;
   unsafe {
     out_id = cuda_flatten_array(
-      mat_ids.as_ptr() as *const c_ulonglong,
+      to_flatten.as_ptr() as *const c_ulonglong,
       to_flatten.len(),
       mat_rows,
       mat_cols,
     )
   };
 
-  let out_rows = 1;
-  let out_cols = to_flatten[0].get_data_length() * to_flatten.len();
-  return Matrix::new(out_id, out_rows, out_cols);
+  return Matrix::new(out_id);
 }
 
 // Take an image and convert it to a matrix of columns based on patches (with specified padding) the filter makes of image
 pub fn img2col(image: &Vec<Matrix>, filter_rows: usize, filter_cols: usize) -> Matrix {
   let image_depth = image.len();
 
-  let image_rows = image[0].rows;
-  let image_cols = image[0].columns;
-
-  let image_ids = image.iter().map(|image| image.get_id()).collect_vec();
+  let image_rows = image[0].get_rows();
+  let image_cols = image[0].get_columns();
 
   let out_id;
   unsafe {
     out_id = cuda_img2col(
-      image_ids.as_ptr() as *const c_ulonglong,
+      image.as_ptr() as *const c_ulonglong,
       image_depth,
       image_rows,
       image_cols,
@@ -990,9 +948,7 @@ pub fn img2col(image: &Vec<Matrix>, filter_rows: usize, filter_cols: usize) -> M
     )
   };
 
-  let out_rows = image_depth * filter_rows * filter_cols;
-  let out_cols = (image_rows - filter_rows + 1) * (image_cols - filter_cols + 1);
-  return Matrix::new(out_id, out_rows, out_cols);
+  return Matrix::new(out_id);
 }
 
 // All matrices are required to be the same shape
@@ -1002,7 +958,8 @@ pub fn unflatten_array_to_matrices(
   mat_cols: usize,
 ) -> Vec<Matrix> {
   let num_matrices = to_unflatten.get_data_length() / (mat_rows * mat_cols);
-  let mut mat_ids = vec![0; num_matrices];
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = (0..num_matrices).map(|_| Matrix::new(0)).collect_vec();
 
   if to_unflatten.get_data_length() != num_matrices * mat_rows * mat_cols {
     panic!("Cannot unflatten array, matrix dimensions incorrect!")
@@ -1014,14 +971,11 @@ pub fn unflatten_array_to_matrices(
       to_unflatten.get_data_length(),
       mat_rows,
       mat_cols,
-      mat_ids.as_mut_ptr() as *mut c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
     )
   };
 
-  return mat_ids
-    .iter()
-    .map(|mat_id| Matrix::new(*mat_id, mat_rows, mat_cols))
-    .collect_vec();
+  return results;
 }
 
 // All matrices are required to be the same shape. Each array's first n elements are the first elements in memory. [arr1_elem1, arr2_elem1, arr3_elem1, arr1_elem2, arr2_elem2, arr3_elem2, ...]
@@ -1031,7 +985,8 @@ pub fn unflatten_array_strided_to_matrices(
   mat_cols: usize,
 ) -> Vec<Matrix> {
   let num_matrices = to_unflatten.get_data_length() / (mat_rows * mat_cols);
-  let mut mat_ids = vec![0; num_matrices];
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = (0..num_matrices).map(|_| Matrix::new(0)).collect_vec();
 
   if to_unflatten.get_data_length() != num_matrices * mat_rows * mat_cols {
     panic!("Cannot unflatten array, matrix dimensions incorrect!")
@@ -1043,14 +998,11 @@ pub fn unflatten_array_strided_to_matrices(
       to_unflatten.get_data_length(),
       mat_rows,
       mat_cols,
-      mat_ids.as_mut_ptr() as *mut c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
     )
   };
 
-  return mat_ids
-    .iter()
-    .map(|mat_id| Matrix::new(*mat_id, mat_rows, mat_cols))
-    .collect_vec();
+  return results;
 }
 
 pub fn element_add_packed(
@@ -1072,21 +1024,21 @@ pub fn element_add_packed(
     return Vec::new();
   }
 
-  let mat_rows = mat_1s[0].rows;
-  let mat_cols = mat_1s[0].columns;
+  let mat_rows = mat_1s[0].get_columns();
+  let mat_cols = mat_1s[0].get_columns();
 
-  let mat_1_ids = mat_1s.iter().map(|mat| mat.get_id()).collect_vec();
-  let mat_2_ids = mat_2s.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = if inplace {
+    mat_1s.clone()
+  } else {
+    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
+  };
 
   unsafe {
     cuda_element_add_packed(
-      mat_1_ids.as_ptr() as *const c_ulonglong,
-      mat_2_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      mat_1s.as_ptr() as *const c_ulonglong,
+      mat_2s.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
@@ -1094,15 +1046,7 @@ pub fn element_add_packed(
     );
   }
 
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return mat_1s.to_owned();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
+  return results;
 }
 
 pub fn element_subtract_packed(
@@ -1124,21 +1068,21 @@ pub fn element_subtract_packed(
     return Vec::new();
   }
 
-  let mat_rows = mat_1s[0].rows;
-  let mat_cols = mat_1s[0].columns;
+  let mat_rows = mat_1s[0].get_columns();
+  let mat_cols = mat_1s[0].get_columns();
 
-  let mat_1_ids = mat_1s.iter().map(|mat| mat.get_id()).collect_vec();
-  let mat_2_ids = mat_2s.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = if inplace {
+    mat_1s.clone()
+  } else {
+    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
+  };
 
   unsafe {
     cuda_element_subtract_packed(
-      mat_1_ids.as_ptr() as *const c_ulonglong,
-      mat_2_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      mat_1s.as_ptr() as *const c_ulonglong,
+      mat_2s.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
@@ -1146,15 +1090,7 @@ pub fn element_subtract_packed(
     );
   }
 
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return mat_1s.to_owned();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
+  return results;
 }
 
 pub fn element_multiply_packed(
@@ -1176,21 +1112,20 @@ pub fn element_multiply_packed(
     return Vec::new();
   }
 
-  let mat_rows = mat_1s[0].rows;
-  let mat_cols = mat_1s[0].columns;
+  let mat_rows = mat_1s[0].get_columns();
+  let mat_cols = mat_1s[0].get_columns();
 
-  let mat_1_ids = mat_1s.iter().map(|mat| mat.get_id()).collect_vec();
-  let mat_2_ids = mat_2s.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
-
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = if inplace {
+    mat_1s.clone()
+  } else {
+    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
+  };
   unsafe {
     cuda_element_multiply_packed(
-      mat_1_ids.as_ptr() as *const c_ulonglong,
-      mat_2_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      mat_1s.as_ptr() as *const c_ulonglong,
+      mat_2s.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
@@ -1198,15 +1133,7 @@ pub fn element_multiply_packed(
     );
   }
 
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return mat_1s.to_owned();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
+  return results;
 }
 
 pub fn element_divide_packed(
@@ -1228,21 +1155,20 @@ pub fn element_divide_packed(
     return Vec::new();
   }
 
-  let mat_rows = mat_1s[0].rows;
-  let mat_cols = mat_1s[0].columns;
+  let mat_rows = mat_1s[0].get_columns();
+  let mat_cols = mat_1s[0].get_columns();
 
-  let mat_1_ids = mat_1s.iter().map(|mat| mat.get_id()).collect_vec();
-  let mat_2_ids = mat_2s.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
-
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = if inplace {
+    mat_1s.clone()
+  } else {
+    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
+  };
   unsafe {
     cuda_element_divide_packed(
-      mat_1_ids.as_ptr() as *const c_ulonglong,
-      mat_2_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      mat_1s.as_ptr() as *const c_ulonglong,
+      mat_2s.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
@@ -1250,15 +1176,7 @@ pub fn element_divide_packed(
     );
   }
 
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return mat_1s.to_owned();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
+  return results;
 }
 
 pub fn scalar_multiply_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
@@ -1268,19 +1186,19 @@ pub fn scalar_multiply_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
     return Vec::new();
   }
 
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
 
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
-
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = if inplace {
+    matrices.clone()
+  } else {
+    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
+  };
   unsafe {
     cuda_scalar_multiply_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      matrices.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
@@ -1289,15 +1207,7 @@ pub fn scalar_multiply_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
     );
   }
 
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return matrices.iter().map(|mat| mat.clone()).collect_vec();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
+  return results;
 }
 
 pub fn scalar_divide_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
@@ -1307,19 +1217,19 @@ pub fn scalar_divide_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) 
     return Vec::new();
   }
 
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
 
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
-
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = if inplace {
+    matrices.clone()
+  } else {
+    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
+  };
   unsafe {
     cuda_scalar_divide_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      matrices.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
@@ -1328,15 +1238,7 @@ pub fn scalar_divide_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) 
     );
   }
 
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return matrices.iter().map(|mat| mat.clone()).collect_vec();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
+  return results;
 }
 
 pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
@@ -1346,19 +1248,19 @@ pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> 
     return Vec::new();
   }
 
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
 
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
-
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = if inplace {
+    matrices.clone()
+  } else {
+    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
+  };
   unsafe {
     cuda_scalar_add_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      matrices.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
@@ -1367,15 +1269,7 @@ pub fn scalar_add_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> 
     );
   }
 
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return matrices.iter().map(|mat| mat.clone()).collect_vec();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
+  return results;
 }
 
 pub fn scalar_subtract_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool) -> Vec<Matrix> {
@@ -1385,19 +1279,19 @@ pub fn scalar_subtract_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
     return Vec::new();
   }
 
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
 
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
-
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = if inplace {
+    matrices.clone()
+  } else {
+    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
+  };
   unsafe {
     cuda_scalar_subtract_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      matrices.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
@@ -1406,15 +1300,7 @@ pub fn scalar_subtract_packed(matrices: &Vec<Matrix>, scalar: f32, inplace: bool
     );
   }
 
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return matrices.iter().map(|mat| mat.clone()).collect_vec();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
+  return results;
 }
 
 pub fn element_sqrt_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> {
@@ -1424,19 +1310,19 @@ pub fn element_sqrt_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix>
     return Vec::new();
   }
 
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
 
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
-
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = if inplace {
+    matrices.clone()
+  } else {
+    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
+  };
   unsafe {
     cuda_element_sqrt_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      matrices.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
@@ -1444,15 +1330,7 @@ pub fn element_sqrt_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix>
     );
   }
 
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return matrices.iter().map(|mat| mat.clone()).collect_vec();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
+  return results;
 }
 
 pub fn element_exp_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> {
@@ -1462,19 +1340,19 @@ pub fn element_exp_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> 
     return Vec::new();
   }
 
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
 
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
-
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = if inplace {
+    matrices.clone()
+  } else {
+    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
+  };
   unsafe {
     cuda_element_exp_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      matrices.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
@@ -1482,15 +1360,7 @@ pub fn element_exp_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix> 
     );
   }
 
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return matrices.iter().map(|mat| mat.clone()).collect_vec();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
+  return results;
 }
 
 #[allow(non_snake_case)]
@@ -1501,19 +1371,19 @@ pub fn element_ReLU_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix>
     return Vec::new();
   }
 
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
 
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
-
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = if inplace {
+    matrices.clone()
+  } else {
+    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
+  };
   unsafe {
     cuda_element_ReLU_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      matrices.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
@@ -1521,15 +1391,7 @@ pub fn element_ReLU_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<Matrix>
     );
   }
 
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return matrices.iter().map(|mat| mat.clone()).collect_vec();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
+  return results;
 }
 
 #[allow(non_snake_case)]
@@ -1540,19 +1402,19 @@ pub fn element_ReLU_prime_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<M
     return Vec::new();
   }
 
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
 
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
-
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = if inplace {
+    matrices.clone()
+  } else {
+    (0..num_matrices).map(|_| Matrix::new(0)).collect_vec()
+  };
   unsafe {
     cuda_element_ReLU_prime_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      matrices.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
@@ -1560,15 +1422,7 @@ pub fn element_ReLU_prime_packed(matrices: &Vec<Matrix>, inplace: bool) -> Vec<M
     );
   }
 
-  if inplace {
-    // Return mat1s, but clone to keep arc
-    return matrices.iter().map(|mat| mat.clone()).collect_vec();
-  } else {
-    return result_ids
-      .iter()
-      .map(|result_id| Matrix::new(*result_id, mat_rows, mat_cols))
-      .collect_vec();
-  }
+  return results;
 }
 
 pub fn max_pool_packed(matrices: &Vec<Matrix>) -> (Vec<Matrix>, Vec<Matrix>) {
@@ -1578,15 +1432,14 @@ pub fn max_pool_packed(matrices: &Vec<Matrix>) -> (Vec<Matrix>, Vec<Matrix>) {
     return (Vec::new(), Vec::new());
   }
 
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
 
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
   let mut result_ids = vec![Tuple { a: 0, b: 0 }; num_matrices];
 
   unsafe {
     cuda_max_pool_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
+      matrices.as_ptr() as *const c_ulonglong,
       result_ids.as_mut_ptr() as *mut Tuple,
       num_matrices,
       mat_rows,
@@ -1594,17 +1447,14 @@ pub fn max_pool_packed(matrices: &Vec<Matrix>) -> (Vec<Matrix>, Vec<Matrix>) {
     );
   }
 
-  let output_rows = mat_rows / 2 + mat_rows % 2;
-  let output_columns = mat_cols / 2 + mat_cols % 2;
-
   let pooled_result = result_ids
     .iter()
-    .map(|result_id| Matrix::new(result_id.a, output_rows, output_columns))
+    .map(|result_id| Matrix::new(result_id.a))
     .collect_vec();
 
   let bitmask_result = result_ids
     .iter()
-    .map(|result_id| Matrix::new(result_id.b, mat_rows, mat_cols))
+    .map(|result_id| Matrix::new(result_id.b))
     .collect_vec();
 
   return (pooled_result, bitmask_result);
@@ -1620,19 +1470,15 @@ pub fn nearest_neighbor_2x_upsample_packed(
     return Vec::new();
   }
 
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
 
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
-
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = (0..num_matrices).map(|_| Matrix::new(0)).collect_vec();
   unsafe {
     cuda_nearest_neighbor_2x_upsample_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      matrices.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
@@ -1640,13 +1486,7 @@ pub fn nearest_neighbor_2x_upsample_packed(
     );
   }
 
-  let output_rows = mat_rows * 2 - (odd_upsample as usize);
-  let output_columns = mat_cols * 2 - (odd_upsample as usize);
-
-  return result_ids
-    .iter()
-    .map(|result_id| Matrix::new(*result_id, output_rows, output_columns))
-    .collect_vec();
+  return results;
 }
 
 pub fn rotate_180_packed(matrices: &Vec<Matrix>) -> Vec<Matrix> {
@@ -1656,32 +1496,22 @@ pub fn rotate_180_packed(matrices: &Vec<Matrix>) -> Vec<Matrix> {
     return Vec::new();
   }
 
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
 
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
-
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = (0..num_matrices).map(|_| Matrix::new(0)).collect_vec();
   unsafe {
     cuda_rotate_180_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      matrices.as_ptr() as *const c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
     );
   }
 
-  let output_rows = mat_rows;
-  let output_columns = mat_cols;
-
-  return result_ids
-    .iter()
-    .map(|result_id| Matrix::new(*result_id, output_rows, output_columns))
-    .collect_vec();
+  return results;
 }
 
 pub fn correlate_packed(
@@ -1704,10 +1534,10 @@ pub fn correlate_packed(
     return Vec::new();
   }
 
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
-  let kernel_rows = kernels[0].rows;
-  let kernel_cols = kernels[0].columns;
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
+  let kernel_rows = kernels[0].get_rows();
+  let kernel_cols = kernels[0].get_columns();
 
   if matches!(padding_type, PaddingType::SAME)
     && (kernel_rows != kernel_cols || kernel_rows % 2 == 0)
@@ -1715,48 +1545,26 @@ pub fn correlate_packed(
     panic!("Kernel must be square and odd for same correlation!");
   }
 
-  let mat_ids: Vec<usize> = matrices.iter().map(|mat| mat.get_id()).collect();
-  let kernel_ids: Vec<usize> = kernels.iter().map(|kernel| kernel.get_id()).collect();
-  let mut result_ids = Vec::with_capacity(num_matrices);
-
-  unsafe {
-    result_ids.set_len(num_matrices);
-  }
-
   let setup = start.elapsed();
+
+  // let mut results = vec![Matrix::new(0); num_matrices];
+  let mut results = (0..num_matrices).map(|_| Matrix::new(0)).collect_vec();
   unsafe {
     cuda_correlate_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
+      matrices.as_ptr() as *const c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
-      kernel_ids.as_ptr() as *const c_ulonglong,
+      kernels.as_ptr() as *const c_ulonglong,
       kernel_rows,
       kernel_cols,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       padding_type,
     );
   }
   let call = start.elapsed() - setup;
 
-  let output_rows = match padding_type {
-    PaddingType::VALID => mat_rows - kernel_rows + 1,
-    PaddingType::SAME => mat_rows,
-    PaddingType::FULL => mat_rows + kernel_rows - 1,
-  };
-
-  let output_columns = match padding_type {
-    PaddingType::VALID => mat_cols - kernel_cols + 1,
-    PaddingType::SAME => mat_cols,
-    PaddingType::FULL => mat_cols + kernel_cols - 1,
-  };
-
   let padding_decision_time = start.elapsed() - setup - call;
-
-  let result = result_ids
-    .iter()
-    .map(|result_id| Matrix::new(*result_id, output_rows, output_columns))
-    .collect();
 
   let result_id_time = start.elapsed() - setup - call - padding_decision_time;
   let total = start.elapsed();
@@ -1768,7 +1576,7 @@ pub fn correlate_packed(
   // );
   // println!("Correlate result id time: {:?}", result_id_time);
   // println!("Correlate total: {:?}", total);
-  return result;
+  return results;
 }
 
 pub fn convolve_packed(
@@ -1790,10 +1598,10 @@ pub fn convolve_packed(
     return Vec::new();
   }
 
-  let mat_rows = matrices[0].rows;
-  let mat_cols = matrices[0].columns;
-  let kernel_rows = kernels[0].rows;
-  let kernel_cols = kernels[0].columns;
+  let mat_rows = matrices[0].get_rows();
+  let mat_cols = matrices[0].get_columns();
+  let kernel_rows = kernels[0].get_rows();
+  let kernel_cols = kernels[0].get_columns();
 
   if matches!(padding_type, PaddingType::SAME)
     && (kernel_rows != kernel_cols || kernel_rows % 2 == 0)
@@ -1801,41 +1609,24 @@ pub fn convolve_packed(
     panic!("Kernel must be square and odd for same correlation!");
   }
 
-  let mat_ids = matrices.iter().map(|mat| mat.get_id()).collect_vec();
-  let kernel_ids = kernels.iter().map(|kernel| kernel.get_id()).collect_vec();
-  let mut result_ids = Vec::with_capacity(num_matrices);
+  let mut results = Vec::with_capacity(num_matrices);
   unsafe {
-    result_ids.set_len(num_matrices);
+    results.set_len(num_matrices);
   }
 
   unsafe {
     cuda_convolve_packed(
-      mat_ids.as_ptr() as *const c_ulonglong,
+      matrices.as_ptr() as *const c_ulonglong,
       num_matrices,
       mat_rows,
       mat_cols,
-      kernel_ids.as_ptr() as *const c_ulonglong,
+      kernels.as_ptr() as *const c_ulonglong,
       kernel_rows,
       kernel_cols,
-      result_ids.as_mut_ptr() as *mut c_ulonglong,
+      results.as_mut_ptr() as *mut c_ulonglong,
       padding_type,
     );
   }
 
-  let output_rows = match padding_type {
-    PaddingType::VALID => mat_rows - kernel_rows + 1,
-    PaddingType::SAME => mat_rows,
-    PaddingType::FULL => mat_rows + kernel_rows - 1,
-  };
-
-  let output_columns = match padding_type {
-    PaddingType::VALID => mat_cols - kernel_cols + 1,
-    PaddingType::SAME => mat_cols,
-    PaddingType::FULL => mat_cols + kernel_cols - 1,
-  };
-
-  return result_ids
-    .iter()
-    .map(|result_id| Matrix::new(*result_id, output_rows, output_columns))
-    .collect_vec();
+  return results;
 }

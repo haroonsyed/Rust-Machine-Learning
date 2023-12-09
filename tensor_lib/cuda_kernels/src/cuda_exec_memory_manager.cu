@@ -5,9 +5,11 @@
 
 struct MatrixBlock {
     size_t block_id;
-    size_t block_offset;
+    void* device_address;
     size_t block_size_requested;
     size_t ref_count;
+    size_t rows;
+    size_t columns;
 };
 
 struct MemBlock {
@@ -28,6 +30,10 @@ size_t pinned_buffer_free_space = pinned_buffer_size;
 std::queue<std::pair<cudaEvent_t, size_t>> pinned_buffer_events;
 
 cublasHandle_t handle;
+
+// Idea, use a hashmap of <device_pointer -> MatrixBlock>
+// ID would be the device pointer instead of storing separately
+// Then matrix api can direct memcpy input ids to device pointer
 size_t matrices_generated_count(0);
 std::vector<MatrixBlock> matrix_blocks;
 std::vector<size_t> free_mat_ids;
@@ -102,7 +108,6 @@ void memory_manager_free(size_t block_id, size_t size) {
 void memory_manager_upload_from_pinned_buffer(void* pinned_data, void* device_address, size_t size) {
     gpuErrchk(cudaMemcpyAsync(device_address, pinned_data, size, cudaMemcpyHostToDevice, main_exec_stream));
 
-    // Use event with callback to free pinned buffer
     cudaEvent_t event;
     cudaEventCreate(&event);
     cudaEventRecord(event, main_exec_stream);
@@ -113,7 +118,6 @@ void memory_manager_upload_from_pinned_buffer(void* pinned_data, void* device_ad
 void memory_manager_upload_async_from_pinned_buffer(void* pinned_data, void* device_address, size_t size) {
     gpuErrchk(cudaMemcpyAsync(device_address, pinned_data, size, cudaMemcpyHostToDevice, io_to_device_stream));
 
-    // Use event with callback to free pinned buffer
     cudaEvent_t event;
     cudaEventCreate(&event);
     cudaEventRecord(event, io_to_device_stream);
@@ -122,8 +126,7 @@ void memory_manager_upload_async_from_pinned_buffer(void* pinned_data, void* dev
     // Store the event and pinned buffer address
     pinned_buffer_events.emplace(event, size);
 }
-void memory_manager_upload_to_allocation(size_t block_id, size_t block_offset, void* data, size_t size) {
-    void* address = get_block_gpu_address(block_id, block_offset);
+void memory_manager_upload_to_allocation(void* address, void* data, size_t size) {
     gpuErrchk(cudaMemcpy(address, data, size, cudaMemcpyHostToDevice));
 }
 void* memory_get_pinned_allocation(size_t size) {
@@ -187,14 +190,40 @@ size_t memory_manager_allocate(size_t size) {
 
     return block_id;
 }
+
+//////////////////////
+/// Matrix Information
+//////////////////////
+size_t get_matrix_rows(size_t mat_id) {
+    MatrixBlock* mat = &matrix_blocks[mat_id];
+    return mat->rows;
+}
+size_t get_matrix_columns(size_t mat_id) {
+    MatrixBlock* mat = &matrix_blocks[mat_id];
+    return mat->columns;
+}
+size_t get_matrix_length(size_t mat_id) {
+    MatrixBlock* mat = &matrix_blocks[mat_id];
+    return mat->rows * mat->columns;
+}
+void reshape_matrix(size_t mat_id, size_t rows, size_t columns) {
+    MatrixBlock* mat = &matrix_blocks[mat_id];
+
+    if (get_matrix_length(mat_id) != rows * columns) {
+        printf("Reshape error: new shape must have same number of elements\n");
+        abort();
+    }
+
+    mat->rows = rows;
+    mat->columns = columns;
+}
+
 /////////////////////
 /// Matrix Allocation
 /////////////////////
 float* get_matrix_gpu_address(size_t mat_id) {
     MatrixBlock* mat = &matrix_blocks[mat_id];
-    size_t block_id = mat->block_id;
-    size_t offset = mat->block_offset;
-    return (float*)get_block_gpu_address(block_id, offset);
+    return (float*)mat->device_address;
 }
 size_t register_matrix_block(MatrixBlock& mat) {
     if (free_mat_ids.size() > 0) {
@@ -215,9 +244,11 @@ size_t register_matrix(size_t rows, size_t columns) {
     // Create the matrix block
     MatrixBlock mat;
     mat.block_id = block_id;
-    mat.block_offset = 0;
+    mat.device_address = get_block_gpu_address(block_id, 0);
     mat.block_size_requested = block_size;
     mat.ref_count = 1;
+    mat.rows = rows;
+    mat.columns = columns;
 
     return register_matrix_block(mat);
 }
@@ -233,32 +264,35 @@ void register_matrix_group(size_t rows, size_t columns, size_t count, size_t* ma
     size_t block_id = memory_manager_allocate(real_block_size);
 
     for (size_t i = 0; i < count; i++) {
+        const size_t block_offset = i * aligned_requested_size;
+
         // Create the matrix block
         MatrixBlock mat;
         mat.block_id = block_id;
-        mat.block_offset = i * aligned_requested_size;
+        mat.device_address = get_block_gpu_address(block_id, block_offset);
         mat.block_size_requested = aligned_requested_size;
         mat.ref_count = 1;
+        mat.rows = rows;
+        mat.columns = columns;
 
         mat_ids[i] = register_matrix_block(mat);
     }
 }
-void upload_matrix_data(size_t mat_id, float* data, size_t rows, size_t columns) {
+void upload_matrix_data(size_t mat_id, float* data) {
     // Block information
     MatrixBlock* mat = &matrix_blocks[mat_id];
-    size_t block_id = mat->block_id;
-    size_t block_offset = mat->block_offset;
-    size_t data_size = sizeof(float) * rows * columns;
+    void* device_address = mat->device_address;
+    size_t data_size = get_matrix_length(mat_id) * sizeof(float);
 
     // Upload the data
-    memory_manager_upload_to_allocation(block_id, block_offset, data, data_size);
+    memory_manager_upload_to_allocation(device_address, data, data_size);
 }
 size_t register_matrix_with_data(float* data, size_t rows, size_t columns) {
     // Create the matrix block
     size_t matrix_id = register_matrix(rows, columns);
 
     // Upload the data
-    upload_matrix_data(matrix_id, data, rows, columns);
+    upload_matrix_data(matrix_id, data);
     return matrix_id;
 }
 void unregister_matrix(size_t mat_id) {
@@ -280,7 +314,8 @@ void decrease_matrix_ref_count(size_t mat_id) {
         unregister_matrix(mat_id);
     }
 }
-void get_matrix_data(size_t mat_id, int rows, int columns, float* data_buffer) {
+void get_matrix_data(size_t mat_id, float* data_buffer) {
     float* gpu_address = get_matrix_gpu_address(mat_id);
-    gpuErrchk(cudaMemcpy(data_buffer, gpu_address, sizeof(float) * rows * columns, cudaMemcpyDeviceToHost));
+    size_t data_size = get_matrix_length(mat_id) * sizeof(float);
+    gpuErrchk(cudaMemcpy(data_buffer, gpu_address, data_size, cudaMemcpyDeviceToHost));
 }

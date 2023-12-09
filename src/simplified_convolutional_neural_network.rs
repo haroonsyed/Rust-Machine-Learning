@@ -184,7 +184,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
         let mut flattened = flatten_matrix_array(sample_output.last().unwrap());
 
         // Take the transpose for fully connected layer
-        flattened.reshape(flattened.columns, flattened.rows);
+        flattened.reshape(flattened.get_columns(), flattened.get_rows());
         return flattened;
       })
       .collect_vec();
@@ -224,7 +224,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
         let mut flattened = flatten_matrix_array(sample_output.last().unwrap());
 
         // Take the transpose for fully connected layer
-        flattened.reshape(flattened.columns, flattened.rows);
+        flattened.reshape(flattened.get_columns(), flattened.get_rows());
         return flattened;
       })
       .collect_vec();

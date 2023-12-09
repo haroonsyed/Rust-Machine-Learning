@@ -3379,9 +3379,9 @@ size_t cuda_img2col_valid(size_t* mat_ids, size_t num_matrices, size_t mat_rows,
     // Upload the pointers to a gpu array
     // Each allocation pair contains block_id, block_offset
     auto gpu_mat_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
-    memory_manager_upload_to_allocation(gpu_mat_buffers_block, 0, &mat_buffers[0], sizeof(float*) * num_matrices);
-
     float** gpu_mat_buffers = (float**)get_block_gpu_address(gpu_mat_buffers_block, 0);
+    memory_manager_upload_to_allocation(gpu_mat_buffers, &mat_buffers[0], sizeof(float*) * num_matrices);
+
     float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
@@ -3450,9 +3450,9 @@ size_t cuda_flatten_array(size_t* mat_ids, size_t num_matrices, size_t mat_rows,
     // Upload the pointers to a gpu array
     // Each allocation pair contains block_id, block_offset
     auto gpu_mat_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
-    memory_manager_upload_to_allocation(gpu_mat_buffers_block, 0, &mat_buffers[0], sizeof(float*) * num_matrices);
-
     float** gpu_mat_buffers = (float**)get_block_gpu_address(gpu_mat_buffers_block, 0);
+    memory_manager_upload_to_allocation(gpu_mat_buffers, &mat_buffers[0], sizeof(float*) * num_matrices);
+
     float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Kernel launch parameters
@@ -3501,9 +3501,8 @@ void cuda_unflatten_array(size_t array_id, size_t arr_size, size_t mat_rows, siz
     // Upload the pointers to a gpu array
     // Each allocation pair contains block_id, block_offset
     auto gpu_mat_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
-    memory_manager_upload_to_allocation(gpu_mat_buffers_block, 0, &gpu_mat_buffers[0], sizeof(float*) * num_matrices);
-
     float** gpu_mat_buffers_ptr = (float**)get_block_gpu_address(gpu_mat_buffers_block, 0);
+    memory_manager_upload_to_allocation(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices);
 
     // Get the flattened array
     float* gpu_array_buffer = get_matrix_gpu_address(array_id);

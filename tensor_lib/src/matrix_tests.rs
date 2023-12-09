@@ -689,8 +689,6 @@ mod tests {
       expected_result.scalar_multiply_inplace(random_scalars[0]);
     });
 
-    random_matrix.print();
-
     let _ = scalar_multiply_packed(
       &vec![random_matrix.clone(); random_scalars.len()],
       random_scalars[0],
@@ -2589,15 +2587,15 @@ mod tests {
   }
 
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
-    if a.rows != b.rows || a.columns != b.columns {
+    if a.get_rows() != b.get_rows() || a.get_columns() != b.get_columns() {
       println!("Matrices not the same shape!");
       return false;
     }
 
     let a_data = a.get_data();
     let b_data = b.get_data();
-    for i in 0..a.rows {
-      for j in 0..a.columns {
+    for i in 0..a.get_rows() {
+      for j in 0..a.get_columns() {
         if !approx_equal(a_data[i][j], b_data[i][j], precision) {
           a.print();
           b.print();
@@ -2610,15 +2608,15 @@ mod tests {
   }
 
   fn matrix_are_equal_cpu(a: &MatrixCpu, b: &MatrixCpu, precision: usize) -> bool {
-    if a.rows != b.rows || a.columns != b.columns {
+    if a.get_rows() != b.get_rows() || a.get_columns() != b.get_columns() {
       println!("Matrices not the same shape!");
       return false;
     }
 
     let a_data = a.get_data();
     let b_data = b.get_data();
-    for i in 0..a.rows {
-      for j in 0..a.columns {
+    for i in 0..a.get_rows() {
+      for j in 0..a.get_columns() {
         if !approx_equal(a_data[i][j], b_data[i][j], precision) {
           a.print();
           b.print();
@@ -2631,19 +2629,19 @@ mod tests {
   }
 
   fn matrix_are_equal_gpu_cpu(a: &Matrix, b: &MatrixCpu, precision: usize) -> bool {
-    if a.get_data_length() < 100 && b.rows * b.columns < 100 {
+    if a.get_data_length() < 100 && b.get_rows() * b.get_columns() < 100 {
       a.print();
       b.print();
     }
 
-    if a.rows != b.rows || a.columns != b.columns {
+    if a.get_rows() != b.get_rows() || a.get_columns() != b.get_columns() {
       println!("Matrices do not even share dimensions");
       return false;
     }
 
     let a_data = a.get_data();
-    for i in 0..a.rows {
-      for j in 0..a.columns {
+    for i in 0..a.get_rows() {
+      for j in 0..a.get_columns() {
         if !approx_equal(a_data[i][j], b[i][j], precision) {
           println!(
             "Matrices not equal at index: {} {} with value: {} {}",

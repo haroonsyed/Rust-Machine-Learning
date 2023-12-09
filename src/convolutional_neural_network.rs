@@ -165,6 +165,8 @@ impl ConvolutionalNeuralNetworkRust {
       return;
     }
 
+    let start = Instant::now();
+
     // Convert observations to matrices
     let observations_matrices = self.convert_observations_to_matrices(observations);
 
@@ -185,6 +187,8 @@ impl ConvolutionalNeuralNetworkRust {
 
     // Backpropogate
     self.backpropogation(fc_error);
+
+    println!("Total iteration time {:?}\n", Instant::now() - start)
   }
 
   //return Vec<Vec<Vec<Matrix>>> sample -> layer -> filters -> Matrix
@@ -398,22 +402,22 @@ impl CNN_Layer for ConvolutionalLayerRust {
       .collect_vec();
 
     let group_time = start.elapsed() - relu_time - sum_time - correlation_time - setup_overhead;
-    let total_time = start.elapsed();
-
-    // println!("Time to setup packed operations: {:?}", setup_overhead);
-    // println!("Time to correlate: {:?}", correlation_time);
-    // println!("Pure element packed: {:?}", pure_element_packed_time);
-    // println!("Time to sum: {:?}", sum_time);
-    // println!("Time to relu: {:?}", relu_time);
-    // println!("Time to group: {:?}", group_time);
-    // println!("Total feed forward time: {:?}", total_time);
 
     self.prev_input = input.clone();
     self.prev_output = sample_filter_outputs.clone();
+    println!("Time to setup packed operations: {:?}", setup_overhead);
+    println!("Time to correlate: {:?}", correlation_time);
+    println!("Pure element packed: {:?}", pure_element_packed_time);
+    println!("Time to sum: {:?}", sum_time);
+    println!("Time to relu: {:?}", relu_time);
+    println!("Time to group: {:?}", group_time);
+    println!("Total feed forward time: {:?}", start.elapsed());
     return sample_filter_outputs;
   }
 
   fn backpropogation(&mut self, sample_output_errors: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
+    let start = Instant::now();
+
     let sample_count = sample_output_errors.len();
     let normalization_factor = 1.0 / sample_output_errors.len() as f32;
 
@@ -438,6 +442,8 @@ impl CNN_Layer for ConvolutionalLayerRust {
 
     element_ReLU_prime_packed(&prev_output_flattened, true);
     element_multiply_packed(&filter_output_error_flattened, &prev_output_flattened, true);
+
+    let relu_prime_time = start.elapsed();
 
     let vec_capacity = sample_output_errors.len() * self.filters.len() * self.filters[0].len();
 
@@ -488,6 +494,8 @@ impl CNN_Layer for ConvolutionalLayerRust {
       current_sample_index += 1;
     }
 
+    let backprop_setup_time = start.elapsed();
+
     ///////////////////
     /// DELTA BIASES
     ///////////////////
@@ -500,6 +508,8 @@ impl CNN_Layer for ConvolutionalLayerRust {
       .calculate_steps(&bias_gradients, normalization_factor);
 
     element_subtract_packed(&repeated_bias, &bias_steps, true);
+
+    let bias_update_time = start.elapsed() - backprop_setup_time;
 
     ///////////////////
     /// DELTA FILTERS
@@ -520,6 +530,8 @@ impl CNN_Layer for ConvolutionalLayerRust {
       .flat_map(|_| flattened_filters.clone())
       .collect_vec();
     element_subtract_packed(&repeated_flattened_filters, &filter_steps, true);
+
+    let filter_update_time = start.elapsed() - bias_update_time - backprop_setup_time;
 
     ///////////////////
     /// DELTA INPUTS
@@ -542,6 +554,9 @@ impl CNN_Layer for ConvolutionalLayerRust {
     element_add_packed(&delta_input_sum_to, &delta_input_to_sum, true);
     let delta_input_final_indices = delta_input_to_sum_to.into_iter().unique().collect_vec();
 
+    let delta_input_time =
+      start.elapsed() - filter_update_time - bias_update_time - backprop_setup_time;
+
     let sample_input_errors = delta_input_final_indices
       .iter()
       .map(|&index| delta_input_convolutions[index].clone())
@@ -549,6 +564,15 @@ impl CNN_Layer for ConvolutionalLayerRust {
       .into_iter()
       .map(|sample| sample.into_iter().collect_vec())
       .collect_vec();
+
+    let total_time = start.elapsed();
+
+    println!("Time to setup packed operations: {:?}", backprop_setup_time);
+    println!("Time to relu prime: {:?}", relu_prime_time);
+    println!("Time to bias update: {:?}", bias_update_time);
+    println!("Time to filter update: {:?}", filter_update_time);
+    println!("Time to delta input: {:?}", delta_input_time);
+    println!("Total backprop time: {:?}", total_time);
 
     return sample_input_errors;
   }
@@ -613,15 +637,16 @@ impl CNN_Layer for MaxPoolLayerRust {
 
     let ungroup_time = start.elapsed() - pool_time - setup_time;
 
-    // println!("Time to setup packed operations: {:?}", setup_time);
-    // println!("Time to pool: {:?}", pool_time);
-    // println!("Time to ungroup: {:?}", ungroup_time);
+    println!("Time to setup packed operations: {:?}", setup_time);
+    println!("Time to pool: {:?}", pool_time);
+    println!("Time to ungroup: {:?}", ungroup_time);
 
     self.prev_input_bm = grouped_bitmasks;
     return grouped_pooled_samples;
   }
 
   fn backpropogation(&mut self, error: &Vec<Vec<Matrix>>) -> Vec<Vec<Matrix>> {
+    let start = Instant::now();
     // Max pool is not differentiable, so we will just pass the error back to the max value
     // Element wise multiply max mask by nearest_neighbor upscaled error
 
@@ -647,6 +672,8 @@ impl CNN_Layer for MaxPoolLayerRust {
       .map(|sample| sample.into_iter().collect_vec())
       .collect_vec();
 
+    let total_time = start.elapsed();
+    println!("Time to upsample: {:?}", total_time);
     return grouped_upsampled_errors;
   }
 }
@@ -718,7 +745,7 @@ impl FullyConnectedLayer {
 
     // Now unflatten the output error row by row back to input shape
     // Because I decided not to treat each sample separately to FC I need to double unflatten (sample -> depth)
-    let sample_errors = unflatten_array_strided_to_matrices(&fc_error, 1, fc_error.columns);
+    let sample_errors = unflatten_array_strided_to_matrices(&fc_error, 1, fc_error.get_columns());
     let (input_height, input_width, _) = self.input_dimensions;
     let unflattened_errors = sample_errors
       .iter()

@@ -260,7 +260,7 @@ impl BasicNeuralNetworkRust {
   }
 
   pub fn classify_matrix(&mut self, observations: &Matrix) -> Vec<f32> {
-    let num_observations = observations.columns;
+    let num_observations = observations.get_columns();
     self.neuron_outputs = self
       .weights
       .iter()
@@ -465,7 +465,7 @@ impl BasicNeuralNetworkRust {
     observations: &Matrix, // Expects each sample is in a column (so like a transposed pd datatable)
     labels: &Vec<f32>,
   ) -> Matrix {
-    let num_observations = observations.columns;
+    let num_observations = observations.get_columns();
     self.neuron_outputs = self
       .non_input_layer_sizes
       .iter()
@@ -526,7 +526,7 @@ impl BasicNeuralNetworkRust {
     let output_weights = &self.weights[output_layer_index];
     let weight_optimizer = &mut self.weight_optimizers[output_layer_index];
     let bias_optimizer = &mut self.bias_optimizers[output_layer_index];
-    let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
+    let normalization_factor = 1.0 / prev_layer_outputs.get_columns() as f32;
 
     // Shared error calculations (dSSR)
     // neuron_output[output_layer_index][0] because there is only one output neuron
@@ -571,12 +571,12 @@ impl BasicNeuralNetworkRust {
     let output_weights = &self.weights[output_layer_index];
     let weight_optimizer = &mut self.weight_optimizers[output_layer_index];
     let bias_optimizer = &mut self.bias_optimizers[output_layer_index];
-    let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
+    let normalization_factor = 1.0 / prev_layer_outputs.get_columns() as f32;
 
     // Shared error calculations (dCE * dSoftmax)
     let predicted_probabilities_data = predicted_probabilities.get_data(); // TODO: Measure performance impact of copying to host
     let error = Matrix::new_2d(
-      &(0..output_biases.rows)
+      &(0..output_biases.get_rows())
         .map(|index| {
           izip!(labels.iter(), predicted_probabilities_data[index].iter())
             .map(|(label, predicted_probability)| {
@@ -627,7 +627,7 @@ impl BasicNeuralNetworkRust {
     let weight_optimizer = &mut self.weight_optimizers[layer];
     let bias_optimizer = &mut self.bias_optimizers[layer];
 
-    let normalization_factor = 1.0 / prev_layer_outputs.columns as f32;
+    let normalization_factor = 1.0 / prev_layer_outputs.get_columns() as f32;
 
     // Used for wout
     let wout = &self.weights[layer + 1];

@@ -36,6 +36,14 @@ impl MatrixCpu {
     };
   }
 
+  pub fn get_rows(&self) -> usize {
+    return self.rows;
+  }
+
+  pub fn get_columns(&self) -> usize {
+    return self.columns;
+  }
+
   pub fn get_data(&self) -> Vec<Vec<f32>> {
     return self.iter().map(|x| x.to_vec()).collect_vec();
   }
