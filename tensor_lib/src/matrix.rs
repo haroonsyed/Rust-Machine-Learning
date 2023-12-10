@@ -196,6 +196,15 @@ impl Matrix {
     return Self::new_2d(&data);
   }
 
+  pub fn new_one_hot_encoded(labels: &Vec<f32>, num_classes: usize) -> Self {
+    let result_id;
+    unsafe {
+      result_id = cuda_one_hot_encode(labels.as_ptr(), labels.len(), num_classes);
+    }
+
+    return Matrix::new(result_id);
+  }
+
   pub fn print(&self) {
     const BUFFER_CAPACITY: usize = 4096 * 1024;
     let stdout = stdout();
@@ -866,6 +875,75 @@ impl Matrix {
 
     unsafe {
       result_id = cuda_sum_all_matrix_elements(self.get_id(), self.get_rows(), self.get_columns())
+    }
+
+    return Matrix::new(result_id);
+  }
+
+  pub fn max_by_column(&self) -> Self {
+    let result_id: usize;
+
+    unsafe { result_id = cuda_max_by_column(self.get_id(), self.get_rows(), self.get_columns()) }
+
+    return Matrix::new(result_id);
+  }
+
+  pub fn max_by_row(&self) -> Self {
+    let result_id: usize;
+
+    unsafe { result_id = cuda_max_by_row(self.get_id(), self.get_rows(), self.get_columns()) }
+
+    return Matrix::new(result_id);
+  }
+
+  pub fn argmax_by_column(&self) -> Self {
+    let result_id: usize;
+
+    unsafe { result_id = cuda_argmax_by_column(self.get_id(), self.get_rows(), self.get_columns()) }
+
+    return Matrix::new(result_id);
+  }
+
+  pub fn argmax_by_row(&self) -> Self {
+    let result_id: usize;
+
+    unsafe { result_id = cuda_argmax_by_row(self.get_id(), self.get_rows(), self.get_columns()) }
+
+    return Matrix::new(result_id);
+  }
+
+  pub fn element_ln(&self) -> Self {
+    let result_id: usize;
+
+    unsafe {
+      result_id = cuda_element_ln(self.get_id(), self.get_rows(), self.get_columns(), false)
+    }
+
+    return Matrix::new(result_id);
+  }
+
+  pub fn element_ln_inplace(&self) -> &Self {
+    unsafe {
+      cuda_element_ln(self.get_id(), self.get_rows(), self.get_columns(), true);
+    }
+
+    return self;
+  }
+
+  pub fn one_hot_encode(&self, num_classes: usize) -> Self {
+    let result_id: usize;
+
+    // Check that this is a vector
+    if !self.get_columns() == 1 && !self.get_rows() == 1 {
+      panic!("Cannot one hot encode non vector!");
+    }
+
+    unsafe {
+      result_id = cuda_one_hot_encode_vector(
+        self.get_id(),
+        self.get_rows() * self.get_columns(),
+        num_classes,
+      )
     }
 
     return Matrix::new(result_id);

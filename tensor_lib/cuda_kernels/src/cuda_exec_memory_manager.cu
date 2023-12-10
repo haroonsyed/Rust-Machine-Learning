@@ -75,7 +75,7 @@ void init_library() {
     cudaMallocHost(&pinned_buffer, (size_t)(pinned_buffer_size));
 
     // Init kernel args device buffer
-    cudaMallocAsync(&kernel_args_buffer, kernel_args_buffer_size, main_exec_stream);
+    cudaMalloc(&kernel_args_buffer, kernel_args_buffer_size);
 
     library_init = true;
 }
@@ -105,7 +105,7 @@ void memory_manager_free(size_t block_id, size_t size) {
         memory_manager_delete(block_id);
     }
 }
-void memory_manager_upload_from_pinned_buffer(void* pinned_data, void* device_address, size_t size) {
+void memory_manager_upload_from_pinned_buffer(void* device_address, void* pinned_data, size_t size) {
     gpuErrchk(cudaMemcpyAsync(device_address, pinned_data, size, cudaMemcpyHostToDevice, main_exec_stream));
 
     cudaEvent_t event;
@@ -115,7 +115,7 @@ void memory_manager_upload_from_pinned_buffer(void* pinned_data, void* device_ad
     // Store the event and pinned buffer address
     pinned_buffer_events.emplace(event, size);
 }
-void memory_manager_upload_async_from_pinned_buffer(void* pinned_data, void* device_address, size_t size) {
+void memory_manager_upload_async_from_pinned_buffer(void* device_address, void* pinned_data, size_t size) {
     gpuErrchk(cudaMemcpyAsync(device_address, pinned_data, size, cudaMemcpyHostToDevice, io_to_device_stream));
 
     cudaEvent_t event;
@@ -129,7 +129,7 @@ void memory_manager_upload_async_from_pinned_buffer(void* pinned_data, void* dev
 void memory_manager_upload_to_allocation(void* address, void* data, size_t size) {
     gpuErrchk(cudaMemcpy(address, data, size, cudaMemcpyHostToDevice));
 }
-void* memory_get_pinned_allocation(size_t size) {
+void* memory_manager_get_pinned_allocation(size_t size) {
     if (pinned_buffer_offset + size > pinned_buffer_size) {
         // Adjust size to wait for space on wrap around
         size += pinned_buffer_size - pinned_buffer_offset;
@@ -167,7 +167,7 @@ std::vector<void*> get_device_kernel_args_pointers(size_t num_buffers) {
     }
     return pointers;
 }
-size_t memory_manager_allocate(size_t size) {
+size_t memory_manager_device_allocate(size_t size) {
     if (!library_init) {
         init_library();
     }
@@ -239,7 +239,7 @@ size_t register_matrix_block(MatrixBlock& mat) {
 size_t register_matrix(size_t rows, size_t columns) {
     // Allocate the memory
     size_t block_size = sizeof(float) * rows * columns;
-    size_t block_id = memory_manager_allocate(block_size);
+    size_t block_id = memory_manager_device_allocate(block_size);
 
     // Create the matrix block
     MatrixBlock mat;
@@ -261,7 +261,7 @@ void register_matrix_group(size_t rows, size_t columns, size_t count, size_t* ma
     size_t real_block_size = aligned_requested_size * count;
 
     // Allocate the memory
-    size_t block_id = memory_manager_allocate(real_block_size);
+    size_t block_id = memory_manager_device_allocate(real_block_size);
 
     for (size_t i = 0; i < count; i++) {
         const size_t block_offset = i * aligned_requested_size;

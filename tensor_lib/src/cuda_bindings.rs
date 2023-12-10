@@ -19,6 +19,7 @@ extern "C" {
   pub fn register_matrix(rows: usize, cols: usize) -> usize;
   pub fn register_matrix_group(rows: usize, cols: usize, count: usize, mat_ids: *mut c_ulonglong);
   pub fn register_matrix_with_data(data: *const c_float, rows: usize, cols: usize) -> usize;
+  pub fn cuda_one_hot_encode(data: *const c_float, data_size: usize, num_classes: usize) -> usize;
   pub fn upload_matrix_data(mat_id: usize, data: *const c_float);
   pub fn unregister_matrix(mat_id: usize) -> usize;
 
@@ -450,4 +451,10 @@ extern "C" {
   ) -> usize;
   pub fn cuda_copy(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
   pub fn cuda_sum_all_matrix_elements(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
+  pub fn cuda_max_by_column(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
+  pub fn cuda_max_by_row(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
+  pub fn cuda_argmax_by_column(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
+  pub fn cuda_argmax_by_row(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
+  pub fn cuda_element_ln(mat_id: usize, mat_rows: usize, mat_cols: usize, inplace: bool) -> usize;
+  pub fn cuda_one_hot_encode_vector(mat_id: usize, mat_len: usize, num_classes: usize) -> usize;
 }

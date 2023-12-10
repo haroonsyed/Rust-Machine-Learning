@@ -73,4 +73,11 @@ size_t cuda_softmax(size_t mat_id, size_t mat_rows, size_t mat_cols);
 size_t cuda_crop(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t crop_offset_rows, size_t crop_offset_cols, size_t crop_rows, size_t crop_cols);
 size_t cuda_copy(size_t mat_id, size_t mat_rows, size_t mat_cols);
 size_t cuda_sum_all_matrix_elements(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_max_by_column(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_max_by_row(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_argmax_by_column(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_argmax_by_row(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_one_hot_encode(float* data, size_t data_size, size_t num_classes);
+size_t cuda_one_hot_encode_vector(size_t mat_id, size_t mat_len, size_t num_classes);
+size_t cuda_element_ln(size_t mat_id, size_t mat_rows, size_t mat_cols, bool inplace);
 }

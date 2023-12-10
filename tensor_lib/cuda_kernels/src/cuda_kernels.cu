@@ -162,9 +162,9 @@ void cuda_element_add_packed(size_t* mat1_ids, size_t* mat2_ids, size_t* out_mat
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Get the gpu buffers to operate on
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_mat2_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat2_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat1_ids[i]);
@@ -178,9 +178,9 @@ void cuda_element_add_packed(size_t* mat1_ids, size_t* mat2_ids, size_t* out_mat
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[2];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_mat2_buffers_ptr, gpu_mat2_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat2_buffers_dp, pinned_mat2_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -198,8 +198,8 @@ void cuda_element_add_packed_inplace(size_t* mat1_ids, size_t* mat2_ids, size_t*
     int out_cols = mat_cols;
 
     // Get the gpu buffers to operate on
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_mat2_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat2_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat1_ids[i]);
@@ -211,8 +211,8 @@ void cuda_element_add_packed_inplace(size_t* mat1_ids, size_t* mat2_ids, size_t*
     float** gpu_mat2_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_mat2_buffers_ptr, gpu_mat2_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat2_buffers_dp, pinned_mat2_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -312,9 +312,9 @@ void cuda_element_subtract_packed(size_t* mat1_ids, size_t* mat2_ids, size_t* ou
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Get the gpu buffers to operate on
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_mat2_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat2_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat1_ids[i]);
@@ -328,9 +328,9 @@ void cuda_element_subtract_packed(size_t* mat1_ids, size_t* mat2_ids, size_t* ou
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[2];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_mat2_buffers_ptr, gpu_mat2_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat2_buffers_dp, pinned_mat2_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -348,8 +348,8 @@ void cuda_element_subtract_packed_inplace(size_t* mat1_ids, size_t* mat2_ids, si
     int out_cols = mat_cols;
 
     // Get the gpu buffers to operate on
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_mat2_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat2_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat1_ids[i]);
@@ -361,8 +361,8 @@ void cuda_element_subtract_packed_inplace(size_t* mat1_ids, size_t* mat2_ids, si
     float** gpu_mat2_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_mat2_buffers_ptr, gpu_mat2_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat2_buffers_dp, pinned_mat2_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -462,9 +462,9 @@ void cuda_element_multiply_packed(size_t* mat1_ids, size_t* mat2_ids, size_t* ou
 
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
     // Get the gpu buffers to operate on
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_mat2_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat2_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat1_ids[i]);
@@ -478,9 +478,9 @@ void cuda_element_multiply_packed(size_t* mat1_ids, size_t* mat2_ids, size_t* ou
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[2];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_mat2_buffers_ptr, gpu_mat2_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat2_buffers_dp, pinned_mat2_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -498,8 +498,8 @@ void cuda_element_multiply_packed_inplace(size_t* mat1_ids, size_t* mat2_ids, si
     int out_cols = mat_cols;
 
     // Get the gpu buffers to operate on
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_mat2_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat2_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat1_ids[i]);
@@ -511,8 +511,8 @@ void cuda_element_multiply_packed_inplace(size_t* mat1_ids, size_t* mat2_ids, si
     float** gpu_mat2_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_mat2_buffers_ptr, gpu_mat2_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat2_buffers_dp, pinned_mat2_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -613,9 +613,9 @@ void cuda_element_divide_packed(size_t* mat1_ids, size_t* mat2_ids, size_t* out_
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Get the gpu buffers to operate on
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_mat2_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat2_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat1_ids[i]);
@@ -629,9 +629,9 @@ void cuda_element_divide_packed(size_t* mat1_ids, size_t* mat2_ids, size_t* out_
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[2];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_mat2_buffers_ptr, gpu_mat2_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat2_buffers_dp, pinned_mat2_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -649,8 +649,8 @@ void cuda_element_divide_packed_inplace(size_t* mat1_ids, size_t* mat2_ids, size
     int out_cols = mat_cols;
 
     // Get the gpu buffers to operate on
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_mat2_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat2_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat1_ids[i]);
@@ -662,8 +662,8 @@ void cuda_element_divide_packed_inplace(size_t* mat1_ids, size_t* mat2_ids, size
     float** gpu_mat2_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_mat2_buffers_ptr, gpu_mat2_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat2_buffers_dp, pinned_mat2_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -761,8 +761,8 @@ void cuda_scalar_multiply_packed(size_t* mat_ids, size_t* out_mat_ids, size_t nu
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -774,8 +774,8 @@ void cuda_scalar_multiply_packed(size_t* mat_ids, size_t* out_mat_ids, size_t nu
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -793,7 +793,7 @@ void cuda_scalar_multiply_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, s
     int out_cols = mat_cols;
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -803,7 +803,7 @@ void cuda_scalar_multiply_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, s
     float** gpu_mat1_buffers_dp = (float**)kernel_arg_device_pointers[0];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -901,8 +901,8 @@ void cuda_scalar_divide_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -914,8 +914,8 @@ void cuda_scalar_divide_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -933,7 +933,7 @@ void cuda_scalar_divide_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, siz
     int out_cols = mat_cols;
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -943,7 +943,7 @@ void cuda_scalar_divide_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, siz
     float** gpu_mat1_buffers_dp = (float**)kernel_arg_device_pointers[0];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1041,8 +1041,8 @@ void cuda_scalar_add_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_mat
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -1054,8 +1054,8 @@ void cuda_scalar_add_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_mat
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1073,7 +1073,7 @@ void cuda_scalar_add_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size_t
     int out_cols = mat_cols;
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -1083,7 +1083,7 @@ void cuda_scalar_add_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size_t
     float** gpu_mat1_buffers_dp = (float**)kernel_arg_device_pointers[0];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1181,8 +1181,8 @@ void cuda_scalar_subtract_packed(size_t* mat_ids, size_t* out_mat_ids, size_t nu
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -1194,8 +1194,8 @@ void cuda_scalar_subtract_packed(size_t* mat_ids, size_t* out_mat_ids, size_t nu
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1213,7 +1213,7 @@ void cuda_scalar_subtract_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, s
     int out_cols = mat_cols;
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat1_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat1_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat1_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -1223,7 +1223,7 @@ void cuda_scalar_subtract_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, s
     float** gpu_mat1_buffers_dp = (float**)kernel_arg_device_pointers[0];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat1_buffers_ptr, gpu_mat1_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1754,8 +1754,8 @@ void cuda_element_sqrt_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_m
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -1767,8 +1767,8 @@ void cuda_element_sqrt_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_m
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1786,7 +1786,7 @@ void cuda_element_sqrt_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size
     int out_cols = mat_cols;
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -1796,7 +1796,7 @@ void cuda_element_sqrt_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size
     float** gpu_mat_buffers_dp = (float**)kernel_arg_device_pointers[0];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1873,8 +1873,8 @@ void cuda_element_exp_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_ma
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -1886,8 +1886,8 @@ void cuda_element_exp_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_ma
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1905,7 +1905,7 @@ void cuda_element_exp_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size_
     int out_cols = mat_cols;
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -1915,7 +1915,7 @@ void cuda_element_exp_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size_
     float** gpu_mat_buffers_dp = (float**)kernel_arg_device_pointers[0];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -1992,8 +1992,8 @@ void cuda_element_ReLU_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_m
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -2005,8 +2005,8 @@ void cuda_element_ReLU_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_m
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -2024,7 +2024,7 @@ void cuda_element_ReLU_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size
     int out_cols = mat_cols;
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -2034,7 +2034,7 @@ void cuda_element_ReLU_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size
     float** gpu_mat_buffers_dp = (float**)kernel_arg_device_pointers[0];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -2111,8 +2111,8 @@ void cuda_element_ReLU_prime_packed(size_t* mat_ids, size_t* out_mat_ids, size_t
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -2124,8 +2124,8 @@ void cuda_element_ReLU_prime_packed(size_t* mat_ids, size_t* out_mat_ids, size_t
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -2143,7 +2143,7 @@ void cuda_element_ReLU_prime_packed_inplace(size_t* mat_ids, size_t* out_mat_ids
     int out_cols = mat_cols;
 
     // Grab device pointers and put in pinned memory to upload as device array
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -2153,7 +2153,7 @@ void cuda_element_ReLU_prime_packed_inplace(size_t* mat_ids, size_t* out_mat_ids
     float** gpu_mat_buffers_dp = (float**)kernel_arg_device_pointers[0];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -2443,9 +2443,9 @@ void cuda_max_pool_packed(size_t* mat_ids, Tuple* out_ids, size_t num_matrices, 
     }
 
     // Get gpu buffers to oeprate on
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_max_bitmasks_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_max_bitmasks_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -2460,9 +2460,9 @@ void cuda_max_pool_packed(size_t* mat_ids, Tuple* out_ids, size_t num_matrices, 
     float** gpu_max_bitmasks_dp = (float**)kernel_arg_device_pointers[2];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_max_bitmasks_ptr, gpu_max_bitmasks_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_max_bitmasks_dp, pinned_max_bitmasks_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -2546,8 +2546,8 @@ void cuda_nearest_neighbor_2x_upsample_packed(size_t* mat_ids, size_t* out_mat_i
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Get the gpu buffers to operate on
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -2559,8 +2559,8 @@ void cuda_nearest_neighbor_2x_upsample_packed(size_t* mat_ids, size_t* out_mat_i
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -2643,8 +2643,8 @@ void cuda_rotate_180_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_mat
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Get the gpu buffers to operate on
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
@@ -2656,8 +2656,8 @@ void cuda_rotate_180_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_mat
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[1];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK_X = 256;
@@ -2938,9 +2938,9 @@ void cuda_correlate_valid_packed(size_t* matrices_ids, size_t num_matrices, size
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Get the gpu buffers to operate on
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_kernel_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_kernel_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(matrices_ids[i]);
@@ -2954,9 +2954,9 @@ void cuda_correlate_valid_packed(size_t* matrices_ids, size_t num_matrices, size
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[2];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_kernel_buffers_ptr, gpu_kernel_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_kernel_buffers_dp, pinned_kernel_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -3022,9 +3022,9 @@ void cuda_correlate_same_packed(size_t* matrices_ids, size_t num_matrices, size_
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Get the gpu buffers to operate on
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_kernel_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_kernel_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(matrices_ids[i]);
@@ -3038,9 +3038,9 @@ void cuda_correlate_same_packed(size_t* matrices_ids, size_t num_matrices, size_
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[2];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_kernel_buffers_ptr, gpu_kernel_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_kernel_buffers_dp, pinned_kernel_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -3107,9 +3107,9 @@ void cuda_correlate_full_packed(size_t* matrices_ids, size_t num_matrices, size_
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Get the gpu buffers to operate on
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_kernel_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_kernel_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(matrices_ids[i]);
@@ -3124,9 +3124,9 @@ void cuda_correlate_full_packed(size_t* matrices_ids, size_t num_matrices, size_
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[2];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_kernel_buffers_ptr, gpu_kernel_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_kernel_buffers_dp, pinned_kernel_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -3382,9 +3382,9 @@ void cuda_convolve_valid_packed(size_t* matrices_ids, size_t num_matrices, size_
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Get the gpu buffers to operate on
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_kernel_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_kernel_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(matrices_ids[i]);
@@ -3399,9 +3399,9 @@ void cuda_convolve_valid_packed(size_t* matrices_ids, size_t num_matrices, size_
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[2];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_kernel_buffers_ptr, gpu_kernel_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_kernel_buffers_dp, pinned_kernel_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -3468,9 +3468,9 @@ void cuda_convolve_same_packed(size_t* matrices_ids, size_t num_matrices, size_t
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Get the gpu buffers to operate on
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_kernel_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_kernel_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(matrices_ids[i]);
@@ -3485,9 +3485,9 @@ void cuda_convolve_same_packed(size_t* matrices_ids, size_t num_matrices, size_t
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[2];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_kernel_buffers_ptr, gpu_kernel_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_kernel_buffers_dp, pinned_kernel_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -3555,9 +3555,9 @@ void cuda_convolve_full_packed(size_t* matrices_ids, size_t num_matrices, size_t
     register_matrix_group(out_rows, out_cols, num_matrices, out_mat_ids);
 
     // Get the gpu buffers to operate on
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_kernel_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
-    float** pinned_out_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_kernel_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_out_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
 
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(matrices_ids[i]);
@@ -3572,9 +3572,9 @@ void cuda_convolve_full_packed(size_t* matrices_ids, size_t num_matrices, size_t
     float** gpu_out_buffers_dp = (float**)kernel_arg_device_pointers[2];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_kernel_buffers_ptr, gpu_kernel_buffers_dp, sizeof(float*) * num_matrices);
-    memory_manager_upload_from_pinned_buffer(pinned_out_buffers_ptr, gpu_out_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_kernel_buffers_dp, pinned_kernel_buffers_ptr, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
     const int THREADS_PER_BLOCK = 16;
@@ -3637,16 +3637,15 @@ size_t cuda_img2col_valid(size_t* mat_ids, size_t num_matrices, size_t mat_rows,
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    std::vector<float*> mat_buffers;
-    for (size_t i = 0; i < num_matrices; i++) {
-        mat_buffers.emplace_back(get_matrix_gpu_address(mat_ids[i]));
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(size_t) * num_matrices);
+    for (int i = 0; i < num_matrices; i++) {
+        pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
     }
 
     // Upload the pointers to a gpu array
     // Each allocation pair contains block_id, block_offset
-    auto gpu_mat_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
-    float** gpu_mat_buffers = (float**)get_block_gpu_address(gpu_mat_buffers_block, 0);
-    memory_manager_upload_to_allocation(gpu_mat_buffers, &mat_buffers[0], sizeof(float*) * num_matrices);
+    float** gpu_mat_buffers = (float**)get_device_kernel_args_pointers(1)[0];
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
 
     float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
@@ -3661,9 +3660,6 @@ size_t cuda_img2col_valid(size_t* mat_ids, size_t num_matrices, size_t mat_rows,
     // Run the kernels
     cuda_img2col_valid<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers, num_matrices, mat_rows, mat_cols, kernel_count, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
-
-    // Cleanup
-    memory_manager_free(gpu_mat_buffers_block, sizeof(float*) * num_matrices);
 
     // Return result matrix id
     return out_mat_id;
@@ -3708,7 +3704,7 @@ size_t cuda_flatten_array(size_t* mat_ids, size_t num_matrices, size_t mat_rows,
     size_t out_mat_id = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
     }
@@ -3717,7 +3713,7 @@ size_t cuda_flatten_array(size_t* mat_ids, size_t num_matrices, size_t mat_rows,
     float** gpu_mat_buffers_dp = (float**)kernel_arg_device_pointers[0];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
 
     float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
@@ -3754,18 +3750,17 @@ void cuda_unflatten_array(size_t array_id, size_t arr_size, size_t mat_rows, siz
     int num_matrices = arr_size / mat_size;
 
     // Create the buffers for the matrices
-    std::vector<float*> gpu_mat_buffers;
     register_matrix_group(mat_rows, mat_cols, num_matrices, mat_ids);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
     for (int i = 0; i < num_matrices; i++) {
-        size_t mat_id = mat_ids[i];
-        gpu_mat_buffers.emplace_back(get_matrix_gpu_address(mat_id));
+        pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
     }
 
+    auto kernel_arg_device_pointers = get_device_kernel_args_pointers(1);
+    float** gpu_mat_buffers_dp = (float**)kernel_arg_device_pointers[0];
+
     // Upload the pointers to a gpu array
-    // Each allocation pair contains block_id, block_offset
-    auto gpu_mat_buffers_block = memory_manager_allocate(sizeof(float*) * num_matrices);
-    float** gpu_mat_buffers_ptr = (float**)get_block_gpu_address(gpu_mat_buffers_block, 0);
-    memory_manager_upload_to_allocation(gpu_mat_buffers_ptr, &gpu_mat_buffers[0], sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Get the flattened array
     float* gpu_array_buffer = get_matrix_gpu_address(array_id);
@@ -3775,11 +3770,8 @@ void cuda_unflatten_array(size_t array_id, size_t arr_size, size_t mat_rows, siz
     dim3 grid_dim((arr_size + block_dim.x - 1) / block_dim.x, 1, 1);
 
     // Run the kernels
-    cuda_unflatten_array_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_array_buffer, arr_size, mat_rows, mat_cols, gpu_mat_buffers_ptr);
+    cuda_unflatten_array_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_array_buffer, arr_size, mat_rows, mat_cols, gpu_mat_buffers_dp);
     gpuErrchk(cudaPeekAtLastError());
-
-    // Cleanup
-    memory_manager_free(gpu_mat_buffers_block, sizeof(float*) * num_matrices);
 }
 
 __global__ void cuda_unflatten_array_strided_kernel(float* array_buffer, int arr_size, int num_matrices, int mat_rows, int mat_cols, float** mat_buffers) {
@@ -3803,7 +3795,7 @@ void cuda_unflatten_array_strided(size_t array_id, size_t arr_size, size_t mat_r
 
     // Create the buffers for the matrices
     register_matrix_group(mat_rows, mat_cols, num_matrices, mat_ids);
-    float** pinned_mat_buffers_ptr = (float**)memory_get_pinned_allocation(sizeof(float*) * num_matrices);
+    float** pinned_mat_buffers_ptr = (float**)memory_manager_get_pinned_allocation(sizeof(float*) * num_matrices);
     for (int i = 0; i < num_matrices; i++) {
         pinned_mat_buffers_ptr[i] = get_matrix_gpu_address(mat_ids[i]);
     }
@@ -3812,7 +3804,7 @@ void cuda_unflatten_array_strided(size_t array_id, size_t arr_size, size_t mat_r
     float** gpu_mat_buffers_dp = (float**)kernel_arg_device_pointers[0];
 
     // Upload the pointers to a gpu array
-    memory_manager_upload_from_pinned_buffer(pinned_mat_buffers_ptr, gpu_mat_buffers_dp, sizeof(float*) * num_matrices);
+    memory_manager_upload_from_pinned_buffer(gpu_mat_buffers_dp, pinned_mat_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Get the flattened array
     float* gpu_array_buffer = get_matrix_gpu_address(array_id);
@@ -4007,4 +3999,237 @@ size_t cuda_sum_all_matrix_elements(size_t mat_id, size_t mat_rows, size_t mat_c
     unregister_matrix(mat_copy_id);
 
     return result_id;
+}
+
+__global__ void cuda_max_by_column_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
+    const int col = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (col < mat_cols) {
+        // Go down all the rows, find the max
+        float max = -INFINITY;
+        for (int row = 0; row < mat_rows; row++) {
+            const float val = mat_buffer[row * mat_cols + col];
+            max = val > max ? val : max;
+        }
+
+        // Write result
+        out_buffer[col] = max;
+    }
+}
+size_t cuda_max_by_column(size_t mat_id, size_t mat_rows, size_t mat_cols) {
+    size_t out_mat_id = register_matrix(1, mat_cols);
+
+    // Get the gpu buffers to operate on
+    float* gpu_mat_buffer = get_matrix_gpu_address(mat_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
+
+    // Kernel launch parameters, each thread handles one column
+    const int THREADS_PER_BLOCK = 256;
+    dim3 block_dim(THREADS_PER_BLOCK, 1, 1);
+    dim3 grid_dim((mat_cols + block_dim.x - 1) / block_dim.x, 1, 1);
+
+    // Run the kernels
+    cuda_max_by_column_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffer, mat_rows, mat_cols, gpu_out_buffer);
+
+    return out_mat_id;
+}
+
+__global__ void cuda_max_by_row_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
+    const int row = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (row < mat_rows) {
+        // Go down all the rows, find the max
+        float max = -INFINITY;
+        for (int col = 0; col < mat_cols; col++) {
+            const float val = mat_buffer[row * mat_cols + col];
+            max = val > max ? val : max;
+        }
+
+        // Write result
+        out_buffer[row] = max;
+    }
+}
+size_t cuda_max_by_row(size_t mat_id, size_t mat_rows, size_t mat_cols) {
+    size_t out_mat_id = register_matrix(mat_rows, 1);
+
+    // Get the gpu buffers to operate on
+    float* gpu_mat_buffer = get_matrix_gpu_address(mat_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
+
+    // Kernel launch parameters, each thread handles one column
+    const int THREADS_PER_BLOCK = 256;
+    dim3 block_dim(THREADS_PER_BLOCK, 1, 1);
+    dim3 grid_dim((mat_rows + block_dim.x - 1) / block_dim.x, 1, 1);
+
+    // Run the kernels
+    cuda_max_by_row_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffer, mat_rows, mat_cols, gpu_out_buffer);
+
+    return out_mat_id;
+}
+
+__global__ void cuda_argmax_by_column_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
+    const int col = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (col < mat_cols) {
+        // Go down all the rows, find the max
+        float max = -INFINITY;
+        float max_index = 0;
+        for (int row = 0; row < mat_rows; row++) {
+            const float val = mat_buffer[row * mat_cols + col];
+            max_index = val > max ? row : max_index;
+            max = val > max ? val : max;
+        }
+
+        // Write result
+        out_buffer[col] = max_index;
+    }
+}
+size_t cuda_argmax_by_column(size_t mat_id, size_t mat_rows, size_t mat_cols) {
+    size_t out_mat_id = register_matrix(1, mat_cols);
+
+    // Get the gpu buffers to operate on
+    float* gpu_mat_buffer = get_matrix_gpu_address(mat_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
+
+    // Kernel launch parameters, each thread handles one column
+    const int THREADS_PER_BLOCK = 256;
+    dim3 block_dim(THREADS_PER_BLOCK, 1, 1);
+    dim3 grid_dim((mat_cols + block_dim.x - 1) / block_dim.x, 1, 1);
+
+    // Run the kernels
+    cuda_argmax_by_column_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffer, mat_rows, mat_cols, gpu_out_buffer);
+
+    return out_mat_id;
+}
+
+__global__ void cuda_argmax_by_row_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
+    const int row = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (row < mat_rows) {
+        // Go down all the rows, find the max
+        float max = -INFINITY;
+        float max_index = 0;
+        for (int col = 0; col < mat_cols; col++) {
+            const float val = mat_buffer[row * mat_cols + col];
+            max_index = val > max ? col : max_index;
+            max = val > max ? val : max;
+        }
+
+        // Write result
+        out_buffer[row] = max_index;
+    }
+}
+size_t cuda_argmax_by_row(size_t mat_id, size_t mat_rows, size_t mat_cols) {
+    size_t out_mat_id = register_matrix(mat_rows, 1);
+
+    // Get the gpu buffers to operate on
+    float* gpu_mat_buffer = get_matrix_gpu_address(mat_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
+
+    // Kernel launch parameters, each thread handles one column
+    const int THREADS_PER_BLOCK = 256;
+    dim3 block_dim(THREADS_PER_BLOCK, 1, 1);
+    dim3 grid_dim((mat_rows + block_dim.x - 1) / block_dim.x, 1, 1);
+
+    // Run the kernels
+    cuda_argmax_by_row_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffer, mat_rows, mat_cols, gpu_out_buffer);
+
+    return out_mat_id;
+}
+
+__global__ void cuda_one_hot_encode_kernel(float* data_buffer, int data_size, int num_classes, float* out_buffer) {
+    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (tidX < data_size) {
+        // Each thread handles one row
+        // O[i][j] = 1 if j == data[i], else 0
+        const int column_to_write_to = data_buffer[tidX];
+        out_buffer[tidX * num_classes + column_to_write_to] = 1.0;
+    }
+}
+size_t cuda_one_hot_encode(float* data, size_t data_size, size_t num_classes) {
+    // Create output buffer
+    size_t out_mat_id = register_matrix(data_size, num_classes);
+
+    // Used pinned transfer for data
+    float* pinned_buffer = (float*)memory_manager_get_pinned_allocation(sizeof(float) * data_size);
+    memcpy(pinned_buffer, data, sizeof(float) * data_size);
+
+    // Upload the data
+    float* gpu_data_buffer = (float*)get_device_kernel_args_pointers(1)[0];
+    memory_manager_upload_from_pinned_buffer(gpu_data_buffer, pinned_buffer, sizeof(float) * data_size);
+
+    // Get buffers
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
+
+    // Set the output buffer to 0
+    cudaMemset(gpu_out_buffer, 0, sizeof(float) * data_size * num_classes);
+
+    // Kernel launch parameters, each thread handles one column
+    const int THREADS_PER_BLOCK = 256;
+    dim3 block_dim(THREADS_PER_BLOCK, 1, 1);
+    dim3 grid_dim((data_size + block_dim.x - 1) / block_dim.x, 1, 1);
+
+    // Run the kernels
+    cuda_one_hot_encode_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_data_buffer, data_size, num_classes, gpu_out_buffer);
+
+    return out_mat_id;
+}
+
+size_t cuda_one_hot_encode_vector(size_t mat_id, size_t mat_len, size_t num_classes) {
+    // Create output buffer
+    size_t out_mat_id = register_matrix(mat_len, num_classes);
+
+    // Get buffers
+    float* gpu_data_buffer = get_matrix_gpu_address(mat_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
+
+    // Set the output buffer to 0
+    cudaMemset(gpu_out_buffer, 0, sizeof(float) * mat_len * num_classes);
+
+    // Kernel launch parameters, each thread handles one column
+    const int THREADS_PER_BLOCK = 256;
+    dim3 block_dim(THREADS_PER_BLOCK, 1, 1);
+    dim3 grid_dim((mat_len + block_dim.x - 1) / block_dim.x, 1, 1);
+
+    // Run the kernels
+    cuda_one_hot_encode_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_data_buffer, mat_len, num_classes, gpu_out_buffer);
+
+    return out_mat_id;
+}
+
+__global__ void element_ln_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < mat_cols && tidY < mat_rows) {
+        // O[i][j] = ln(mat1[i][j])
+
+        int index = tidY * mat_cols + tidX;
+        const float val = mat_buffer[index];
+        out_buffer[index] = val <= 0.0 ? 0.0 : log(mat_buffer[index]);  // Handle <= 0 to avoid NAN
+    }
+}
+
+size_t cuda_element_ln(size_t mat_id, size_t mat_rows, size_t mat_cols, bool inplace) {
+    // Create output buffer
+    size_t out_rows = mat_rows;
+    size_t out_cols = mat_cols;
+    size_t out_mat_id = inplace ? mat_id : register_matrix(out_rows, out_cols);
+
+    // Get the gpu buffers to operate on
+    float* gpu_mat_buffer = get_matrix_gpu_address(mat_id);
+    float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 32;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
+
+    // Run the kernels
+    element_ln_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffer, mat_rows, mat_cols, gpu_out_buffer);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Return result matrix id
+    return out_mat_id;
 }
