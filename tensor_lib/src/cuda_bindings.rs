@@ -16,11 +16,14 @@ extern "C" {
 
   pub fn cuda_synchronize();
 
+  pub fn memory_manager_get_pinned_allocation(size: usize) -> *mut c_float;
+
   pub fn register_matrix(rows: usize, cols: usize) -> usize;
   pub fn register_matrix_group(rows: usize, cols: usize, count: usize, mat_ids: *mut c_ulonglong);
   pub fn register_matrix_with_data(data: *const c_float, rows: usize, cols: usize) -> usize;
   pub fn cuda_one_hot_encode(data: *const c_float, data_size: usize, num_classes: usize) -> usize;
   pub fn upload_matrix_data(mat_id: usize, data: *const c_float);
+  pub fn upload_matrix_data_async(mat_id: usize, data: *const c_float);
   pub fn unregister_matrix(mat_id: usize) -> usize;
 
   pub fn increase_matrix_ref_count(mat_id: usize);

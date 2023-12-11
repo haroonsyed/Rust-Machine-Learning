@@ -26,6 +26,7 @@ float* get_matrix_gpu_address(size_t mat_id);
 size_t register_matrix(size_t rows, size_t cols);
 void register_matrix_group(size_t rows, size_t columns, size_t count, size_t* mat_ids);
 void upload_matrix_data(size_t mat_id, float* data);
+void upload_matrix_data_async(size_t mat_id, float* data);
 size_t register_matrix_with_data(float* data, size_t rows, size_t cols);
 void unregister_matrix(size_t mat_id);
 void increase_matrix_ref_count(size_t mat_id);

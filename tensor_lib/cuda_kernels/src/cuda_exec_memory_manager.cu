@@ -116,7 +116,7 @@ void memory_manager_upload_from_pinned_buffer(void* device_address, void* pinned
     pinned_buffer_events.emplace(event, size);
 }
 void memory_manager_upload_async_from_pinned_buffer(void* device_address, void* pinned_data, size_t size) {
-    gpuErrchk(cudaMemcpyAsync(device_address, pinned_data, size, cudaMemcpyHostToDevice, io_to_device_stream));
+    gpuErrchk(cudaMemcpyAsync(device_address, pinned_data, size, cudaMemcpyHostToDevice, main_exec_stream));  // TODO: USE IO STREAM
 
     cudaEvent_t event;
     cudaEventCreate(&event);
@@ -286,6 +286,15 @@ void upload_matrix_data(size_t mat_id, float* data) {
 
     // Upload the data
     memory_manager_upload_to_allocation(device_address, data, data_size);
+}
+void upload_matrix_data_async(size_t mat_id, float* data) {
+    // Block information
+    MatrixBlock* mat = &matrix_blocks[mat_id];
+    void* device_address = mat->device_address;
+    size_t data_size = get_matrix_length(mat_id) * sizeof(float);
+
+    // Upload the data
+    memory_manager_upload_async_from_pinned_buffer(device_address, data, data_size);
 }
 size_t register_matrix_with_data(float* data, size_t rows, size_t columns) {
     // Create the matrix block

@@ -232,9 +232,11 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
     // Feed to fully connected layer
     let sample_errors = izip!(flattened_sample_outputs.iter(), labels.iter())
       .map(|(flattened_output, label)| {
+        let encoded_label =
+          Matrix::new_one_hot_encoded(&vec![*label], self.num_classifications).transpose();
         let fully_connected_error = self
           .fully_connected_layer
-          .train_classification_observation_matrix(flattened_output, &vec![*label]);
+          .train_classification_observation_matrix(flattened_output, &encoded_label);
 
         let output_error = self.fully_connected_layer.weights[0]
           .transpose()

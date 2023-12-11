@@ -102,43 +102,10 @@ impl ConvolutionalNeuralNetworkRust {
     }
   }
 
-  fn convert_observations_to_matrices(
-    &self,
-    observations: &Vec<Vec<Vec<f32>>>,
-  ) -> Vec<Vec<Matrix>> {
-    let (input_height, input_width, _) = self.input_dimensions;
-    let sample_count = observations.len();
-    let channel_count = observations[0].len();
-    let matrix_count = sample_count * channel_count;
-
-    let matrices = create_matrix_group(input_height, input_width, matrix_count);
-
-    let mut current_matrix_index = 0;
-    for sample in observations {
-      for channel in sample {
-        matrices[current_matrix_index].set_data_1d(channel);
-        current_matrix_index += 1;
-      }
-    }
-
-    // Now group into sample -> depth
-    let grouped_matrices = matrices
-      .into_iter()
-      .chunks(channel_count)
-      .into_iter()
-      .map(|sample| sample.into_iter().collect_vec())
-      .collect_vec();
-
-    return grouped_matrices;
-  }
-
-  pub fn classify(&mut self, features_test: &Vec<Vec<Vec<f32>>>) -> Vec<f32> {
-    if features_test.len() == 0 {
+  pub fn classify(&mut self, observations_matrices: Vec<Vec<Matrix>>) -> Vec<f32> {
+    if observations_matrices.len() == 0 {
       return Vec::new();
     }
-
-    // Obervations are of shape sample -> depth -> pixels
-    let observations_matrices = self.convert_observations_to_matrices(features_test);
 
     // Feed forward
     let filter_outputs = self.feed_forward(&observations_matrices);
@@ -156,19 +123,12 @@ impl ConvolutionalNeuralNetworkRust {
       .classify(filter_outputs.as_slice());
   }
 
-  pub fn train(
-    &mut self,
-    observations: &Vec<Vec<Vec<f32>>>, // sample -> depth -> pixels
-    labels: &Vec<f32>,
-  ) {
-    if observations.len() == 0 {
+  pub fn train(&mut self, observations_matrices: Vec<Vec<Matrix>>, encoded_labels: Matrix) {
+    if observations_matrices.len() == 0 {
       return;
     }
 
     let start = Instant::now();
-
-    // Convert observations to matrices
-    let observations_matrices = self.convert_observations_to_matrices(observations);
 
     // Feed forward
     let filter_outputs = self.feed_forward(&observations_matrices);
@@ -183,7 +143,7 @@ impl ConvolutionalNeuralNetworkRust {
       .fully_connected_layer
       .as_mut()
       .unwrap()
-      .train(&filter_outputs, labels);
+      .train(&filter_outputs, &encoded_labels);
 
     // Backpropogate
     self.backpropogation(fc_error);
@@ -710,11 +670,11 @@ impl FullyConnectedLayer {
     return self.fully_connected_layer.classify_matrix(&flattened_input);
   }
 
-  fn train(&mut self, input: &[Vec<Matrix>], labels: &Vec<f32>) -> Vec<Vec<Matrix>> {
+  fn train(&mut self, input: &[Vec<Matrix>], encoded_labels: &Matrix) -> Vec<Vec<Matrix>> {
     let flattened_input = self.flatten(input);
     let fc_error = self
       .fully_connected_layer
-      .train_classification_observation_matrix(&flattened_input, labels);
+      .train_classification_observation_matrix(&flattened_input, encoded_labels);
     return self.unflatten(fc_error);
   }
 

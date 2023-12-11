@@ -115,6 +115,12 @@ impl Matrix {
     }
   }
 
+  pub fn set_data_from_pinned_buffer_async(&self, pinned_buffer: *mut c_float) {
+    unsafe {
+      upload_matrix_data_async(self.get_id(), pinned_buffer);
+    }
+  }
+
   pub fn get_data(&self) -> Vec<Vec<f32>> {
     let mut data = Vec::<c_float>::with_capacity(self.get_data_length());
     unsafe {

@@ -1,9 +1,12 @@
 use image::GenericImageView;
-use itertools::Itertools;
+use itertools::{izip, Itertools};
 use pyo3::prelude::*;
 use rand::Rng;
 use rayon::prelude::*;
-use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
+use std::{collections::HashMap, fs, mem::size_of, path::PathBuf, time::Instant};
+use tensor_lib::{
+  create_matrix_group, cuda_bindings::memory_manager_get_pinned_allocation, Matrix,
+};
 
 #[pyclass]
 pub struct ImageBatchLoader {
@@ -95,6 +98,94 @@ impl ImageBatchLoaderRust {
       sample_width,
       sample_height,
     };
+  }
+
+  pub fn batch_sample_as_matrix(&self, batch_size: usize) -> (Vec<Vec<Matrix>>, Matrix) {
+    let total_sample_count = self.paths.len();
+
+    // Reserve pinned memory for the batch
+    let pinned_buffers = (0..batch_size * 3)
+      .map(|_| {
+        let buffer;
+        unsafe {
+          buffer = memory_manager_get_pinned_allocation(
+            size_of::<f32>() * self.sample_width * self.sample_height,
+          );
+        }
+
+        // Cast to size_t to get around rayon lol
+        return buffer as usize;
+      })
+      .collect_vec();
+
+    let grouped_pinned_buffers = pinned_buffers
+      .iter()
+      .chunks(3)
+      .into_iter()
+      .map(|sample| sample.into_iter().collect_vec())
+      .collect_vec();
+
+    let labels = grouped_pinned_buffers
+      .par_iter()
+      // .iter()
+      .map(|pinned_channel_buffers| {
+        // Load the pixel data for that image
+        let mut rng = rand::thread_rng(); // Create a random number generator
+        let img_index = rng.gen_range(0..total_sample_count);
+        let img_path = &self.paths[img_index];
+        let img_classification_string = img_path
+          .parent()
+          .unwrap()
+          .file_name()
+          .unwrap()
+          .to_string_lossy()
+          .to_string();
+        let img_classification = self
+          .classifications_map
+          .get(&img_classification_string)
+          .unwrap_or(&-1.0);
+
+        if let Ok(img) = image::open(&img_path) {
+          let img = img.thumbnail_exact(self.sample_width as u32, self.sample_height as u32);
+
+          // Process Image
+          let red_pointer = *pinned_channel_buffers[0] as *mut f32;
+          let green_pointer = *pinned_channel_buffers[1] as *mut f32;
+          let blue_pointer = *pinned_channel_buffers[2] as *mut f32;
+
+          for (pixel_index, (_, _, pixel)) in img.pixels().enumerate() {
+            unsafe {
+              *(red_pointer.add(pixel_index)) = (pixel.0[0] as f32 / 255.0) - 0.5;
+              *(green_pointer.add(pixel_index)) = (pixel.0[1] as f32 / 255.0) - 0.5;
+              *(blue_pointer.add(pixel_index)) = (pixel.0[2] as f32 / 255.0) - 0.5;
+            }
+          }
+        }
+
+        return *img_classification;
+      })
+      .collect();
+
+    // Convert data in pinned buffer to matrix
+    let matrices = create_matrix_group(self.sample_width, self.sample_width, batch_size * 3);
+
+    // Upload the data to the GPU
+    izip!(matrices.iter(), pinned_buffers).for_each(|(matrix, pinned_buffer)| {
+      matrix.set_data_from_pinned_buffer_async(pinned_buffer as *mut f32);
+    });
+
+    // Group the matrices into samples and channels
+    let grouped_matrices = matrices
+      .into_iter()
+      .chunks(3)
+      .into_iter()
+      .map(|sample| sample.into_iter().collect_vec())
+      .collect_vec();
+
+    let encoded_labels =
+      Matrix::new_one_hot_encoded(&labels, self.classifications_map.len()).transpose();
+
+    return (grouped_matrices, encoded_labels);
   }
 
   // Set the batch_size to 0 to load all the images

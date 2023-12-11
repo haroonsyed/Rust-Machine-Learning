@@ -9,6 +9,26 @@ mod tests {
   use statrs::distribution::Normal;
 
   #[test]
+  fn one_hot_encode() {
+    let test_labels = vec![0.0, 1.0, 2.0, 3.0, 2.0, 1.0, 1.0, 0.0];
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![1.0, 0.0, 0.0, 0.0],
+      vec![0.0, 1.0, 0.0, 0.0],
+      vec![0.0, 0.0, 1.0, 0.0],
+      vec![0.0, 0.0, 0.0, 1.0],
+      vec![0.0, 0.0, 1.0, 0.0],
+      vec![0.0, 1.0, 0.0, 0.0],
+      vec![0.0, 1.0, 0.0, 0.0],
+      vec![1.0, 0.0, 0.0, 0.0],
+    ]);
+
+    let encoded_matrix = Matrix::new_one_hot_encoded(&test_labels, 4);
+
+    assert!(matrix_are_equal(&encoded_matrix, &expected_result, 8));
+  }
+
+  #[test]
   fn element_add() {
     let test_data = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
 
@@ -57,11 +77,10 @@ mod tests {
     ]);
 
     let mat_1s = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
-    let mut observed_result = element_add_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16], false);
+    let mut observed_result = element_add_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
     observed_result.extend(element_add_packed(
       &mat_1s[16..32].to_vec(),
       &vec![mat_3; 16],
-      false,
     ));
 
     izip!(observed_result, expected_result).for_each(|(observed, expected)| {
@@ -70,7 +89,7 @@ mod tests {
   }
 
   #[test]
-  fn element_add_packed_inplace() {
+  fn element_add_packed_inplace_test() {
     let mat_1 = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -105,12 +124,8 @@ mod tests {
     ]);
 
     let mat_1s = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
-    let mut observed_result = element_add_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16], true);
-    observed_result.extend(element_add_packed(
-      &mat_1s[16..32].to_vec(),
-      &vec![mat_3; 16],
-      true,
-    ));
+    element_add_packed_inplace(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    element_add_packed_inplace(&mat_1s[16..32].to_vec(), &vec![mat_3; 16]);
 
     izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
       assert!(matrix_are_equal(&observed, &expected, 8));
@@ -145,12 +160,8 @@ mod tests {
     ];
 
     let mat_1s = (0..32).map(|_| mat_1.clone()).collect_vec();
-    let mut observed_result = element_add_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16], true);
-    observed_result.extend(element_add_packed(
-      &mat_1s[16..32].to_vec(),
-      &vec![mat_3; 16],
-      true,
-    ));
+    element_add_packed_inplace(&mat_1s[0..16], &vec![mat_2; 16].as_slice());
+    element_add_packed_inplace(&mat_1s[16..32], &vec![mat_3; 16].as_slice());
 
     izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
       assert!(matrix_are_equal(&observed, &expected, 8));
@@ -206,12 +217,10 @@ mod tests {
     ]);
 
     let mat_1s = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
-    let mut observed_result =
-      element_subtract_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16], false);
+    let mut observed_result = element_subtract_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
     observed_result.extend(element_subtract_packed(
       &mat_1s[16..32].to_vec(),
       &vec![mat_3; 16],
-      false,
     ));
 
     izip!(observed_result, expected_result).for_each(|(observed, expected)| {
@@ -220,7 +229,7 @@ mod tests {
   }
 
   #[test]
-  fn element_subtract_packed_inplace() {
+  fn element_subtract_packed_inplace_test() {
     let mat_1 = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -255,13 +264,8 @@ mod tests {
     ]);
 
     let mat_1s = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
-    let mut observed_result =
-      element_subtract_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16], true);
-    observed_result.extend(element_subtract_packed(
-      &mat_1s[16..32].to_vec(),
-      &vec![mat_3; 16],
-      true,
-    ));
+    element_subtract_packed_inplace(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    element_subtract_packed_inplace(&mat_1s[16..32].to_vec(), &vec![mat_3; 16]);
 
     izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
       assert!(matrix_are_equal(&observed, &expected, 8));
@@ -296,13 +300,8 @@ mod tests {
     ];
 
     let mat_1s = (0..32).map(|_| mat_1.clone()).collect_vec();
-    let mut observed_result =
-      element_subtract_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16], true);
-    observed_result.extend(element_subtract_packed(
-      &mat_1s[16..32].to_vec(),
-      &vec![mat_3; 16],
-      true,
-    ));
+    element_subtract_packed_inplace(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    element_subtract_packed_inplace(&mat_1s[16..32].to_vec(), &vec![mat_3; 16]);
 
     izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
       assert!(matrix_are_equal(&observed, &expected, 8));
@@ -358,12 +357,10 @@ mod tests {
     ]);
 
     let mat_1s = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
-    let mut observed_result =
-      element_multiply_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16], false);
+    let mut observed_result = element_multiply_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
     observed_result.extend(element_multiply_packed(
       &mat_1s[16..32].to_vec(),
       &vec![mat_3; 16],
-      false,
     ));
 
     izip!(observed_result, expected_result).for_each(|(observed, expected)| {
@@ -372,7 +369,7 @@ mod tests {
   }
 
   #[test]
-  fn element_multiply_packed_inplace() {
+  fn element_multiply_packed_inplace_test() {
     let mat_1 = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -407,13 +404,8 @@ mod tests {
     ]);
 
     let mat_1s = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
-    let mut observed_result =
-      element_multiply_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16], true);
-    observed_result.extend(element_multiply_packed(
-      &mat_1s[16..32].to_vec(),
-      &vec![mat_3; 16],
-      true,
-    ));
+    element_multiply_packed_inplace(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    element_multiply_packed_inplace(&mat_1s[16..32].to_vec(), &vec![mat_3; 16]);
 
     izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
       assert!(matrix_are_equal(&observed, &expected, 8));
@@ -449,13 +441,8 @@ mod tests {
     let expected_result = vec![expected_result_single; 32];
 
     let mat_1s = (0..32).map(|_| mat_1.clone()).collect_vec();
-    let mut observed_result =
-      element_multiply_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16], true);
-    observed_result.extend(element_multiply_packed(
-      &mat_1s[16..32].to_vec(),
-      &vec![mat_3; 16],
-      true,
-    ));
+    element_multiply_packed_inplace(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    element_multiply_packed_inplace(&mat_1s[16..32].to_vec(), &vec![mat_3; 16]);
 
     izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
       assert!(matrix_are_equal(&observed, &expected, 8));
@@ -514,12 +501,10 @@ mod tests {
     ]);
 
     let mat_1s = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
-    let mut observed_result =
-      element_divide_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16], false);
+    let mut observed_result = element_divide_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
     observed_result.extend(element_divide_packed(
       &mat_1s[16..32].to_vec(),
       &vec![mat_3; 16],
-      false,
     ));
 
     izip!(observed_result, expected_result).for_each(|(observed, expected)| {
@@ -528,7 +513,7 @@ mod tests {
   }
 
   #[test]
-  fn element_divide_packed_inplace() {
+  fn element_divide_packed_inplace_test() {
     let mat_1 = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -563,13 +548,8 @@ mod tests {
     ]);
 
     let mat_1s = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
-    let mut observed_result =
-      element_divide_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16], true);
-    observed_result.extend(element_divide_packed(
-      &mat_1s[16..32].to_vec(),
-      &vec![mat_3; 16],
-      true,
-    ));
+    element_divide_packed_inplace(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    element_divide_packed_inplace(&mat_1s[16..32].to_vec(), &vec![mat_3; 16]);
 
     izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
       assert!(matrix_are_equal(&observed, &expected, 8));
@@ -605,12 +585,8 @@ mod tests {
     let expected_result = vec![expected_result_single; 10];
 
     let mat_1s = (0..10).map(|_| mat_1.clone()).collect_vec();
-    let mut observed_result = element_divide_packed(&mat_1s[0..2].to_vec(), &vec![mat_2; 2], true);
-    observed_result.extend(element_divide_packed(
-      &mat_1s[2..4].to_vec(),
-      &vec![mat_3; 2],
-      true,
-    ));
+    element_divide_packed_inplace(&mat_1s[0..2].to_vec(), &vec![mat_2; 2]);
+    element_divide_packed_inplace(&mat_1s[2..4].to_vec(), &vec![mat_3; 2]);
 
     izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
       assert!(matrix_are_equal(&observed, &expected, 8));
@@ -654,14 +630,14 @@ mod tests {
       .map(|(mat, &scalar)| mat.scalar_multiply(random_scalars[0]))
       .collect_vec();
 
-    let observed_result = scalar_multiply_packed(&random_matrices, random_scalars[0], false);
+    let observed_result = scalar_multiply_packed(&random_matrices, random_scalars[0]);
 
     izip!(observed_result, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
   }
 
   #[test]
-  fn scalar_multiply_packed_inplace() {
+  fn scalar_multiply_packed_inplace_test() {
     let random_matrices = (0..10)
       .map(|_| Matrix::new_random(0.0, 10.0, 256, 256))
       .collect_vec();
@@ -672,7 +648,7 @@ mod tests {
       .map(|(mat, &scalar)| mat.scalar_multiply(random_scalars[0]))
       .collect_vec();
 
-    let _ = scalar_multiply_packed(&random_matrices, random_scalars[0], true);
+    scalar_multiply_packed_inplace(&random_matrices, random_scalars[0]);
 
     izip!(random_matrices, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
@@ -689,10 +665,9 @@ mod tests {
       expected_result.scalar_multiply_inplace(random_scalars[0]);
     });
 
-    let _ = scalar_multiply_packed(
+    scalar_multiply_packed_inplace(
       &vec![random_matrix.clone(); random_scalars.len()],
       random_scalars[0],
-      true,
     );
 
     assert!(matrix_are_equal(&random_matrix, &expected_result, 1));
@@ -735,14 +710,14 @@ mod tests {
       .map(|(mat, &scalar)| mat.scalar_divide(random_scalars[0]))
       .collect_vec();
 
-    let observed_result = scalar_divide_packed(&random_matrices, random_scalars[0], false);
+    let observed_result = scalar_divide_packed(&random_matrices, random_scalars[0]);
 
     izip!(observed_result, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
   }
 
   #[test]
-  fn scalar_divide_packed_inplace() {
+  fn scalar_divide_packed_inplace_test() {
     let random_matrices = (0..10)
       .map(|_| Matrix::new_random(0.0, 10.0, 256, 256))
       .collect_vec();
@@ -753,7 +728,7 @@ mod tests {
       .map(|(mat, &scalar)| mat.scalar_divide(random_scalars[0]))
       .collect_vec();
 
-    let _ = scalar_divide_packed(&random_matrices, random_scalars[0], true);
+    scalar_divide_packed_inplace(&random_matrices, random_scalars[0]);
 
     izip!(random_matrices, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
@@ -770,10 +745,9 @@ mod tests {
       expected_result.scalar_divide_inplace(random_scalars[0]);
     });
 
-    let _ = scalar_divide_packed(
+    scalar_divide_packed_inplace(
       &vec![random_matrix.clone(); random_scalars.len()],
       random_scalars[0],
-      true,
     );
 
     assert!(matrix_are_equal(&random_matrix, &expected_result, 3));
@@ -816,14 +790,14 @@ mod tests {
       .map(|(mat, &scalar)| mat.scalar_add(random_scalars[0]))
       .collect_vec();
 
-    let observed_result = scalar_add_packed(&random_matrices, random_scalars[0], false);
+    let observed_result = scalar_add_packed(&random_matrices, random_scalars[0]);
 
     izip!(observed_result, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
   }
 
   #[test]
-  fn scalar_add_packed_inplace() {
+  fn scalar_add_packed_inplace_test() {
     let random_matrices = (0..10)
       .map(|_| Matrix::new_random(0.0, 10.0, 256, 256))
       .collect_vec();
@@ -834,7 +808,7 @@ mod tests {
       .map(|(mat, &scalar)| mat.scalar_add(random_scalars[0]))
       .collect_vec();
 
-    let _ = scalar_add_packed(&random_matrices, random_scalars[0], true);
+    scalar_add_packed_inplace(&random_matrices, random_scalars[0]);
 
     izip!(random_matrices, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
@@ -852,10 +826,9 @@ mod tests {
       expected_result.scalar_add_inplace(random_scalars[0]);
     });
 
-    let _ = scalar_add_packed(
+    scalar_add_packed_inplace(
       &vec![random_matrix.clone(); random_scalars.len()],
       random_scalars[0],
-      true,
     );
 
     assert!(matrix_are_equal(&random_matrix, &expected_result, 3));
@@ -898,14 +871,14 @@ mod tests {
       .map(|(mat, &scalar)| mat.scalar_subtract(random_scalars[0]))
       .collect_vec();
 
-    let observed_result = scalar_subtract_packed(&random_matrices, random_scalars[0], false);
+    let observed_result = scalar_subtract_packed(&random_matrices, random_scalars[0]);
 
     izip!(observed_result, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
   }
 
   #[test]
-  fn scalar_subtract_packed_inplace() {
+  fn scalar_subtract_packed_inplace_test() {
     let random_matrices = (0..10)
       .map(|_| Matrix::new_random(0.0, 10.0, 256, 256))
       .collect_vec();
@@ -916,7 +889,7 @@ mod tests {
       .map(|(mat, &scalar)| mat.scalar_subtract(random_scalars[0]))
       .collect_vec();
 
-    let _ = scalar_subtract_packed(&random_matrices, random_scalars[0], true);
+    scalar_subtract_packed_inplace(&random_matrices, random_scalars[0]);
 
     izip!(random_matrices, expected_results)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
@@ -933,10 +906,9 @@ mod tests {
       expected_result.scalar_subtract_inplace(random_scalars[0]);
     });
 
-    let _ = scalar_subtract_packed(
+    scalar_subtract_packed_inplace(
       &vec![random_matrix.clone(); random_scalars.len()],
       random_scalars[0],
-      true,
     );
 
     assert!(matrix_are_equal(&random_matrix, &expected_result, 3));
@@ -1077,7 +1049,7 @@ mod tests {
     let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
     let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
 
-    let observed_result = element_sqrt_packed(&test_data_packed, false);
+    let observed_result = element_sqrt_packed(&test_data_packed);
 
     izip!(observed_result, expected_result_matrix)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 6)));
@@ -1096,7 +1068,7 @@ mod tests {
     let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
     let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
 
-    let _ = element_sqrt_packed(&test_data_packed, true);
+    element_sqrt_packed_inplace(&test_data_packed);
 
     izip!(test_data_packed, expected_result_matrix)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 6)));
@@ -1124,6 +1096,48 @@ mod tests {
   }
 
   #[test]
+  fn element_ln() {
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![0.274256, 5.0, 6.0]];
+    let test_data_matrix = Matrix::new_2d(&test_data);
+
+    let expected_result = test_data
+      .iter()
+      .map(|row| row.iter().map(|val| val.ln()).collect_vec())
+      .collect_vec();
+
+    let expected_result_matrix = Matrix::new_2d(&expected_result);
+
+    let observed_result = test_data_matrix.element_ln();
+
+    assert!(matrix_are_equal(
+      &observed_result,
+      &expected_result_matrix,
+      6
+    ));
+  }
+
+  #[test]
+  fn element_ln_inplace() {
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![0.274256, 5.0, 6.0]];
+    let test_data_matrix = Matrix::new_2d(&test_data);
+
+    let expected_result = test_data
+      .iter()
+      .map(|row| row.iter().map(|val| val.ln()).collect_vec())
+      .collect_vec();
+
+    let expected_result_matrix = Matrix::new_2d(&expected_result);
+
+    let _ = test_data_matrix.element_ln_inplace();
+
+    assert!(matrix_are_equal(
+      &test_data_matrix,
+      &expected_result_matrix,
+      6
+    ));
+  }
+
+  #[test]
   fn element_exp_packed_out_of_place() {
     let test_data = vec![vec![1.0, 2.0, 3.0], vec![-4.0, 5.0, 6.0]];
     let test_data_matrix = Matrix::new_2d(&test_data);
@@ -1136,7 +1150,7 @@ mod tests {
     let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
     let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
 
-    let observed_result = element_exp_packed(&test_data_packed, false);
+    let observed_result = element_exp_packed(&test_data_packed);
 
     izip!(observed_result, expected_result_matrix)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 4)));
@@ -1155,7 +1169,7 @@ mod tests {
     let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
     let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
 
-    let _ = element_exp_packed(&test_data_packed, true);
+    element_exp_packed_inplace(&test_data_packed);
 
     izip!(test_data_packed, expected_result_matrix)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 4)));
@@ -1205,7 +1219,7 @@ mod tests {
     let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
     let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
 
-    let observed_result = element_ReLU_packed(&test_data_packed, false);
+    let observed_result = element_ReLU_packed(&test_data_packed);
 
     izip!(observed_result, expected_result_matrix)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 6)));
@@ -1229,7 +1243,7 @@ mod tests {
     let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
     let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
 
-    let _ = element_ReLU_packed(&test_data_packed, true);
+    element_ReLU_packed_inplace(&test_data_packed);
 
     izip!(test_data_packed, expected_result_matrix)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 6)));
@@ -1279,7 +1293,7 @@ mod tests {
     let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
     let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
 
-    let observed_result = element_ReLU_prime_packed(&test_data_packed, false);
+    let observed_result = element_ReLU_prime_packed(&test_data_packed);
 
     izip!(observed_result, expected_result_matrix)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 6)));
@@ -1303,7 +1317,7 @@ mod tests {
     let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
     let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
 
-    let _ = element_ReLU_prime_packed(&test_data_packed, true);
+    element_ReLU_prime_packed_inplace(&test_data_packed);
 
     izip!(test_data_packed, expected_result_matrix)
       .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 6)));
@@ -2605,6 +2619,81 @@ mod tests {
     }
 
     return true;
+  }
+
+  #[test]
+  fn max_by_column() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0, 50.0],
+      vec![6.0, 7.0, 8.0, 9.0, 10.0],
+      vec![11.0, -12.0, 130.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0, 19.0, 20.0],
+      vec![-21.0, 22.0, 23.0, 24.0, 25.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![16.0, 22.0, 130.0, 24.0, 50.0]]);
+
+    let observed_result = test_data.max_by_column();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn max_by_row() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0, 50.0],
+      vec![6.0, 7.0, 8.0, 9.0, 10.0],
+      vec![11.0, -12.0, 130.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0, 19.0, 20.0],
+      vec![-21.0, 22.0, 23.0, 24.0, 25.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![50.0],
+      vec![10.0],
+      vec![130.0],
+      vec![20.0],
+      vec![25.0],
+    ]);
+
+    let observed_result = test_data.max_by_row();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn argmax_by_column() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0, 50.0],
+      vec![6.0, 7.0, 8.0, 9.0, 10.0],
+      vec![11.0, -12.0, 130.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0, 19.0, 20.0],
+      vec![-21.0, 22.0, 23.0, 24.0, 25.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![3.0, 4.0, 2.0, 4.0, 0.0]]);
+
+    let observed_result = test_data.argmax_by_column();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn argmax_by_row() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0, 50.0],
+      vec![6.0, 7.0, 8.0, 9.0, 10.0],
+      vec![11.0, -12.0, 130.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0, 19.0, 20.0],
+      vec![-21.0, 22.0, 23.0, 24.0, 25.0],
+    ]);
+
+    let expected_result =
+      Matrix::new_2d(&vec![vec![4.0], vec![4.0], vec![2.0], vec![4.0], vec![4.0]]);
+
+    let observed_result = test_data.argmax_by_row();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   fn matrix_are_equal_cpu(a: &MatrixCpu, b: &MatrixCpu, precision: usize) -> bool {
