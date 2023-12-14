@@ -62,7 +62,7 @@ __device__ float atomicMultiply(float* address, float val) {
     // We will need to use atomicCAS, since there is not a built in
     float expected_old = *address;
     float actual_old = __int_as_float(atomicCAS((int*)address, __float_as_int(expected_old), __float_as_int(expected_old * val)));
-    while (expected_old != actual_old) {
+    while (expected_old != actual_old && !__isnanf(expected_old)) {
         expected_old = actual_old;
         actual_old = __int_as_float(atomicCAS((int*)address, __float_as_int(expected_old), __float_as_int(expected_old * val)));
     }
@@ -72,7 +72,7 @@ __device__ float atomicDivide(float* address, float val) {
     // We will need to use atomicCAS, since there is not a built in
     float expected_old = *address;
     float actual_old = __int_as_float(atomicCAS((int*)address, __float_as_int(expected_old), __float_as_int(expected_old / val)));
-    while (expected_old != actual_old) {
+    while (expected_old != actual_old && !__isnanf(expected_old)) {
         expected_old = actual_old;
         actual_old = __int_as_float(atomicCAS((int*)address, __float_as_int(expected_old), __float_as_int(expected_old / val)));
     }
