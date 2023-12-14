@@ -5,57 +5,120 @@
 #include <vector>
 using namespace std::chrono;
 
-// Make enum for convolution types
 enum PaddingType {
     VALID,
     SAME,
     FULL
 };
 
-// Make sure bindings are not mangled for rust
+// Used to return tuple with interop to rust
+struct Tuple {
+    size_t a;
+    size_t b;
+};
+
 extern "C" {
+// Memory Manager Functions
+void* get_block_gpu_address(size_t block_id, size_t block_offset);
+size_t memory_manager_device_allocate(size_t size);
+void memory_manager_free(size_t block_id, size_t size);
+void memory_manager_upload_to_allocation(void* address, void* data, size_t size);
+void memory_manager_upload_from_pinned_buffer(void* device_address, void* pinned_data, size_t size);
+void memory_manager_upload_async_from_pinned_buffer(void* device_address, void* pinned_data, size_t size);
+void* memory_manager_get_pinned_allocation(size_t size);
+std::vector<void*> get_device_kernel_args_pointers(size_t num_buffers);
+
+// Matrix Setup API
+float* get_matrix_gpu_address(size_t mat_id);
+size_t register_matrix(size_t rows, size_t cols);
+void register_matrix_group(size_t rows, size_t columns, size_t count, size_t* mat_ids);
+void upload_matrix_data(size_t mat_id, float* data);
+size_t register_matrix_with_data(float* data, size_t rows, size_t cols);
+void unregister_matrix(size_t mat_id);
+void increase_matrix_ref_count(size_t mat_id);
+void decrease_matrix_ref_count(size_t mat_id);
+void get_matrix_data(size_t mat_id, float* data_buffer);
+
+// Matrix info API
+size_t get_matrix_rows(size_t mat_id);
+size_t get_matrix_columns(size_t mat_id);
+size_t get_matrix_length(size_t mat_id);
+void reshape_matrix(size_t mat_id, size_t rows, size_t columns);
+
+// Test Functions
 void test();
 void test_array_fill(float* buffer, size_t length);
 
 // Misc
 void cuda_synchronize();
-struct Tuple {  // Used to return tuple with interop to rust
-    size_t a;
-    size_t b;
-};
 
-// Matrix Setup API (reduces overhead of keeping matrices in ram)
-size_t register_matrix_with_data(float* data, size_t rows, size_t cols);
-void unregister_matrix(size_t mat_id);
-void get_matrix_data(size_t mat_id, int rows, int cols, float* data_buffer);
-
-// Execution Type
-void enable_parallel_stream_execution();
-void disable_parallel_stream_execution();
-
-// Matrix operation API, Returns id of new matrix. Consumer should not release
+// Matrix operation API
 size_t cuda_element_add(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
+void cuda_element_add_packed(size_t* mat1_ids, size_t* mat2_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+void cuda_element_add_packed_inplace(size_t* mat1_ids, size_t* mat2_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
 size_t cuda_element_subtract(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
+void cuda_element_subtract_packed(size_t* mat1_ids, size_t* mat2_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+void cuda_element_subtract_packed_inplace(size_t* mat1_ids, size_t* mat2_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
 size_t cuda_element_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
-size_t cuda_scalar_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, float scalar, bool inplace);
+void cuda_element_multiply_packed(size_t* mat1_ids, size_t* mat2_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+void cuda_element_multiply_packed_inplace(size_t* mat1_ids, size_t* mat2_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+size_t cuda_element_divide(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
+void cuda_element_divide_packed(size_t* mat1_ids, size_t* mat2_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+void cuda_element_divide_packed_inplace(size_t* mat1_ids, size_t* mat2_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+size_t cuda_scalar_multiply(size_t mat_id, size_t mat_rows, size_t mat_cols, float scalar, bool inplace);
+void cuda_scalar_multiply_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float scalar);
+void cuda_scalar_multiply_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float scalar);
+size_t cuda_scalar_divide(size_t mat_id, size_t mat_rows, size_t mat_cols, float scalar, bool inplace);
+void cuda_scalar_divide_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float scalar);
+void cuda_scalar_divide_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float scalar);
+size_t cuda_scalar_add(size_t mat_id, size_t mat_rows, size_t mat_cols, float scalar, bool inplace);
+void cuda_scalar_add_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float scalar);
+void cuda_scalar_add_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float scalar);
+size_t cuda_scalar_subtract(size_t mat_id, size_t mat_rows, size_t mat_cols, float scalar, bool inplace);
+void cuda_scalar_subtract_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float scalar);
+void cuda_scalar_subtract_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, float scalar);
 size_t cuda_matrix_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols);
 size_t cuda_add_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
 size_t cuda_divide_by_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
-size_t cuda_element_exp(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, bool inplace);
-size_t cuda_element_ReLU(size_t mat1_id, size_t mat1_rows, size_t mat1_col, bool inplace);
-size_t cuda_element_ReLU_prime(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, bool inplace);
-size_t cuda_sum_rows(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
-size_t cuda_sum_columns(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
-size_t cuda_transpose(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
-Tuple cuda_max_pool(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
-size_t cuda_nearest_neighbor_2x_upsample(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, bool odd_upsample);
-size_t cuda_rotate_180(size_t mat1_id, size_t mat1_rows, size_t mat1_cols);
-size_t cuda_correlation(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, PaddingType conv_type);
-void cuda_correlation_packed(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_ids, PaddingType conv_type);
-size_t cuda_img2col(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t kernel_rows, size_t kernel_cols, PaddingType conv_type);  // Take an image and convert it to a matrix of columns based on patches (with specified padding) the filter makes of image
-size_t cuda_flatten_array(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);                                                           // Take n same_dimension matrices and flatten them into an array
-void cuda_unflatten_array(size_t array_id, size_t arr_size, size_t mat_rows, size_t mat_cols, size_t* mat_ids);                                              // Take an array and unflatten it into n same_dimension matrices
-void cuda_unflatten_array_strided(size_t array_id, size_t arr_size, size_t mat_rows, size_t mat_cols, size_t* mat_ids);                                      // Take an array and unflatten it into n same_dimension matrices. Each array's first n elements are the first elements in memory. [arr1_elem1, arr2_elem1, arr3_elem1, arr1_elem2, arr2_elem2, arr3_elem2, ...]
+size_t cuda_element_sqrt(size_t mat_id, size_t mat_rows, size_t mat_cols, bool inplace);
+void cuda_element_sqrt_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+void cuda_element_sqrt_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+size_t cuda_element_exp(size_t mat_id, size_t mat_rows, size_t mat_cols, bool inplace);
+void cuda_element_exp_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+void cuda_element_exp_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+size_t cuda_element_ReLU(size_t mat_id, size_t mat_rows, size_t mat_col, bool inplace);
+void cuda_element_ReLU_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+void cuda_element_ReLU_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+size_t cuda_element_ReLU_prime(size_t mat_id, size_t mat_rows, size_t mat_cols, bool inplace);
+void cuda_element_ReLU_prime_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+void cuda_element_ReLU_prime_packed_inplace(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+size_t cuda_sum_rows(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_sum_columns(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_transpose(size_t mat_id, size_t mat_rows, size_t mat_cols);
+Tuple cuda_max_pool(size_t mat_id, size_t mat_rows, size_t mat_cols);
+void cuda_max_pool_packed(size_t* mat_ids, Tuple* out_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+size_t cuda_nearest_neighbor_2x_upsample(size_t mat_id, size_t mat_rows, size_t mat_cols, bool odd_upsample);
+void cuda_nearest_neighbor_2x_upsample_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, bool odd_upsample);
+size_t cuda_rotate_180(size_t mat_id, size_t mat_rows, size_t mat_cols);
+void cuda_rotate_180_packed(size_t* mat_ids, size_t* out_mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);
+size_t cuda_correlate(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, PaddingType padding_type);
+void cuda_correlate_packed(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_ids, PaddingType padding_type);
+size_t cuda_convolve(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, PaddingType padding_type);
+void cuda_convolve_packed(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_ids, PaddingType padding_type);
+size_t cuda_img2col(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t kernel_rows, size_t kernel_cols, PaddingType padding_type);  // Take an image and convert it to a matrix of columns based on patches (with specified padding) the filter makes of image
+size_t cuda_flatten_array(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);                                                              // Take n same_dimension matrices and flatten them into an array
+void cuda_unflatten_array(size_t array_id, size_t arr_size, size_t mat_rows, size_t mat_cols, size_t* mat_ids);                                                 // Take an array and unflatten it into n same_dimension matrices
+void cuda_unflatten_array_strided(size_t array_id, size_t arr_size, size_t mat_rows, size_t mat_cols, size_t* mat_ids);                                         // Take an array and unflatten it into n same_dimension matrices. Each array's first n elements are the first elements in memory. [arr1_elem1, arr2_elem1, arr3_elem1, arr1_elem2, arr2_elem2, arr3_elem2, ...]
+size_t cuda_center_pad(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t pad_rows, size_t pad_cols);
+size_t cuda_softmax(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_crop(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t crop_offset_rows, size_t crop_offset_cols, size_t crop_rows, size_t crop_cols);
+size_t cuda_copy(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_sum_all_matrix_elements(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_max_by_column(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_max_by_row(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_argmax_by_column(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_argmax_by_row(size_t mat_id, size_t mat_rows, size_t mat_cols);
+size_t cuda_one_hot_encode(float* data, size_t data_size, size_t num_classes);
 }
 
 void warmup() {
@@ -75,7 +138,7 @@ void warmup() {
     for (int i = 0; i < 50; i++) {
         // Perform multiplication
         int result_id = cuda_matrix_multiply(mat1, mat_dim, mat_dim, mat2, mat_dim, mat_dim);
-        unregister_matrix(result_id);
+        decrease_matrix_ref_count(result_id);
     }
     cuda_synchronize();
 
@@ -100,7 +163,7 @@ void bench_matrix_transpose(int mat_dim, int num_iter) {
         // Perform multiplication
         int result_id = cuda_transpose(mat1, mat_dim, mat_dim);
         cuda_synchronize();
-        unregister_matrix(result_id);
+        decrease_matrix_ref_count(result_id);
     }
 
     float gpu_time = 0;
@@ -128,8 +191,8 @@ void bench_max_pool(int mat_dim, int num_iter) {
     for (int i = 0; i < num_iter; i++) {
         // Perform multiplication
         Tuple result = cuda_max_pool(mat1, mat_dim, mat_dim);
-        unregister_matrix(result.a);
-        unregister_matrix(result.b);
+        decrease_matrix_ref_count(result.a);
+        decrease_matrix_ref_count(result.b);
     }
     cuda_synchronize();
 
@@ -158,7 +221,7 @@ void bench_rotate_180(int mat_dim, int num_iter) {
     for (int i = 0; i < num_iter; i++) {
         // Perform multiplication
         int result_id = cuda_rotate_180(mat1, mat_dim, mat_dim);
-        unregister_matrix(result_id);
+        decrease_matrix_ref_count(result_id);
     }
     cuda_synchronize();
 
@@ -190,8 +253,8 @@ void bench_convolution(int mat_dim, int num_iter, int kernel_size) {
     auto start_host = high_resolution_clock::now();
 
     for (int i = 0; i < num_iter; i++) {
-        int result_id = cuda_correlation(mat1, mat_dim, mat_dim, kernel, kernel_size, kernel_size, VALID);
-        unregister_matrix(result_id);
+        int result_id = cuda_correlate(mat1, mat_dim, mat_dim, kernel, kernel_size, kernel_size, VALID);
+        decrease_matrix_ref_count(result_id);
     }
     cuda_synchronize();
 
@@ -203,7 +266,7 @@ void bench_convolution(int mat_dim, int num_iter, int kernel_size) {
     std::cout << "Including overhead bench_convolution was: " << (float)cpu_time.count() / num_iter << " ms" << std::endl;
 }
 
-void bench_multiple_convolutions(int mat_dim, int num_iter, int num_matrices, int kernel_size) {
+void bench_multiple_correlations(int mat_dim, int num_iter, int num_matrices, int kernel_size) {
     // This is just for timing, assumes everything is correct.
     // The tests already cover correctness.
     std::vector<float> data;
@@ -224,8 +287,8 @@ void bench_multiple_convolutions(int mat_dim, int num_iter, int num_matrices, in
 
     for (int i = 0; i < num_iter; i++) {
         for (int i = 0; i < num_matrices; i++) {
-            int result_id = cuda_correlation(mat1, mat_dim, mat_dim, kernel, kernel_size, kernel_size, VALID);
-            unregister_matrix(result_id);
+            int result_id = cuda_correlate(mat1, mat_dim, mat_dim, kernel, kernel_size, kernel_size, VALID);
+            decrease_matrix_ref_count(result_id);
         }
     }
     cuda_synchronize();
@@ -236,7 +299,7 @@ void bench_multiple_convolutions(int mat_dim, int num_iter, int num_matrices, in
     std::cout << "Including overhead bench_multiple_convolutions was: " << (float)cpu_time.count() / num_iter << " us" << std::endl;
 }
 
-void bench_packed_convolution(int mat_dim, int num_iter, int num_matrices, int kernel_size) {
+void bench_packed_correlation(int mat_dim, int num_iter, int num_matrices, int kernel_size) {
     // This is just for timing, assumes everything is correct.
     // The tests already cover correctness.
     std::vector<float> data;
@@ -268,11 +331,11 @@ void bench_packed_convolution(int mat_dim, int num_iter, int num_matrices, int k
     auto start_host = high_resolution_clock::now();
 
     for (int i = 0; i < num_iter; i++) {
-        cuda_correlation_packed(&mat_ids[0], num_matrices, mat_dim, mat_dim, &kernel_ids[0], kernel_size, kernel_size, &result_ids[0], VALID);
+        cuda_correlate_packed(&mat_ids[0], num_matrices, mat_dim, mat_dim, &kernel_ids[0], kernel_size, kernel_size, &result_ids[0], VALID);
 
         // Unregister matrices
         for (auto id : result_ids) {
-            unregister_matrix(id);
+            decrease_matrix_ref_count(id);
         }
     }
 
@@ -303,7 +366,7 @@ void bench_img2col(int mat_dim, int num_iter, int kernel_size) {
         // img2col of input
         int mat1_img2col = cuda_img2col(&matrices[0], 1, mat_dim, mat_dim, kernel_size, kernel_size, VALID);
 
-        unregister_matrix(mat1_img2col);
+        decrease_matrix_ref_count(mat1_img2col);
     }
     cuda_synchronize();
 
@@ -349,9 +412,9 @@ void bench_convolution_2(int mat_dim, int num_iter, int kernel_size) {
 
         // Perform matrix multiplication
         int result_id = cuda_matrix_multiply(kernel_flat, 1, kernel_size * kernel_size, mat1_img2col, img2col_rows, img2col_cols);
-        unregister_matrix(kernel_flat);
-        unregister_matrix(mat1_img2col);
-        unregister_matrix(result_id);
+        decrease_matrix_ref_count(kernel_flat);
+        decrease_matrix_ref_count(mat1_img2col);
+        decrease_matrix_ref_count(result_id);
     }
     cuda_synchronize();
 
@@ -380,7 +443,7 @@ void bench_matrix_multiply(int mat_dim, int num_iter) {
     for (int i = 0; i < num_iter; i++) {
         // Perform multiplication
         int result_id = cuda_matrix_multiply(mat1, mat_dim, mat_dim, mat2, mat_dim, mat_dim);
-        unregister_matrix(result_id);
+        decrease_matrix_ref_count(result_id);
     }
     cuda_synchronize();
 
@@ -411,7 +474,7 @@ void bench_flatten_array(int mat_dim, int mat_count, int num_iter) {
     for (int i = 0; i < num_iter; i++) {
         // Perform multiplication
         int result_id = cuda_flatten_array(&mat_ids[0], mat_ids.size(), mat_dim, mat_dim);
-        unregister_matrix(result_id);
+        decrease_matrix_ref_count(result_id);
     }
     cuda_synchronize();
 
@@ -441,10 +504,9 @@ void bench_unflatten_array(int mat_dim, int mat_count, int num_iter) {
     auto start_host = high_resolution_clock::now();
 
     for (int i = 0; i < num_iter; i++) {
-        // Perform multiplication
         cuda_unflatten_array(mat, mat_count * mat_dim * mat_dim, mat_dim, mat_dim, &unflattened[0]);
         for (auto id : unflattened) {
-            unregister_matrix(id);
+            decrease_matrix_ref_count(id);
         }
     }
     cuda_synchronize();
@@ -455,6 +517,29 @@ void bench_unflatten_array(int mat_dim, int mat_count, int num_iter) {
     auto cpu_time = duration_cast<milliseconds>(end_host - start_host);
 
     std::cout << "Including overhead bench_unflatten_array was: " << (float)cpu_time.count() / num_iter << " ms" << std::endl;
+}
+
+void bench_one_hot_encode(int num_labels, int num_iter) {
+    // This is just for timing, assumes everything is correct.
+    // The tests already cover correctness.
+    std::vector<float> data(num_labels);
+    for (int i = 0; i < num_labels; i++) {
+        data[i] = i;
+    }
+
+    // Register
+    auto start_host = high_resolution_clock::now();
+
+    for (int i = 0; i < num_iter; i++) {
+        size_t result = cuda_one_hot_encode(&data[0], num_labels, num_labels);
+        decrease_matrix_ref_count(result);
+    }
+    cuda_synchronize();
+
+    auto end_host = high_resolution_clock::now();
+    auto cpu_time = duration_cast<microseconds>(end_host - start_host);
+
+    std::cout << "Including overhead bench_one_hot_encode was: " << (float)cpu_time.count() / num_iter << " us" << std::endl;
 }
 
 void stress_test_mix_short_lived_long_lived_blocks() {
@@ -470,36 +555,40 @@ void stress_test_mix_short_lived_long_lived_blocks() {
 
         // Perform multiplication
         int result_id = cuda_sum_rows(mat1, 2, 3);
-        unregister_matrix(mat1);
+        decrease_matrix_ref_count(mat1);
     }
 
     for (auto id : results) {
-        unregister_matrix(id);
+        decrease_matrix_ref_count(id);
     }
+}
+
+void simulate_cnn_steps() {
+    // Feed forward
 }
 
 int main() {
     // Get the temps and frequencies up
-    // warmup();
+    warmup();
 
     // Used with ncu to profile kernels. Will expand to have all kernels, but for now just has the most time consuming ones
 
     const int mat_dim = 1024;
-    const int kernel_dim = 3;
-    const int num_iter = 1000;
+    const int kernel_dim = 30;
+    const int num_iter = 1024;
     // bench_flatten_array(mat_dim, 256, num_iter);
     // bench_unflatten_array(mat_dim, 256, num_iter);
     // bench_img2col(mat_dim, num_iter, kernel_dim);
     // bench_convolution(mat_dim, num_iter, kernel_dim);
-    bench_multiple_convolutions(32, num_iter, 1024, kernel_dim);
-    bench_packed_convolution(32, num_iter, 1024, kernel_dim);  // Seems to be faster with matrices smaller than or eqal to 32x32, scaling at about 2x to 3x. Shows overhead of launches.
+    // bench_multiple_correlations(32, num_iter, 1024, kernel_dim);
+    bench_packed_correlation(32, num_iter, 65536, kernel_dim);  // Seems to be faster with matrices smaller than or eqal to 32x32, scaling at about 2x to 3x. Shows overhead of launches.
     // bench_convolution_2(mat_dim, num_iter, kernel_dim);
     // bench_rotate_180(mat_dim, num_iter);
     // bench_max_pool(mat_dim, num_iter);
     // bench_matrix_transpose(mat_dim, num_iter);
     // bench_matrix_multiply(mat_dim, num_iter);
+    // bench_one_hot_encode(8, num_iter);
 
     // Stress tests
-    // TODO: Fix adjacent short and long lived blocks.
     // stress_test_mix_short_lived_long_lived_blocks();
 }

@@ -1,5 +1,9 @@
 use rust_machine_learning::{
-  convolutional_neural_network::ConvolutionalNeuralNetworkRust, image_util::ImageBatchLoaderRust,
+  convolutional_neural_network::ConvolutionalNeuralNetworkRust,
+  image_util::ImageBatchLoaderRust,
+  packed_optimizers::{
+    PackedMomentumOptimizer, PackedRMSPropOptimizer, PackedStochasticGradientDescentOptimizer,
+  },
 };
 
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -9,7 +13,13 @@ use tensor_lib::cuda_bindings::cuda_synchronize;
 pub fn cnn_benchmark(criterion: &mut Criterion) {
   // Setup the CNN
   let mut cnn = ConvolutionalNeuralNetworkRust::new(10, 32, 32, 3);
+
+  cnn.set_optimizer(Box::new(PackedStochasticGradientDescentOptimizer::new(
+    1e-3,
+  )));
+
   cnn.add_convolutional_layer(3, 3, 32);
+  cnn.add_convolutional_layer(3, 3, 64);
   cnn.add_max_pool_layer();
   cnn.add_fully_connected_layer();
 
@@ -21,9 +31,9 @@ pub fn cnn_benchmark(criterion: &mut Criterion) {
   let batch_loader = ImageBatchLoaderRust::new(parent_folder, 32, 32);
 
   //   Now train the network
-  for _ in 0..100 {
-    let (observations, labels) = batch_loader.batch_sample(32);
-    cnn.train(&observations, &labels);
+  for _ in 0..500 {
+    let (observations, labels) = batch_loader.batch_sample_as_matrix(32);
+    cnn.train(observations, labels);
   }
 
   criterion.bench_function("cnn_bench", |bench| {
