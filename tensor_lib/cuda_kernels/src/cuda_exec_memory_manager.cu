@@ -28,6 +28,7 @@ const size_t pinned_buffer_size = 1024 * 1024 * 512;  // 512 MB
 size_t pinned_buffer_offset = 0;
 size_t pinned_buffer_free_space = pinned_buffer_size;
 std::queue<std::pair<cudaEvent_t, size_t>> pinned_buffer_events;
+std::vector<cudaEvent_t> free_pinned_buffer_events;
 
 cublasHandle_t handle;
 
@@ -105,23 +106,34 @@ void memory_manager_free(size_t block_id, size_t size) {
         memory_manager_delete(block_id);
     }
 }
+cudaEvent_t get_event() {
+    if (free_pinned_buffer_events.size() > 0) {
+        cudaEvent_t event = free_pinned_buffer_events.back();
+        free_pinned_buffer_events.pop_back();
+        return event;
+    }
+
+    cudaEvent_t event;
+    cudaEventCreate(&event, cudaEventDisableTiming);
+    return event;
+}
 void memory_manager_upload_from_pinned_buffer(void* device_address, void* pinned_data, size_t size) {
     gpuErrchk(cudaMemcpyAsync(device_address, pinned_data, size, cudaMemcpyHostToDevice, main_exec_stream));
 
-    cudaEvent_t event;
-    cudaEventCreate(&event);
+    cudaEvent_t event = get_event();
     cudaEventRecord(event, main_exec_stream);
 
     // Store the event and pinned buffer address
     pinned_buffer_events.emplace(event, size);
 }
 void memory_manager_upload_async_from_pinned_buffer(void* device_address, void* pinned_data, size_t size) {
-    gpuErrchk(cudaMemcpyAsync(device_address, pinned_data, size, cudaMemcpyHostToDevice, main_exec_stream));  // TODO: USE IO STREAM
+    return memory_manager_upload_from_pinned_buffer(device_address, pinned_data, size);
 
-    cudaEvent_t event;
-    cudaEventCreate(&event);
-    cudaEventRecord(event, io_to_device_stream);
-    cudaStreamWaitEvent(main_exec_stream, event, 0);
+    gpuErrchk(cudaMemcpyAsync(device_address, pinned_data, size, cudaMemcpyHostToDevice, io_to_device_stream));  // TODO: USE IO STREAM
+
+    cudaEvent_t event = get_event();
+    cudaEventRecord(event, main_exec_stream);
+    cudaStreamWaitEvent(io_to_device_stream, event, 0);
 
     // Store the event and pinned buffer address
     pinned_buffer_events.emplace(event, size);
@@ -130,6 +142,9 @@ void memory_manager_upload_to_allocation(void* address, void* data, size_t size)
     gpuErrchk(cudaMemcpy(address, data, size, cudaMemcpyHostToDevice));
 }
 void* memory_manager_get_pinned_allocation(size_t size) {
+    // Align allocation to 256 bytes
+    size_t aligned_size = ((size + 255) / 256) * 256;
+
     if (pinned_buffer_offset + size > pinned_buffer_size) {
         // Adjust size to wait for space on wrap around
         size += pinned_buffer_size - pinned_buffer_offset;
@@ -140,9 +155,11 @@ void* memory_manager_get_pinned_allocation(size_t size) {
 
     while (pinned_buffer_free_space < size) {
         // Wait for space to be available
+        printf("Waiting for pinned buffer space\n");
         std::pair<cudaEvent_t, size_t> event = pinned_buffer_events.front();
         cudaEventSynchronize(event.first);
         pinned_buffer_free_space += event.second;
+        free_pinned_buffer_events.emplace_back(event.first);
         pinned_buffer_events.pop();
     }
 
@@ -255,9 +272,8 @@ size_t register_matrix(size_t rows, size_t columns) {
 void register_matrix_group(size_t rows, size_t columns, size_t count, size_t* mat_ids) {
     size_t requested_size = sizeof(float) * rows * columns;
 
-    // Ensure alignment of matrices to 256 bytes
-    size_t alignment = 16;
-    size_t aligned_requested_size = requested_size + (alignment - (requested_size % alignment));
+    size_t alignment = 256;
+    size_t aligned_requested_size = ((requested_size + alignment - 1) / alignment) * alignment;
     size_t real_block_size = aligned_requested_size * count;
 
     // Allocate the memory

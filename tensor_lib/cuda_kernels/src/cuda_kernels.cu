@@ -2959,7 +2959,7 @@ void cuda_correlate_valid_packed(size_t* matrices_ids, size_t num_matrices, size
     memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
+    const int THREADS_PER_BLOCK = 8;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
     dim3 grid_dim(num_matrices, 1, 1);
 
@@ -3043,7 +3043,7 @@ void cuda_correlate_same_packed(size_t* matrices_ids, size_t num_matrices, size_
     memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
+    const int THREADS_PER_BLOCK = 8;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
     dim3 grid_dim(num_matrices, 1, 1);
 
@@ -3129,7 +3129,7 @@ void cuda_correlate_full_packed(size_t* matrices_ids, size_t num_matrices, size_
     memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
+    const int THREADS_PER_BLOCK = 8;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
     dim3 grid_dim(num_matrices, 1, 1);
 
@@ -3404,7 +3404,7 @@ void cuda_convolve_valid_packed(size_t* matrices_ids, size_t num_matrices, size_
     memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
+    const int THREADS_PER_BLOCK = 8;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
     dim3 grid_dim(num_matrices, 1, 1);
 
@@ -3490,7 +3490,7 @@ void cuda_convolve_same_packed(size_t* matrices_ids, size_t num_matrices, size_t
     memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
+    const int THREADS_PER_BLOCK = 8;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
     dim3 grid_dim(num_matrices, 1, 1);
 
@@ -3577,7 +3577,7 @@ void cuda_convolve_full_packed(size_t* matrices_ids, size_t num_matrices, size_t
     memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, sizeof(float*) * num_matrices);
 
     // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
+    const int THREADS_PER_BLOCK = 8;
     dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
     dim3 grid_dim(num_matrices, 1, 1);
 
@@ -4163,7 +4163,7 @@ size_t cuda_one_hot_encode(float* data, size_t data_size, size_t num_classes) {
     float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Set the output buffer to 0
-    cudaMemset(gpu_out_buffer, 0, sizeof(float) * data_size * num_classes);
+    cudaMemsetAsync(gpu_out_buffer, 0, sizeof(float) * data_size * num_classes, get_stream());
 
     // Kernel launch parameters, each thread handles one column
     const int THREADS_PER_BLOCK = 256;
@@ -4185,7 +4185,7 @@ size_t cuda_one_hot_encode_vector(size_t mat_id, size_t mat_len, size_t num_clas
     float* gpu_out_buffer = get_matrix_gpu_address(out_mat_id);
 
     // Set the output buffer to 0
-    cudaMemset(gpu_out_buffer, 0, sizeof(float) * mat_len * num_classes);
+    cudaMemsetAsync(gpu_out_buffer, 0, sizeof(float) * mat_len * num_classes, get_stream());
 
     // Kernel launch parameters, each thread handles one column
     const int THREADS_PER_BLOCK = 256;
