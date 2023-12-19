@@ -3,18 +3,11 @@
 
 #include "./cuda_exec_memory_manager.cuh"
 
-struct MatrixBlock {
-    size_t block_id;
-    void* device_address;
-    size_t block_size_requested;
-    size_t ref_count;
-    size_t rows;
-    size_t columns;
-};
-
 struct MemBlock {
     char* address;
-    size_t requested_size_used;
+    size_t mat_count;
+    size_t mat_rows;
+    size_t mat_columns;
 };
 
 bool library_init = false;
@@ -32,12 +25,6 @@ std::vector<cudaEvent_t> free_pinned_buffer_events;
 
 cublasHandle_t handle;
 
-// Idea, use a hashmap of <device_pointer -> MatrixBlock>
-// ID would be the device pointer instead of storing separately
-// Then matrix api can direct memcpy input ids to device pointer
-size_t matrices_generated_count(0);
-std::vector<MatrixBlock> matrix_blocks;
-std::vector<size_t> free_mat_ids;
 size_t blocks_generated_count(0);
 std::vector<MemBlock> mem_blocks;
 std::vector<size_t> free_block_ids;
@@ -89,20 +76,20 @@ cudaStream_t get_stream() {
 /////////////////////
 /// Memory Allocation
 /////////////////////
-void* get_block_gpu_address(size_t block_id, size_t block_offset) {
+void* get_block_gpu_address(size_t block_id) {
     MemBlock* block = &mem_blocks[block_id];
-    return block->address + block_offset;
+    return block->address;
 }
 void memory_manager_delete(size_t block_id) {
     MemBlock* block = &mem_blocks[block_id];
     gpuErrchk(cudaFreeAsync(block->address, main_exec_stream));
     free_block_ids.emplace_back(block_id);
 }
-void memory_manager_free(size_t block_id, size_t size) {
+void memory_manager_free(size_t block_id) {
     MemBlock* block = &mem_blocks[block_id];
-    block->requested_size_used -= size;
+    block->mat_count--;
 
-    if (block->requested_size_used == 0) {
+    if (block->mat_count == 0) {
         memory_manager_delete(block_id);
     }
 }
@@ -194,7 +181,9 @@ size_t memory_manager_device_allocate(size_t size) {
 
     MemBlock block;
     block.address = address;
-    block.requested_size_used = size;
+    block.mat_rows = 1;
+    block.mat_columns = size / sizeof(float);
+    block.mat_count = 1;
 
     // Store the block
     size_t block_id = free_block_ids.size() > 0 ? free_block_ids.back() : blocks_generated_count++;
@@ -211,65 +200,55 @@ size_t memory_manager_device_allocate(size_t size) {
 //////////////////////
 /// Matrix Information
 //////////////////////
-size_t get_matrix_rows(size_t mat_id) {
-    MatrixBlock* mat = &matrix_blocks[mat_id];
-    return mat->rows;
+size_t get_matrix_rows(size_t block_id) {
+    MemBlock* block = &mem_blocks[block_id];
+    return block->mat_rows;
 }
-size_t get_matrix_columns(size_t mat_id) {
-    MatrixBlock* mat = &matrix_blocks[mat_id];
-    return mat->columns;
+size_t get_matrix_columns(size_t block_id) {
+    MemBlock* block = &mem_blocks[block_id];
+    return block->mat_columns;
 }
-size_t get_matrix_length(size_t mat_id) {
-    MatrixBlock* mat = &matrix_blocks[mat_id];
-    return mat->rows * mat->columns;
+size_t get_matrix_length(size_t block_id) {
+    MemBlock* block = &mem_blocks[block_id];
+    return block->mat_rows * block->mat_columns;
 }
-void reshape_matrix(size_t mat_id, size_t rows, size_t columns) {
-    MatrixBlock* mat = &matrix_blocks[mat_id];
+void reshape_matrix(size_t block_id, size_t rows, size_t columns) {
+    MemBlock* block = &mem_blocks[block_id];
 
-    if (get_matrix_length(mat_id) != rows * columns) {
+    if (block->mat_count > 1) {
+        printf("Warning, reshape will affect all matrices in this mem group.\n If you do not want this, consider deep cloning to its own mem block.");
+        abort();
+    }
+
+    if (get_matrix_length(block_id) != rows * columns) {
         printf("Reshape error: new shape must have same number of elements\n");
         abort();
     }
 
-    mat->rows = rows;
-    mat->columns = columns;
+    block->mat_rows = rows;
+    block->mat_columns = columns;
 }
 
 /////////////////////
 /// Matrix Allocation
 /////////////////////
-float* get_matrix_gpu_address(size_t mat_id) {
-    MatrixBlock* mat = &matrix_blocks[mat_id];
-    return (float*)mat->device_address;
-}
-size_t register_matrix_block(MatrixBlock& mat) {
-    if (free_mat_ids.size() > 0) {
-        size_t mat_id = free_mat_ids.back();
-        matrix_blocks[mat_id] = mat;
-        free_mat_ids.pop_back();
-        return mat_id;
-    }
-
-    matrix_blocks.emplace_back(mat);
-    return matrices_generated_count++;
-}
-size_t register_matrix(size_t rows, size_t columns) {
+Matrix register_matrix(size_t rows, size_t columns) {
     // Allocate the memory
     size_t block_size = sizeof(float) * rows * columns;
     size_t block_id = memory_manager_device_allocate(block_size);
 
-    // Create the matrix block
-    MatrixBlock mat;
-    mat.block_id = block_id;
-    mat.device_address = get_block_gpu_address(block_id, 0);
-    mat.block_size_requested = block_size;
-    mat.ref_count = 1;
-    mat.rows = rows;
-    mat.columns = columns;
+    // Modify the block to include matrix information
+    MemBlock* block = &mem_blocks[block_id];
+    block->mat_rows = rows;
+    block->mat_columns = columns;
 
-    return register_matrix_block(mat);
+    // Cast the address to a size_t
+    return Matrix{
+        .address = reinterpret_cast<size_t>(block->address),
+        .block_id = block_id,
+    };
 }
-void register_matrix_group(size_t rows, size_t columns, size_t count, size_t* mat_ids) {
+void register_matrix_group(size_t rows, size_t columns, size_t count, Matrix* matrices) {
     size_t requested_size = sizeof(float) * rows * columns;
 
     size_t alignment = 256;
@@ -279,68 +258,56 @@ void register_matrix_group(size_t rows, size_t columns, size_t count, size_t* ma
     // Allocate the memory
     size_t block_id = memory_manager_device_allocate(real_block_size);
 
+    // Modify the block to include matrix information
+    MemBlock* block = &mem_blocks[block_id];
+    block->mat_rows = rows;
+    block->mat_columns = columns;
+    block->mat_count = count;
+
     for (size_t i = 0; i < count; i++) {
         const size_t block_offset = i * aligned_requested_size;
 
-        // Create the matrix block
-        MatrixBlock mat;
-        mat.block_id = block_id;
-        mat.device_address = get_block_gpu_address(block_id, block_offset);
-        mat.block_size_requested = aligned_requested_size;
-        mat.ref_count = 1;
-        mat.rows = rows;
-        mat.columns = columns;
-
-        mat_ids[i] = register_matrix_block(mat);
+        matrices[i] = Matrix{
+            .address = reinterpret_cast<size_t>(block->address + block_offset),
+            .block_id = block_id,
+        };
     }
 }
-void upload_matrix_data(size_t mat_id, float* data) {
-    // Block information
-    MatrixBlock* mat = &matrix_blocks[mat_id];
-    void* device_address = mat->device_address;
-    size_t data_size = get_matrix_length(mat_id) * sizeof(float);
+void upload_matrix_data(Matrix* matrix, float* data) {
+    void* device_address = reinterpret_cast<void*>(matrix->address);
+    size_t data_size = get_matrix_length(matrix->block_id) * sizeof(float);
 
     // Upload the data
     memory_manager_upload_to_allocation(device_address, data, data_size);
 }
-void upload_matrix_data_async(size_t mat_id, float* data) {
-    // Block information
-    MatrixBlock* mat = &matrix_blocks[mat_id];
-    void* device_address = mat->device_address;
-    size_t data_size = get_matrix_length(mat_id) * sizeof(float);
+void upload_matrix_data_async(Matrix* matrix, float* data) {
+    void* device_address = reinterpret_cast<void*>(matrix->address);
+    size_t data_size = get_matrix_length(matrix->block_id) * sizeof(float);
 
     // Upload the data
     memory_manager_upload_async_from_pinned_buffer(device_address, data, data_size);
 }
-size_t register_matrix_with_data(float* data, size_t rows, size_t columns) {
+Matrix register_matrix_with_data(float* data, size_t rows, size_t columns) {
     // Create the matrix block
-    size_t matrix_id = register_matrix(rows, columns);
+    Matrix matrix = register_matrix(rows, columns);
 
     // Upload the data
-    upload_matrix_data(matrix_id, data);
-    return matrix_id;
+    upload_matrix_data(&matrix, data);
+    return matrix;
 }
-void unregister_matrix(size_t mat_id) {
-    MatrixBlock* mat = &matrix_blocks[mat_id];
-
-    size_t block_id = mat->block_id;
-    size_t matrix_size = mat->block_size_requested;
-    memory_manager_free(block_id, matrix_size);
-    free_mat_ids.emplace_back(mat_id);
+void unregister_matrix(Matrix* matrix) {
+    memory_manager_free(matrix->block_id);
 }
-void increase_matrix_ref_count(size_t mat_id) {
-    MatrixBlock* mat = &matrix_blocks[mat_id];
-    mat->ref_count++;
+void increase_matrix_ref_count(Matrix* matrix) {
+    MemBlock* block = &mem_blocks[matrix->block_id];
+    block->mat_count++;
 }
-void decrease_matrix_ref_count(size_t mat_id) {
-    MatrixBlock* mat = &matrix_blocks[mat_id];
-    mat->ref_count--;
-    if (mat->ref_count == 0) {
-        unregister_matrix(mat_id);
-    }
+void decrease_matrix_ref_count(Matrix* matrix) {
+    // Attempting to free is okay, because this matrix will only be freed if whole block is freed
+    memory_manager_free(matrix->block_id);
 }
-void get_matrix_data(size_t mat_id, float* data_buffer) {
-    float* gpu_address = get_matrix_gpu_address(mat_id);
-    size_t data_size = get_matrix_length(mat_id) * sizeof(float);
+void get_matrix_data(Matrix* matrix, float* data_buffer) {
+    void* gpu_address = reinterpret_cast<void*>(matrix->address);
+    size_t data_size = get_matrix_length(matrix->block_id) * sizeof(float);
     gpuErrchk(cudaMemcpy(data_buffer, gpu_address, data_size, cudaMemcpyDeviceToHost));
 }
