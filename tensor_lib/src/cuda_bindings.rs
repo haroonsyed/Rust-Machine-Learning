@@ -29,11 +29,8 @@ extern "C" {
   pub fn get_matrix_data(matrix: *const Matrix, data_buffer: *mut c_float);
   pub fn reshape_matrix(matrix: *const Matrix, rows: usize, columns: usize);
 
-  pub fn cuda_element_add(
-    matrix_1: *const Matrix,
-    matrix_2: *const Matrix,
-    inplace: bool,
-  ) -> Matrix;
+  pub fn cuda_element_add(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
+  pub fn cuda_element_add_inplace(matrix_1: *const Matrix, matrix_2: *const Matrix);
   pub fn cuda_element_add_packed(
     mat1_addresses: *const *const c_ulonglong,
     mat2_addresses: *const *const c_ulonglong,
@@ -49,11 +46,8 @@ extern "C" {
     mat_rows: usize,
     mat_cols: usize,
   );
-  pub fn cuda_element_subtract(
-    matrix_1: *const Matrix,
-    matrix_2: *const Matrix,
-    inplace: bool,
-  ) -> Matrix;
+  pub fn cuda_element_subtract(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
+  pub fn cuda_element_subtract_inplace(matrix_1: *const Matrix, matrix_2: *const Matrix);
   pub fn cuda_element_subtract_packed(
     mat1_addresses: *const *const c_ulonglong,
     mat2_addresses: *const *const c_ulonglong,
@@ -69,11 +63,8 @@ extern "C" {
     mat_rows: usize,
     mat_cols: usize,
   );
-  pub fn cuda_element_multiply(
-    matrix_1: *const Matrix,
-    matrix_2: *const Matrix,
-    inplace: bool,
-  ) -> Matrix;
+  pub fn cuda_element_multiply(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
+  pub fn cuda_element_multiply_inplace(matrix_1: *const Matrix, matrix_2: *const Matrix);
   pub fn cuda_element_multiply_packed(
     mat1_addresses: *const *const c_ulonglong,
     mat2_addresses: *const *const c_ulonglong,
@@ -89,11 +80,8 @@ extern "C" {
     mat_rows: usize,
     mat_cols: usize,
   );
-  pub fn cuda_element_divide(
-    matrix_1: *const Matrix,
-    matrix_2: *const Matrix,
-    inplace: bool,
-  ) -> Matrix;
+  pub fn cuda_element_divide(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
+  pub fn cuda_element_divide_inplace(matrix_1: *const Matrix, matrix_2: *const Matrix);
   pub fn cuda_element_divide_packed(
     mat1_addresses: *const *const c_ulonglong,
     mat2_addresses: *const *const c_ulonglong,
@@ -109,7 +97,8 @@ extern "C" {
     mat_rows: usize,
     mat_cols: usize,
   );
-  pub fn cuda_scalar_multiply(matrix: *const Matrix, scalar: c_float, inplace: bool) -> Matrix;
+  pub fn cuda_scalar_multiply(matrix: *const Matrix, scalar: c_float) -> Matrix;
+  pub fn cuda_scalar_multiply_inplace(matrix: *const Matrix, scalar: c_float);
   pub fn cuda_scalar_multiply_packed(
     matrix_addresses: *const *const c_ulonglong,
     out_matrices: *mut Matrix,
@@ -125,7 +114,8 @@ extern "C" {
     mat_cols: usize,
     scalar: f32,
   );
-  pub fn cuda_scalar_divide(matrix: *const Matrix, scalar: c_float, inplace: bool) -> Matrix;
+  pub fn cuda_scalar_divide(matrix: *const Matrix, scalar: c_float) -> Matrix;
+  pub fn cuda_scalar_divide_inplace(matrix: *const Matrix, scalar: c_float);
   pub fn cuda_scalar_divide_packed(
     matrix_addresses: *const *const c_ulonglong,
     out_matrices: *mut Matrix,
@@ -141,7 +131,8 @@ extern "C" {
     mat_cols: usize,
     scalar: f32,
   );
-  pub fn cuda_scalar_add(matrix: *const Matrix, scalar: c_float, inplace: bool) -> Matrix;
+  pub fn cuda_scalar_add(matrix: *const Matrix, scalar: c_float) -> Matrix;
+  pub fn cuda_scalar_add_inplace(matrix: *const Matrix, scalar: c_float);
   pub fn cuda_scalar_add_packed(
     matrix_addresses: *const *const c_ulonglong,
     out_matrices: *mut Matrix,
@@ -157,7 +148,8 @@ extern "C" {
     mat_cols: usize,
     scalar: f32,
   );
-  pub fn cuda_scalar_subtract(matrix: *const Matrix, scalar: c_float, inplace: bool) -> Matrix;
+  pub fn cuda_scalar_subtract(matrix: *const Matrix, scalar: c_float) -> Matrix;
+  pub fn cuda_scalar_subtract_inplace(matrix: *const Matrix, scalar: c_float);
   pub fn cuda_scalar_subtract_packed(
     matrix_addresses: *const *const c_ulonglong,
     out_matrices: *mut Matrix,
@@ -174,14 +166,12 @@ extern "C" {
     scalar: f32,
   );
   pub fn cuda_matrix_multiply(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
-  pub fn cuda_add_vector(matrix_1: *const Matrix, matrix_2: *const Matrix, inplace: bool)
-    -> Matrix;
-  pub fn cuda_divide_by_vector(
-    matrix_1: *const Matrix,
-    matrix_2: *const Matrix,
-    inplace: bool,
-  ) -> Matrix;
-  pub fn cuda_element_sqrt(matrix: *const Matrix, inplace: bool) -> Matrix;
+  pub fn cuda_add_vector(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
+  pub fn cuda_add_vector_inplace(matrix_1: *const Matrix, matrix_2: *const Matrix);
+  pub fn cuda_divide_by_vector(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
+  pub fn cuda_divide_by_vector_inplace(matrix_1: *const Matrix, matrix_2: *const Matrix);
+  pub fn cuda_element_sqrt(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_element_sqrt_inplace(matrix: *const Matrix);
   pub fn cuda_element_sqrt_packed(
     matrix_addresses: *const *const c_ulonglong,
     out_matrices: *mut Matrix,
@@ -195,7 +185,8 @@ extern "C" {
     mat_rows: usize,
     mat_cols: usize,
   );
-  pub fn cuda_element_exp(matrix: *const Matrix, inplace: bool) -> Matrix;
+  pub fn cuda_element_exp(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_element_exp_inplace(matrix: *const Matrix);
   pub fn cuda_element_exp_packed(
     matrix_addresses: *const *const c_ulonglong,
     out_matrices: *mut Matrix,
@@ -209,7 +200,8 @@ extern "C" {
     mat_rows: usize,
     mat_cols: usize,
   );
-  pub fn cuda_element_ReLU(matrix: *const Matrix, inplace: bool) -> Matrix;
+  pub fn cuda_element_ReLU(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_element_ReLU_inplace(matrix: *const Matrix);
   pub fn cuda_element_ReLU_packed(
     matrix_addresses: *const *const c_ulonglong,
     out_matrices: *mut Matrix,
@@ -223,7 +215,8 @@ extern "C" {
     mat_rows: usize,
     mat_cols: usize,
   );
-  pub fn cuda_element_ReLU_prime(matrix: *const Matrix, inplace: bool) -> Matrix;
+  pub fn cuda_element_ReLU_prime(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_element_ReLU_prime_inplace(matrix: *const Matrix);
   pub fn cuda_element_ReLU_prime_packed(
     matrix_addresses: *const *const c_ulonglong,
     out_matrices: *mut Matrix,
@@ -315,16 +308,16 @@ extern "C" {
   ) -> Matrix;
   pub fn cuda_unflatten_array(
     array: *const Matrix,
+    out_count: usize,
     out_rows: usize,
     out_cols: usize,
-    mat_rows: usize,
     out_matrices: *mut Matrix,
   );
   pub fn cuda_unflatten_array_strided(
     array: *const Matrix,
+    out_count: usize,
     out_rows: usize,
     out_cols: usize,
-    mat_rows: usize,
     out_matrices: *mut Matrix,
   );
   pub fn cuda_center_pad(matrix: *const Matrix, pad_rows: usize, pad_cols: usize) -> Matrix;
@@ -342,6 +335,7 @@ extern "C" {
   pub fn cuda_max_by_row(matrix: *const Matrix) -> Matrix;
   pub fn cuda_argmax_by_column(matrix: *const Matrix) -> Matrix;
   pub fn cuda_argmax_by_row(matrix: *const Matrix) -> Matrix;
-  pub fn cuda_element_ln(matrix: *const Matrix, inplace: bool) -> Matrix;
+  pub fn cuda_element_ln(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_element_ln_inplace(matrix: *const Matrix);
   pub fn cuda_one_hot_encode_vector(matrix: *const Matrix, num_classes: usize) -> Matrix;
 }

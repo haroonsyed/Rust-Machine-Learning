@@ -200,27 +200,27 @@ size_t memory_manager_device_allocate(size_t size) {
 //////////////////////
 /// Matrix Information
 //////////////////////
-size_t get_matrix_rows(size_t block_id) {
-    MemBlock* block = &mem_blocks[block_id];
+size_t get_matrix_rows(Matrix* matrix) {
+    MemBlock* block = &mem_blocks[matrix->block_id];
     return block->mat_rows;
 }
-size_t get_matrix_columns(size_t block_id) {
-    MemBlock* block = &mem_blocks[block_id];
+size_t get_matrix_columns(Matrix* matrix) {
+    MemBlock* block = &mem_blocks[matrix->block_id];
     return block->mat_columns;
 }
-size_t get_matrix_length(size_t block_id) {
-    MemBlock* block = &mem_blocks[block_id];
+size_t get_matrix_length(Matrix* matrix) {
+    MemBlock* block = &mem_blocks[matrix->block_id];
     return block->mat_rows * block->mat_columns;
 }
-void reshape_matrix(size_t block_id, size_t rows, size_t columns) {
-    MemBlock* block = &mem_blocks[block_id];
+void reshape_matrix(Matrix* matrix, size_t rows, size_t columns) {
+    MemBlock* block = &mem_blocks[matrix->block_id];
 
     if (block->mat_count > 1) {
         printf("Warning, reshape will affect all matrices in this mem group.\n If you do not want this, consider deep cloning to its own mem block.");
         abort();
     }
 
-    if (get_matrix_length(block_id) != rows * columns) {
+    if (get_matrix_length(matrix) != rows * columns) {
         printf("Reshape error: new shape must have same number of elements\n");
         abort();
     }
@@ -275,14 +275,14 @@ void register_matrix_group(size_t rows, size_t columns, size_t count, Matrix* ma
 }
 void upload_matrix_data(Matrix* matrix, float* data) {
     void* device_address = reinterpret_cast<void*>(matrix->address);
-    size_t data_size = get_matrix_length(matrix->block_id) * sizeof(float);
+    size_t data_size = get_matrix_length(matrix) * sizeof(float);
 
     // Upload the data
     memory_manager_upload_to_allocation(device_address, data, data_size);
 }
 void upload_matrix_data_async(Matrix* matrix, float* data) {
     void* device_address = reinterpret_cast<void*>(matrix->address);
-    size_t data_size = get_matrix_length(matrix->block_id) * sizeof(float);
+    size_t data_size = get_matrix_length(matrix) * sizeof(float);
 
     // Upload the data
     memory_manager_upload_async_from_pinned_buffer(device_address, data, data_size);
@@ -308,6 +308,6 @@ void decrease_matrix_ref_count(Matrix* matrix) {
 }
 void get_matrix_data(Matrix* matrix, float* data_buffer) {
     void* gpu_address = reinterpret_cast<void*>(matrix->address);
-    size_t data_size = get_matrix_length(matrix->block_id) * sizeof(float);
+    size_t data_size = get_matrix_length(matrix) * sizeof(float);
     gpuErrchk(cudaMemcpy(data_buffer, gpu_address, data_size, cudaMemcpyDeviceToHost));
 }

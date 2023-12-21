@@ -43,6 +43,10 @@ impl Drop for Matrix {
   }
 }
 
+pub fn get_matrix_ids(matrices: &[Matrix]) -> Vec<usize> {
+  return matrices.iter().map(|matrix| matrix.id).collect_vec();
+}
+
 impl Matrix {
   fn new(id: usize, block: usize) -> Self {
     return Matrix { id, block };
@@ -229,176 +233,114 @@ impl Matrix {
     return self.get_rows() == other.get_rows() && self.get_columns() == other.get_columns();
   }
 
-  fn element_add_impl(&self, other: &Matrix, inplace: bool) -> Matrix {
-    if !self.same_shape(other) {
-      panic!(
-        "Matrices not the same shape for addition! A: {} {} B: {} {}",
-        self.get_rows(),
-        self.get_columns(),
-        other.get_rows(),
-        other.get_columns()
-      );
-    }
-
-    let result;
-    unsafe { result = cuda_element_add(self as *const Matrix, other as *const Matrix, inplace) }
-
-    return result;
-  }
-
   pub fn element_add(&self, other: &Matrix) -> Self {
-    return self.element_add_impl(other, false);
-  }
-
-  pub fn element_add_inplace(&self, other: &Matrix) -> Self {
-    self.element_add_impl(other, true);
-    return self.clone();
-  }
-
-  fn element_subtract_impl(&self, other: &Matrix, inplace: bool) -> Matrix {
-    if !self.same_shape(other) {
-      panic!(
-        "Matrices not the same shape for element_subtract! A: {} {} B: {} {}",
-        self.get_rows(),
-        self.get_columns(),
-        other.get_rows(),
-        other.get_columns()
-      );
-    }
-
+    assert_same_shape(self, other);
     let result;
-    unsafe {
-      result = cuda_element_subtract(self as *const Matrix, other as *const Matrix, inplace)
-    }
+    unsafe { result = cuda_element_add(self as *const Matrix, other as *const Matrix) }
 
     return result;
+  }
+
+  pub fn element_add_inplace(&self, other: &Matrix) -> &Self {
+    assert_same_shape(self, other);
+    unsafe { cuda_element_add_inplace(self as *const Matrix, other as *const Matrix) }
+    return self;
   }
 
   pub fn element_subtract(&self, other: &Matrix) -> Self {
-    return self.element_subtract_impl(other, false);
-  }
-
-  pub fn element_subtract_inplace(&self, other: &Matrix) -> Self {
-    self.element_subtract_impl(other, true);
-    return self.clone();
-  }
-
-  fn element_multiply_impl(&self, other: &Matrix, inplace: bool) -> Matrix {
-    if !self.same_shape(other) {
-      panic!(
-        "Matrices not the same shape for element_multiply! A: {} {} B: {} {}",
-        self.get_rows(),
-        self.get_columns(),
-        other.get_rows(),
-        other.get_columns()
-      );
-    }
+    assert_same_shape(self, other);
 
     let result;
-    unsafe {
-      result = cuda_element_multiply(self as *const Matrix, other as *const Matrix, inplace)
-    }
-
+    unsafe { result = cuda_element_subtract(self as *const Matrix, other as *const Matrix) }
     return result;
+  }
+
+  pub fn element_subtract_inplace(&self, other: &Matrix) -> &Self {
+    assert_same_shape(self, other);
+
+    unsafe { cuda_element_subtract_inplace(self as *const Matrix, other as *const Matrix) }
+    return self;
   }
 
   pub fn element_multiply(&self, other: &Matrix) -> Self {
-    return self.element_multiply_impl(other, false);
-  }
-
-  pub fn element_multiply_inplace(&self, other: &Matrix) -> Self {
-    self.element_multiply_impl(other, true);
-    return self.clone();
-  }
-
-  fn element_divide_impl(&self, other: &Matrix, inplace: bool) -> Matrix {
-    if !self.same_shape(other) {
-      panic!(
-        "Matrices not the same shape for element_divide! A: {} {} B: {} {}",
-        self.get_rows(),
-        self.get_columns(),
-        other.get_rows(),
-        other.get_columns()
-      );
-    }
+    assert_same_shape(self, other);
 
     let result;
-    unsafe { result = cuda_element_divide(self as *const Matrix, other as *const Matrix, inplace) }
-
+    unsafe { result = cuda_element_multiply(self as *const Matrix, other as *const Matrix) }
     return result;
+  }
+
+  pub fn element_multiply_inplace(&self, other: &Matrix) -> &Self {
+    assert_same_shape(self, other);
+
+    unsafe { cuda_element_multiply_inplace(self as *const Matrix, other as *const Matrix) }
+    return self;
   }
 
   pub fn element_divide(&self, other: &Matrix) -> Self {
-    return self.element_divide_impl(other, false);
-  }
+    assert_same_shape(self, other);
 
-  pub fn element_divide_inplace(&self, other: &Matrix) -> Self {
-    self.element_divide_impl(other, true);
-    return self.clone();
-  }
-
-  fn scalar_multiply_impl(&self, scalar: f32, inplace: bool) -> Matrix {
     let result;
-    unsafe { result = cuda_scalar_multiply(self as *const Matrix, scalar, inplace) }
-
+    unsafe { result = cuda_element_divide(self as *const Matrix, other as *const Matrix) }
     return result;
+  }
+
+  pub fn element_divide_inplace(&self, other: &Matrix) -> &Self {
+    assert_same_shape(self, other);
+
+    unsafe { cuda_element_divide_inplace(self as *const Matrix, other as *const Matrix) }
+    return self;
   }
 
   pub fn scalar_multiply(&self, scalar: f32) -> Self {
-    return self.scalar_multiply_impl(scalar, false);
-  }
-
-  pub fn scalar_multiply_inplace(&self, scalar: f32) -> Self {
-    self.scalar_multiply_impl(scalar, true);
-    return self.clone();
-  }
-
-  fn scalar_divide_impl(&self, scalar: f32, inplace: bool) -> Matrix {
     let result;
-    unsafe { result = cuda_scalar_divide(self as *const Matrix, scalar, inplace) }
+    unsafe { result = cuda_scalar_multiply(self as *const Matrix, scalar) }
 
     return result;
+  }
+
+  pub fn scalar_multiply_inplace(&self, scalar: f32) -> &Self {
+    unsafe { cuda_scalar_multiply_inplace(self as *const Matrix, scalar) }
+    return self;
   }
 
   pub fn scalar_divide(&self, scalar: f32) -> Self {
-    return self.scalar_divide_impl(scalar, false);
-  }
-
-  pub fn scalar_divide_inplace(&self, scalar: f32) -> Self {
-    self.scalar_divide_impl(scalar, true);
-    return self.clone();
-  }
-
-  fn scalar_add_impl(&self, scalar: f32, inplace: bool) -> Matrix {
     let result;
-    unsafe { result = cuda_scalar_add(self as *const Matrix, scalar, inplace) }
+    unsafe { result = cuda_scalar_divide(self as *const Matrix, scalar) }
 
     return result;
+  }
+
+  pub fn scalar_divide_inplace(&self, scalar: f32) -> &Self {
+    unsafe { cuda_scalar_divide_inplace(self as *const Matrix, scalar) }
+
+    return self;
   }
 
   pub fn scalar_add(&self, scalar: f32) -> Self {
-    return self.scalar_add_impl(scalar, false);
-  }
-
-  pub fn scalar_add_inplace(&self, scalar: f32) -> Self {
-    self.scalar_add_impl(scalar, true);
-    return self.clone();
-  }
-
-  fn scalar_subtract_impl(&self, scalar: f32, inplace: bool) -> Matrix {
     let result;
-    unsafe { result = cuda_scalar_subtract(self as *const Matrix, scalar, inplace) }
+    unsafe { result = cuda_scalar_add(self as *const Matrix, scalar) }
 
     return result;
   }
 
-  pub fn scalar_subtract(&self, scalar: f32) -> Self {
-    return self.scalar_subtract_impl(scalar, false);
+  pub fn scalar_add_inplace(&self, scalar: f32) -> &Self {
+    unsafe { cuda_scalar_add_inplace(self as *const Matrix, scalar) }
+
+    return self;
   }
 
-  pub fn scalar_subtract_inplace(&self, scalar: f32) -> Self {
-    self.scalar_subtract_impl(scalar, true);
-    return self.clone();
+  pub fn scalar_subtract(&self, scalar: f32) -> Self {
+    let result;
+    unsafe { result = cuda_scalar_subtract(self as *const Matrix, scalar) }
+
+    return result;
+  }
+
+  pub fn scalar_subtract_inplace(&self, scalar: f32) -> &Self {
+    unsafe { cuda_scalar_subtract_inplace(self as *const Matrix, scalar) }
+
+    return self;
   }
 
   pub fn matrix_multiply(&self, other: &Matrix) -> Matrix {
@@ -419,7 +361,7 @@ impl Matrix {
     return result;
   }
 
-  fn add_vector_impl(&self, other: &Matrix, inplace: bool) -> Matrix {
+  pub fn add_vector(&self, other: &Matrix) -> Self {
     if !((self.get_rows() == other.get_rows() && other.get_columns() == 1)
       || (self.get_columns() == other.get_columns() && other.get_rows() == 1))
     {
@@ -433,21 +375,30 @@ impl Matrix {
     }
 
     let result;
-    unsafe { result = cuda_add_vector(self as *const Matrix, other as *const Matrix, inplace) }
+    unsafe { result = cuda_add_vector(self as *const Matrix, other as *const Matrix) }
 
     return result;
   }
 
-  pub fn add_vector(&self, other: &Matrix) -> Self {
-    return self.add_vector_impl(other, false);
+  pub fn add_vector_inplace(&self, other: &Matrix) -> &Self {
+    if !((self.get_rows() == other.get_rows() && other.get_columns() == 1)
+      || (self.get_columns() == other.get_columns() && other.get_rows() == 1))
+    {
+      panic!(
+        "Matrices not the correct shape for vector add! A: {} {} B: {} {}",
+        self.get_rows(),
+        self.get_columns(),
+        other.get_rows(),
+        other.get_columns()
+      );
+    }
+
+    unsafe { cuda_add_vector_inplace(self as *const Matrix, other as *const Matrix) }
+
+    return self;
   }
 
-  pub fn add_vector_inplace(&self, other: &Matrix) -> Self {
-    self.add_vector_impl(other, true);
-    return self.clone();
-  }
-
-  fn divide_by_vector_impl(&self, other: &Matrix, inplace: bool) -> Matrix {
+  pub fn divide_by_vector(&self, other: &Matrix) -> Self {
     if !((self.get_rows() == other.get_rows() && other.get_columns() == 1)
       || (self.get_columns() == other.get_columns() && other.get_rows() == 1))
     {
@@ -461,88 +412,78 @@ impl Matrix {
     }
 
     let result;
-    unsafe {
-      result = cuda_divide_by_vector(self as *const Matrix, other as *const Matrix, inplace)
+    unsafe { result = cuda_divide_by_vector(self as *const Matrix, other as *const Matrix) }
+
+    return result;
+  }
+
+  pub fn divide_by_vector_inplace(&self, other: &Matrix) -> &Self {
+    if !((self.get_rows() == other.get_rows() && other.get_columns() == 1)
+      || (self.get_columns() == other.get_columns() && other.get_rows() == 1))
+    {
+      panic!(
+        "Matrices not the correct shape for division by vector! A: {} {} B: {} {}",
+        self.get_rows(),
+        self.get_columns(),
+        other.get_rows(),
+        other.get_columns()
+      );
     }
 
-    return result;
-  }
-
-  pub fn divide_by_vector(&self, other: &Matrix) -> Self {
-    return self.divide_by_vector_impl(other, false);
-  }
-
-  pub fn divide_by_vector_inplace(&self, other: &Matrix) -> Self {
-    self.divide_by_vector_impl(other, true);
-    return self.clone();
-  }
-
-  fn element_sqrt_impl(&self, inplace: bool) -> Matrix {
-    let result;
-    unsafe { result = cuda_element_sqrt(self as *const Matrix, inplace) }
-    return result;
+    unsafe { cuda_divide_by_vector_inplace(self as *const Matrix, other as *const Matrix) }
+    return self;
   }
 
   pub fn element_sqrt(&self) -> Self {
-    return self.element_sqrt_impl(false);
-  }
-
-  pub fn element_sqrt_inplace(&self) -> Self {
-    self.element_sqrt_impl(true);
-    return self.clone();
-  }
-
-  fn element_exp_impl(&self, inplace: bool) -> Matrix {
     let result;
-    unsafe { result = cuda_element_exp(self as *const Matrix, inplace) }
+    unsafe { result = cuda_element_sqrt(self as *const Matrix) }
+
     return result;
+  }
+
+  pub fn element_sqrt_inplace(&self) -> &Self {
+    unsafe { cuda_element_sqrt_inplace(self as *const Matrix) }
+    return self;
   }
 
   pub fn element_exp(&self) -> Self {
-    return self.element_exp_impl(false);
-  }
-
-  pub fn element_exp_inplace(&self) -> Self {
-    self.element_exp_impl(true);
-    return self.clone();
-  }
-
-  #[allow(non_snake_case)]
-  fn element_ReLU_impl(&self, inplace: bool) -> Matrix {
     let result;
-    unsafe { result = cuda_element_ReLU(self as *const Matrix, inplace) }
+    unsafe { result = cuda_element_exp(self as *const Matrix) }
 
     return result;
+  }
+
+  pub fn element_exp_inplace(&self) -> &Self {
+    unsafe { cuda_element_exp_inplace(self as *const Matrix) }
+    return self;
   }
 
   #[allow(non_snake_case)]
   pub fn element_ReLU(&self) -> Self {
-    return self.element_ReLU_impl(false);
-  }
-
-  #[allow(non_snake_case)]
-  pub fn element_ReLU_inplace(&self) -> Self {
-    self.element_ReLU_impl(true);
-    return self.clone();
-  }
-
-  #[allow(non_snake_case)]
-  fn element_ReLU_prime_impl(&self, inplace: bool) -> Matrix {
     let result;
-    unsafe { result = cuda_element_ReLU_prime(self as *const Matrix, inplace) }
+    unsafe { result = cuda_element_ReLU(self as *const Matrix) }
 
     return result;
   }
 
   #[allow(non_snake_case)]
-  pub fn element_ReLU_prime(&self) -> Self {
-    return self.element_ReLU_prime_impl(false);
+  pub fn element_ReLU_inplace(&self) -> &Self {
+    unsafe { cuda_element_ReLU_inplace(self as *const Matrix) }
+    return self;
   }
 
   #[allow(non_snake_case)]
-  pub fn element_ReLU_prime_inplace(&self) -> Self {
-    self.element_ReLU_prime_impl(true);
-    return self.clone();
+  pub fn element_ReLU_prime(&self) -> Self {
+    let result;
+    unsafe { result = cuda_element_ReLU_prime(self as *const Matrix) }
+
+    return result;
+  }
+
+  #[allow(non_snake_case)]
+  pub fn element_ReLU_prime_inplace(&self) -> &Self {
+    unsafe { cuda_element_ReLU_prime_inplace(self as *const Matrix) }
+    return self;
   }
 
   pub fn sum_rows_matrix(&self) -> Self {
@@ -705,13 +646,13 @@ impl Matrix {
 
   pub fn element_ln(&self) -> Self {
     let result;
-    unsafe { result = cuda_element_ln(self as *const Matrix, false) }
+    unsafe { result = cuda_element_ln(self as *const Matrix) }
     return result;
   }
 
   pub fn element_ln_inplace(&self) -> &Self {
     unsafe {
-      cuda_element_ln(self as *const Matrix, true);
+      cuda_element_ln_inplace(self as *const Matrix);
     }
     return self;
   }
@@ -819,7 +760,7 @@ pub fn unflatten_array_to_matrices(
   unsafe {
     cuda_unflatten_array(
       to_unflatten as *const Matrix,
-      to_unflatten.get_data_length(),
+      num_matrices,
       mat_rows,
       mat_cols,
       results.as_mut_ptr(),
@@ -847,7 +788,7 @@ pub fn unflatten_array_strided_to_matrices(
   unsafe {
     cuda_unflatten_array_strided(
       to_unflatten as *const Matrix,
-      to_unflatten.get_data_length(),
+      num_matrices,
       mat_rows,
       mat_cols,
       results.as_mut_ptr(),
@@ -1564,4 +1505,16 @@ pub fn convolve_packed(
     );
   }
   return results;
+}
+
+fn assert_same_shape(mat_1: &Matrix, mat_2: &Matrix) {
+  if !mat_1.same_shape(mat_2) {
+    panic!(
+      "Matrices not the same shape! A: {} {} B: {} {}",
+      mat_1.get_rows(),
+      mat_1.get_columns(),
+      mat_2.get_rows(),
+      mat_2.get_columns()
+    );
+  }
 }
