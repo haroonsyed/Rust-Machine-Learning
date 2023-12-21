@@ -131,6 +131,7 @@ void memory_manager_upload_to_allocation(void* address, void* data, size_t size)
 void* memory_manager_get_pinned_allocation(size_t size) {
     // Align allocation to 256 bytes
     size_t aligned_size = ((size + 255) / 256) * 256;
+    size = aligned_size;
 
     if (pinned_buffer_offset + size > pinned_buffer_size) {
         // Adjust size to wait for space on wrap around
@@ -159,15 +160,15 @@ void* memory_manager_get_pinned_allocation(size_t size) {
 // The default maximum number size of each buffer is 128 MB / num_buffers
 // That means in most cases (3 buffers), the maximum size is 42 MB, which is 5.5 million matrix pointers
 // MUST BE USED WITH ONE THREAD AND cudaMallocAsync in execution stream!
-std::vector<void*> get_device_kernel_args_pointers(size_t num_buffers) {
-    std::vector<void*> pointers;
+std::vector<Matrix*> get_device_kernel_args_pointers(size_t num_buffers) {
+    std::vector<Matrix*> pointers;
     for (size_t i = 0; i < num_buffers; i++) {
         // Align to 256 bytes
         size_t offset = (i * kernel_args_buffer_size / num_buffers);
         offset = ((offset + 255) / 256) * 256;
 
         void* pointer = (char*)kernel_args_buffer + offset;
-        pointers.emplace_back(pointer);
+        pointers.emplace_back((Matrix*)pointer);
     }
     return pointers;
 }
@@ -244,7 +245,7 @@ Matrix register_matrix(size_t rows, size_t columns) {
 
     // Cast the address to a size_t
     return Matrix{
-        .address = reinterpret_cast<size_t>(block->address),
+        .address = reinterpret_cast<float*>(block->address),
         .block_id = block_id,
     };
 }
@@ -268,7 +269,7 @@ void register_matrix_group(size_t rows, size_t columns, size_t count, Matrix* ma
         const size_t block_offset = i * aligned_requested_size;
 
         matrices[i] = Matrix{
-            .address = reinterpret_cast<size_t>(block->address + block_offset),
+            .address = reinterpret_cast<float*>(block->address + block_offset),
             .block_id = block_id,
         };
     }

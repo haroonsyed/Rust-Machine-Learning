@@ -234,14 +234,7 @@ impl Tensor {
 
     flatten_helper(self, &mut matrices_to_flatten);
 
-    let flattened = flatten_matrix_array(
-      &matrices_to_flatten
-        .iter()
-        .map(|mat| mat.get_id())
-        .collect_vec(),
-      matrices_to_flatten[0].get_rows(),
-      matrices_to_flatten[0].get_columns(),
-    );
+    let flattened = flatten_matrix_array(&matrices_to_flatten);
     let flattened_length = flattened.get_data_length();
 
     return Tensor::from_matrices(&vec![flattened], vec![1, flattened_length]);

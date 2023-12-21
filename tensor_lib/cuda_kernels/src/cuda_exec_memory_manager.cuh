@@ -20,7 +20,7 @@ void memory_manager_upload_to_allocation(void* address, void* data, size_t size)
 void memory_manager_upload_from_pinned_buffer(void* device_address, void* pinned_data, size_t size);
 void memory_manager_upload_async_from_pinned_buffer(void* device_address, void* pinned_data, size_t size);
 void* memory_manager_get_pinned_allocation(size_t size);
-std::vector<void*> get_device_kernel_args_pointers(size_t num_buffers);
+std::vector<Matrix*> get_device_kernel_args_pointers(size_t num_buffers);
 
 // Matrix Setup API
 cudaStream_t get_stream();

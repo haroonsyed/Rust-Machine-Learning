@@ -5,6 +5,6 @@ enum PaddingType {
 };
 
 struct Matrix {
-    size_t address;
+    float* address;
     size_t block_id;
 };
