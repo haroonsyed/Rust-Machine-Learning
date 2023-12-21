@@ -2,7 +2,7 @@ use crate::cuda_bindings::*;
 use itertools::Itertools;
 use rand::prelude::Distribution;
 use statrs::distribution::Normal;
-use std::ffi::{c_float, c_ulonglong};
+use std::ffi::c_float;
 use std::io::{stdout, BufWriter, Write};
 
 // IMPORTANT NOTE: THIS API AND THE UNDERLYING CUDA API ARE TO BE USED WITH A SINGLE THREAD
@@ -19,7 +19,7 @@ pub enum PaddingType {
 // Cloning is explicit to ensure this understanding
 #[repr(C)]
 pub struct Matrix {
-  id: usize,
+  address: *const f32,
   block: usize,
 }
 
@@ -29,7 +29,7 @@ impl Clone for Matrix {
       increase_matrix_ref_count(self as *const Matrix);
     }
     return Matrix {
-      id: self.id,
+      address: self.address,
       block: self.block,
     };
   }
@@ -43,17 +43,13 @@ impl Drop for Matrix {
   }
 }
 
-pub fn get_matrix_ids(matrices: &[Matrix]) -> Vec<usize> {
-  return matrices.iter().map(|matrix| matrix.id).collect_vec();
-}
-
 impl Matrix {
-  fn new(id: usize, block: usize) -> Self {
-    return Matrix { id, block };
+  fn new(address: *const f32, block: usize) -> Self {
+    return Matrix { address, block };
   }
 
-  pub fn get_id(&self) -> usize {
-    return self.id;
+  pub fn get_id(&self) -> *const f32 {
+    return self.address;
   }
 
   pub fn get_rows(&self) -> usize {
@@ -531,8 +527,14 @@ impl Matrix {
   }
 
   pub fn max_pool(&self) -> (Self, Self) {
-    let mut pooled = Matrix { id: 0, block: 0 };
-    let mut bitmask = Matrix { id: 0, block: 0 };
+    let mut pooled = Matrix {
+      address: std::ptr::null(),
+      block: 0,
+    };
+    let mut bitmask = Matrix {
+      address: std::ptr::null(),
+      block: 0,
+    };
     unsafe {
       cuda_max_pool(
         self as *const Matrix,
@@ -698,40 +700,24 @@ pub fn create_matrix_group(rows: usize, columns: usize, count: usize) -> Vec<Mat
 }
 
 // All matrices are required to be the same shape
-pub fn flatten_matrix_array(to_flatten: &[usize], mat_rows: usize, mat_cols: usize) -> Matrix {
+pub fn flatten_matrix_array(to_flatten: &[Matrix]) -> Matrix {
   if to_flatten.len() == 0 {
     return Matrix::zeros(0, 0);
   }
 
   let result;
-  unsafe {
-    result = cuda_flatten_array(
-      to_flatten.as_ptr() as *const *const u64,
-      to_flatten.len(),
-      mat_rows,
-      mat_cols,
-    )
-  };
+  unsafe { result = cuda_flatten_array(to_flatten.as_ptr(), to_flatten.len()) };
 
   return result;
 }
 
 // Take an image and convert it to a matrix of columns based on patches (with specified padding) the filter makes of image
-pub fn img2col(
-  image_ids: &[usize],
-  image_depth: usize,
-  image_rows: usize,
-  image_cols: usize,
-  filter_rows: usize,
-  filter_cols: usize,
-) -> Matrix {
+pub fn img2col(images: &[Matrix], filter_rows: usize, filter_cols: usize) -> Matrix {
   let result;
   unsafe {
     result = cuda_img2col(
-      image_ids.as_ptr() as *const *const u64,
-      image_depth,
-      image_rows,
-      image_cols,
+      images.as_ptr(),
+      images.len(),
       filter_rows,
       filter_cols,
       PaddingType::VALID,
@@ -760,7 +746,6 @@ pub fn unflatten_array_to_matrices(
   unsafe {
     cuda_unflatten_array(
       to_unflatten as *const Matrix,
-      num_matrices,
       mat_rows,
       mat_cols,
       results.as_mut_ptr(),
@@ -788,7 +773,6 @@ pub fn unflatten_array_strided_to_matrices(
   unsafe {
     cuda_unflatten_array_strided(
       to_unflatten as *const Matrix,
-      num_matrices,
       mat_rows,
       mat_cols,
       results.as_mut_ptr(),
@@ -797,74 +781,51 @@ pub fn unflatten_array_strided_to_matrices(
   return results;
 }
 
-pub fn element_add_packed(
-  mat_1_addresses: &[usize],
-  mat_2_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  if mat_1_addresses.len() != mat_2_addresses.len() {
+pub fn element_add_packed(mat_1s: &[Matrix], mat_2s: &[Matrix]) -> Vec<Matrix> {
+  if mat_1s.len() != mat_2s.len() {
     panic!(
       "Number of matrices must be equal! {} {}",
-      mat_1_addresses.len(),
-      mat_2_addresses.len()
+      mat_1s.len(),
+      mat_2s.len()
     );
   }
 
-  let num_matrices = mat_1_addresses.len();
+  let num_matrices = mat_1s.len();
   let mut results = Vec::with_capacity(num_matrices);
   unsafe {
     results.set_len(num_matrices);
     cuda_element_add_packed(
-      mat_1_addresses.as_ptr() as *const *const u64,
-      mat_2_addresses.as_ptr() as *const *const u64,
-      results.as_mut_ptr() as *mut c_ulonglong,
+      mat_1s.as_ptr(),
+      mat_2s.as_ptr(),
+      results.as_mut_ptr(),
       num_matrices,
-      mat_rows,
-      mat_cols,
     );
   }
   return results;
 }
 
-pub fn element_add_packed_inplace(
-  mat_1_addresses: &[usize],
-  mat_2_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) {
-  if mat_1_addresses.len() != mat_2_addresses.len() {
+pub fn element_add_packed_inplace(mat_1s: &[Matrix], mat_2s: &[Matrix]) {
+  if mat_1s.len() != mat_2s.len() {
     panic!(
       "Number of matrices must be equal! {} {}",
-      mat_1_addresses.len(),
-      mat_2_addresses.len()
+      mat_1s.len(),
+      mat_2s.len()
     );
   }
 
-  let num_matrices = mat_1_addresses.len();
+  let num_matrices = mat_1s.len();
   unsafe {
-    cuda_element_add_packed_inplace(
-      mat_1_addresses.as_ptr() as *const *const u64,
-      mat_2_addresses.as_ptr() as *const *const u64,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-    );
+    cuda_element_add_packed_inplace(mat_1s.as_ptr(), mat_2s.as_ptr(), num_matrices);
   }
 }
 
-pub fn element_subtract_packed(
-  mat_1_addresses: &[usize],
-  mat_2_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  let num_matrices = mat_1_addresses.len();
-  if mat_1_addresses.len() != mat_2_addresses.len() {
+pub fn element_subtract_packed(mat_1s: &[Matrix], mat_2s: &[Matrix]) -> Vec<Matrix> {
+  let num_matrices = mat_1s.len();
+  if mat_1s.len() != mat_2s.len() {
     panic!(
       "Number of matrices must be equal! {} {}",
-      mat_1_addresses.len(),
-      mat_2_addresses.len()
+      mat_1s.len(),
+      mat_2s.len()
     );
   }
 
@@ -876,56 +837,38 @@ pub fn element_subtract_packed(
   unsafe {
     results.set_len(num_matrices);
     cuda_element_subtract_packed(
-      mat_1_addresses.as_ptr() as *const *const u64,
-      mat_2_addresses.as_ptr() as *const *const u64,
-      results.as_mut_ptr() as *mut c_ulonglong,
+      mat_1s.as_ptr(),
+      mat_2s.as_ptr(),
+      results.as_mut_ptr(),
       num_matrices,
-      mat_rows,
-      mat_cols,
     );
   }
 
   return results;
 }
 
-pub fn element_subtract_packed_inplace(
-  mat_1_addresses: &[usize],
-  mat_2_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) {
-  let num_matrices = mat_1_addresses.len();
-  if mat_1_addresses.len() != mat_2_addresses.len() {
+pub fn element_subtract_packed_inplace(mat_1s: &[Matrix], mat_2s: &[Matrix]) {
+  let num_matrices = mat_1s.len();
+  if mat_1s.len() != mat_2s.len() {
     panic!(
       "Number of matrices must be equal! {} {}",
-      mat_1_addresses.len(),
-      mat_2_addresses.len()
+      mat_1s.len(),
+      mat_2s.len()
     );
   }
 
   unsafe {
-    cuda_element_subtract_packed_inplace(
-      mat_1_addresses.as_ptr() as *const *const u64,
-      mat_2_addresses.as_ptr() as *const *const u64,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-    );
+    cuda_element_subtract_packed_inplace(mat_1s.as_ptr(), mat_2s.as_ptr(), num_matrices);
   }
 }
 
-pub fn element_multiply_packed(
-  mat_1_addresses: &[usize],
-  mat_2_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  let num_matrices = mat_1_addresses.len();
-  if mat_1_addresses.len() != mat_2_addresses.len() {
+pub fn element_multiply_packed(mat_1s: &[Matrix], mat_2s: &[Matrix]) -> Vec<Matrix> {
+  let num_matrices = mat_1s.len();
+  if mat_1s.len() != mat_2s.len() {
     panic!(
       "Number of matrices must be equal! {} {}",
-      mat_1_addresses.len(),
-      mat_2_addresses.len()
+      mat_1s.len(),
+      mat_2s.len()
     );
   }
 
@@ -937,56 +880,38 @@ pub fn element_multiply_packed(
   unsafe {
     results.set_len(num_matrices);
     cuda_element_multiply_packed(
-      mat_1_addresses.as_ptr() as *const *const u64,
-      mat_2_addresses.as_ptr() as *const *const u64,
+      mat_1s.as_ptr(),
+      mat_2s.as_ptr(),
       results.as_mut_ptr(),
       num_matrices,
-      mat_rows,
-      mat_cols,
     );
   }
 
   return results;
 }
 
-pub fn element_multiply_packed_inplace(
-  mat_1_addresses: &[usize],
-  mat_2_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) {
-  let num_matrices = mat_1_addresses.len();
-  if mat_1_addresses.len() != mat_2_addresses.len() {
+pub fn element_multiply_packed_inplace(mat_1s: &[Matrix], mat_2s: &[Matrix]) {
+  let num_matrices = mat_1s.len();
+  if mat_1s.len() != mat_2s.len() {
     panic!(
       "Number of matrices must be equal! {} {}",
-      mat_1_addresses.len(),
-      mat_2_addresses.len()
+      mat_1s.len(),
+      mat_2s.len()
     );
   }
 
   unsafe {
-    cuda_element_multiply_packed_inplace(
-      mat_1_addresses.as_ptr() as *const *const u64,
-      mat_2_addresses.as_ptr() as *const *const u64,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-    );
+    cuda_element_multiply_packed_inplace(mat_1s.as_ptr(), mat_2s.as_ptr(), num_matrices);
   }
 }
 
-pub fn element_divide_packed(
-  mat_1_addresses: &[usize],
-  mat_2_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  let num_matrices = mat_1_addresses.len();
-  if mat_1_addresses.len() != mat_2_addresses.len() {
+pub fn element_divide_packed(mat_1s: &[Matrix], mat_2s: &[Matrix]) -> Vec<Matrix> {
+  let num_matrices = mat_1s.len();
+  if mat_1s.len() != mat_2s.len() {
     panic!(
       "Number of matrices must be equal! {} {}",
-      mat_1_addresses.len(),
-      mat_2_addresses.len()
+      mat_1s.len(),
+      mat_2s.len()
     );
   }
 
@@ -998,60 +923,40 @@ pub fn element_divide_packed(
   unsafe {
     results.set_len(num_matrices);
     cuda_element_divide_packed(
-      mat_1_addresses.as_ptr() as *const *const u64,
-      mat_2_addresses.as_ptr() as *const *const u64,
+      mat_1s.as_ptr(),
+      mat_2s.as_ptr(),
       results.as_mut_ptr(),
       num_matrices,
-      mat_rows,
-      mat_cols,
     );
   }
 
   return results;
 }
 
-pub fn element_divide_packed_inplace(
-  mat_1_addresses: &[usize],
-  mat_2_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) {
-  let num_matrices = mat_1_addresses.len();
-  if mat_1_addresses.len() != mat_2_addresses.len() {
+pub fn element_divide_packed_inplace(mat_1s: &[Matrix], mat_2s: &[Matrix]) {
+  let num_matrices = mat_1s.len();
+  if mat_1s.len() != mat_2s.len() {
     panic!(
       "Number of matrices must be equal! {} {}",
-      mat_1_addresses.len(),
-      mat_2_addresses.len()
+      mat_1s.len(),
+      mat_2s.len()
     );
   }
 
   unsafe {
-    cuda_element_divide_packed_inplace(
-      mat_1_addresses.as_ptr() as *const *const u64,
-      mat_2_addresses.as_ptr() as *const *const u64,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-    );
+    cuda_element_divide_packed_inplace(mat_1s.as_ptr(), mat_2s.as_ptr(), num_matrices);
   }
 }
 
-pub fn scalar_multiply_packed(
-  matrix_addresses: &[usize],
-  scalar: f32,
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  let num_matrices = matrix_addresses.len();
+pub fn scalar_multiply_packed(matrices: &[Matrix], scalar: f32) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
   let mut results = Vec::with_capacity(num_matrices);
   unsafe {
     results.set_len(num_matrices);
     cuda_scalar_multiply_packed(
-      matrix_addresses.as_ptr() as *const *const u64,
+      matrices.as_ptr(),
       results.as_mut_ptr(),
       num_matrices,
-      mat_rows,
-      mat_cols,
       scalar,
     );
   }
@@ -1059,40 +964,22 @@ pub fn scalar_multiply_packed(
   return results;
 }
 
-pub fn scalar_multiply_packed_inplace(
-  matrix_addresses: &[usize],
-  scalar: f32,
-  mat_rows: usize,
-  mat_cols: usize,
-) {
-  let num_matrices = matrix_addresses.len();
+pub fn scalar_multiply_packed_inplace(matrices: &[Matrix], scalar: f32) {
+  let num_matrices = matrices.len();
   unsafe {
-    cuda_scalar_multiply_packed_inplace(
-      matrix_addresses.as_ptr() as *const *const u64,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-      scalar,
-    );
+    cuda_scalar_multiply_packed_inplace(matrices.as_ptr(), num_matrices, scalar);
   }
 }
 
-pub fn scalar_divide_packed(
-  matrix_addresses: &[usize],
-  scalar: f32,
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  let num_matrices = matrix_addresses.len();
+pub fn scalar_divide_packed(matrices: &[Matrix], scalar: f32) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
   let mut results = Vec::with_capacity(num_matrices);
   unsafe {
     results.set_len(num_matrices);
     cuda_scalar_divide_packed(
-      matrix_addresses.as_ptr() as *const *const u64,
+      matrices.as_ptr(),
       results.as_mut_ptr(),
       num_matrices,
-      mat_rows,
-      mat_cols,
       scalar,
     );
   }
@@ -1100,40 +987,22 @@ pub fn scalar_divide_packed(
   return results;
 }
 
-pub fn scalar_divide_packed_inplace(
-  matrix_addresses: &[usize],
-  scalar: f32,
-  mat_rows: usize,
-  mat_cols: usize,
-) {
-  let num_matrices = matrix_addresses.len();
+pub fn scalar_divide_packed_inplace(matrices: &[Matrix], scalar: f32) {
+  let num_matrices = matrices.len();
   unsafe {
-    cuda_scalar_divide_packed_inplace(
-      matrix_addresses.as_ptr() as *const *const u64,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-      scalar,
-    );
+    cuda_scalar_divide_packed_inplace(matrices.as_ptr(), num_matrices, scalar);
   }
 }
 
-pub fn scalar_add_packed(
-  matrix_addresses: &[usize],
-  scalar: f32,
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  let num_matrices = matrix_addresses.len();
+pub fn scalar_add_packed(matrices: &[Matrix], scalar: f32) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
   let mut results = Vec::with_capacity(num_matrices);
   unsafe {
     results.set_len(num_matrices);
     cuda_scalar_add_packed(
-      matrix_addresses.as_ptr() as *const *const u64,
+      matrices.as_ptr(),
       results.as_mut_ptr(),
       num_matrices,
-      mat_rows,
-      mat_cols,
       scalar,
     );
   }
@@ -1141,40 +1010,22 @@ pub fn scalar_add_packed(
   return results;
 }
 
-pub fn scalar_add_packed_inplace(
-  matrix_addresses: &[usize],
-  scalar: f32,
-  mat_rows: usize,
-  mat_cols: usize,
-) {
-  let num_matrices = matrix_addresses.len();
+pub fn scalar_add_packed_inplace(matrices: &[Matrix], scalar: f32) {
+  let num_matrices = matrices.len();
   unsafe {
-    cuda_scalar_add_packed_inplace(
-      matrix_addresses.as_ptr() as *const *const u64,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-      scalar,
-    );
+    cuda_scalar_add_packed_inplace(matrices.as_ptr(), num_matrices, scalar);
   }
 }
 
-pub fn scalar_subtract_packed(
-  matrix_addresses: &[usize],
-  scalar: f32,
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  let num_matrices = matrix_addresses.len();
+pub fn scalar_subtract_packed(matrices: &[Matrix], scalar: f32) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
   let mut results = Vec::with_capacity(num_matrices);
   unsafe {
     results.set_len(num_matrices);
     cuda_scalar_subtract_packed(
-      matrix_addresses.as_ptr() as *const *const u64,
+      matrices.as_ptr(),
       results.as_mut_ptr(),
       num_matrices,
-      mat_rows,
-      mat_cols,
       scalar,
     );
   }
@@ -1182,170 +1033,91 @@ pub fn scalar_subtract_packed(
   return results;
 }
 
-pub fn scalar_subtract_packed_inplace(
-  matrix_addresses: &[usize],
-  scalar: f32,
-  mat_rows: usize,
-  mat_cols: usize,
-) {
-  let num_matrices = matrix_addresses.len();
+pub fn scalar_subtract_packed_inplace(matrices: &[Matrix], scalar: f32) {
+  let num_matrices = matrices.len();
   unsafe {
-    cuda_scalar_subtract_packed_inplace(
-      matrix_addresses.as_ptr() as *const *const u64,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-      scalar,
-    );
+    cuda_scalar_subtract_packed_inplace(matrices.as_ptr(), num_matrices, scalar);
   }
 }
 
-pub fn element_sqrt_packed(
-  matrix_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  let num_matrices = matrix_addresses.len();
+pub fn element_sqrt_packed(matrices: &[Matrix]) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
   let mut results = Vec::with_capacity(num_matrices);
   unsafe {
     results.set_len(num_matrices);
-    cuda_element_sqrt_packed(
-      matrix_addresses.as_ptr() as *const *const u64,
-      results.as_mut_ptr(),
-      num_matrices,
-      mat_rows,
-      mat_cols,
-    );
+    cuda_element_sqrt_packed(matrices.as_ptr(), results.as_mut_ptr(), num_matrices);
   }
 
   return results;
 }
 
-pub fn element_sqrt_packed_inplace(matrix_addresses: &[usize], mat_rows: usize, mat_cols: usize) {
-  let num_matrices = matrix_addresses.len();
+pub fn element_sqrt_packed_inplace(matrices: &[Matrix]) {
+  let num_matrices = matrices.len();
   unsafe {
-    cuda_element_sqrt_packed_inplace(
-      matrix_addresses.as_ptr() as *const *const u64,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-    );
+    cuda_element_sqrt_packed_inplace(matrices.as_ptr(), num_matrices);
   }
 }
 
-pub fn element_exp_packed(
-  matrix_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  let num_matrices = matrix_addresses.len();
+pub fn element_exp_packed(matrices: &[Matrix]) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
   let mut results = Vec::with_capacity(num_matrices);
   unsafe {
     results.set_len(num_matrices);
-    cuda_element_exp_packed(
-      matrix_addresses.as_ptr() as *const *const u64,
-      results.as_mut_ptr(),
-      num_matrices,
-      mat_rows,
-      mat_cols,
-    );
+    cuda_element_exp_packed(matrices.as_ptr(), results.as_mut_ptr(), num_matrices);
   }
 
   return results;
 }
 
-pub fn element_exp_packed_inplace(matrix_addresses: &[usize], mat_rows: usize, mat_cols: usize) {
-  let num_matrices = matrix_addresses.len();
+pub fn element_exp_packed_inplace(matrices: &[Matrix]) {
+  let num_matrices = matrices.len();
   unsafe {
-    cuda_element_exp_packed_inplace(
-      matrix_addresses.as_ptr() as *const *const u64,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-    );
+    cuda_element_exp_packed_inplace(matrices.as_ptr(), num_matrices);
   }
 }
 
 #[allow(non_snake_case)]
-pub fn element_ReLU_packed(
-  matrix_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  let num_matrices = matrix_addresses.len();
+pub fn element_ReLU_packed(matrices: &[Matrix]) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
   let mut results = Vec::with_capacity(num_matrices);
   unsafe {
     results.set_len(num_matrices);
-    cuda_element_ReLU_packed(
-      matrix_addresses.as_ptr() as *const *const u64,
-      results.as_mut_ptr(),
-      num_matrices,
-      mat_rows,
-      mat_cols,
-    );
+    cuda_element_ReLU_packed(matrices.as_ptr(), results.as_mut_ptr(), num_matrices);
   }
 
   return results;
 }
 
 #[allow(non_snake_case)]
-pub fn element_ReLU_packed_inplace(matrix_addresses: &[usize], mat_rows: usize, mat_cols: usize) {
-  let num_matrices = matrix_addresses.len();
+pub fn element_ReLU_packed_inplace(matrices: &[Matrix]) {
+  let num_matrices = matrices.len();
   unsafe {
-    cuda_element_ReLU_packed_inplace(
-      matrix_addresses.as_ptr() as *const *const u64,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-    );
+    cuda_element_ReLU_packed_inplace(matrices.as_ptr(), num_matrices);
   }
 }
 
 #[allow(non_snake_case)]
-pub fn element_ReLU_prime_packed(
-  matrix_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  let num_matrices = matrix_addresses.len();
+pub fn element_ReLU_prime_packed(matrices: &[Matrix]) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
   let mut results = Vec::with_capacity(num_matrices);
   unsafe {
     results.set_len(num_matrices);
-    cuda_element_ReLU_prime_packed(
-      matrix_addresses.as_ptr() as *const *const u64,
-      results.as_mut_ptr(),
-      num_matrices,
-      mat_rows,
-      mat_cols,
-    );
+    cuda_element_ReLU_prime_packed(matrices.as_ptr(), results.as_mut_ptr(), num_matrices);
   }
 
   return results;
 }
 
 #[allow(non_snake_case)]
-pub fn element_ReLU_prime_packed_inplace(
-  matrix_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) {
-  let num_matrices = matrix_addresses.len();
+pub fn element_ReLU_prime_packed_inplace(matrices: &[Matrix]) {
+  let num_matrices = matrices.len();
   unsafe {
-    cuda_element_ReLU_prime_packed_inplace(
-      matrix_addresses.as_ptr() as *const *const u64,
-      num_matrices,
-      mat_rows,
-      mat_cols,
-    );
+    cuda_element_ReLU_prime_packed_inplace(matrices.as_ptr(), num_matrices);
   }
 }
 
-pub fn max_pool_packed(
-  matrix_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) -> (Vec<Matrix>, Vec<Matrix>) {
-  let num_matrices = matrix_addresses.len();
+pub fn max_pool_packed(matrices: &[Matrix]) -> (Vec<Matrix>, Vec<Matrix>) {
+  let num_matrices = matrices.len();
   if num_matrices == 0 {
     return (Vec::new(), Vec::new());
   }
@@ -1354,25 +1126,18 @@ pub fn max_pool_packed(
   let mut bitmask_results = Vec::with_capacity(num_matrices);
   unsafe {
     cuda_max_pool_packed(
-      matrix_addresses.as_ptr() as *const *const u64,
+      matrices.as_ptr(),
       pooled_results.as_mut_ptr(),
       bitmask_results.as_mut_ptr(),
       num_matrices,
-      mat_rows,
-      mat_cols,
     );
   }
 
   return (pooled_results, bitmask_results);
 }
 
-pub fn nearest_neighbor_2x_upsample_packed(
-  matrix_addresses: &[usize],
-  odd_upsample: bool,
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  let num_matrices = matrix_addresses.len();
+pub fn nearest_neighbor_2x_upsample_packed(matrices: &[Matrix], odd_upsample: bool) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
   if num_matrices == 0 {
     return Vec::new();
   }
@@ -1380,11 +1145,9 @@ pub fn nearest_neighbor_2x_upsample_packed(
   let mut results = Vec::with_capacity(num_matrices);
   unsafe {
     cuda_nearest_neighbor_2x_upsample_packed(
-      matrix_addresses.as_ptr() as *const *const u64,
+      matrices.as_ptr(),
       results.as_mut_ptr(),
       num_matrices,
-      mat_rows,
-      mat_cols,
       odd_upsample,
     );
   }
@@ -1392,38 +1155,24 @@ pub fn nearest_neighbor_2x_upsample_packed(
   return results;
 }
 
-pub fn rotate_180_packed(
-  matrix_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-) -> Vec<Matrix> {
-  let num_matrices = matrix_addresses.len();
+pub fn rotate_180_packed(matrices: &[Matrix]) -> Vec<Matrix> {
+  let num_matrices = matrices.len();
   let mut results = Vec::with_capacity(num_matrices);
   unsafe {
     results.set_len(num_matrices);
-    cuda_rotate_180_packed(
-      matrix_addresses.as_ptr() as *const *const u64,
-      results.as_mut_ptr(),
-      num_matrices,
-      mat_rows,
-      mat_cols,
-    );
+    cuda_rotate_180_packed(matrices.as_ptr(), results.as_mut_ptr(), num_matrices);
   }
 
   return results;
 }
 
 pub fn correlate_packed(
-  matrix_addresses: &[usize],
-  kernel_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-  kernel_rows: usize,
-  kernel_cols: usize,
+  matrices: &[Matrix],
+  kernels: &[Matrix],
   padding_type: PaddingType,
 ) -> Vec<Matrix> {
-  let num_matrices = matrix_addresses.len();
-  let num_kernels = kernel_addresses.len();
+  let num_matrices = matrices.len();
+  let num_kernels = kernels.len();
 
   if num_matrices != num_kernels {
     panic!(
@@ -1436,6 +1185,8 @@ pub fn correlate_packed(
     return Vec::new();
   }
 
+  let kernel_rows = kernels[0].get_rows();
+  let kernel_cols = kernels[0].get_columns();
   if matches!(padding_type, PaddingType::SAME)
     && (kernel_rows != kernel_cols || kernel_rows % 2 == 0)
   {
@@ -1446,13 +1197,9 @@ pub fn correlate_packed(
   unsafe {
     results.set_len(num_matrices);
     cuda_correlate_packed(
-      matrix_addresses.as_ptr() as *const *const u64,
+      matrices.as_ptr(),
       num_matrices,
-      mat_rows,
-      mat_cols,
-      kernel_addresses.as_ptr() as *const *const u64,
-      kernel_rows,
-      kernel_cols,
+      kernels.as_ptr(),
       results.as_mut_ptr(),
       padding_type,
     );
@@ -1461,16 +1208,12 @@ pub fn correlate_packed(
 }
 
 pub fn convolve_packed(
-  matrix_addresses: &[usize],
-  kernel_addresses: &[usize],
-  mat_rows: usize,
-  mat_cols: usize,
-  kernel_rows: usize,
-  kernel_cols: usize,
+  matrices: &[Matrix],
+  kernels: &[Matrix],
   padding_type: PaddingType,
 ) -> Vec<Matrix> {
-  let num_matrices = matrix_addresses.len();
-  let num_kernels = kernel_addresses.len();
+  let num_matrices = matrices.len();
+  let num_kernels = kernels.len();
 
   if num_matrices != num_kernels {
     panic!(
@@ -1483,6 +1226,8 @@ pub fn convolve_packed(
     return Vec::new();
   }
 
+  let kernel_rows = kernels[0].get_rows();
+  let kernel_cols = kernels[0].get_columns();
   if matches!(padding_type, PaddingType::SAME)
     && (kernel_rows != kernel_cols || kernel_rows % 2 == 0)
   {
@@ -1493,13 +1238,9 @@ pub fn convolve_packed(
   unsafe {
     results.set_len(num_matrices);
     cuda_convolve_packed(
-      matrix_addresses.as_ptr() as *const *const u64,
+      matrices.as_ptr(),
       num_matrices,
-      mat_rows,
-      mat_cols,
-      kernel_addresses.as_ptr() as *const *const u64,
-      kernel_rows,
-      kernel_cols,
+      kernels.as_ptr(),
       results.as_mut_ptr(),
       padding_type,
     );
