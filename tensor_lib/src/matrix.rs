@@ -19,7 +19,7 @@ pub enum PaddingType {
 // Cloning is explicit to ensure this understanding
 #[repr(C)]
 pub struct Matrix {
-  address: *const f32,
+  address: usize,
   block: usize,
 }
 
@@ -44,11 +44,11 @@ impl Drop for Matrix {
 }
 
 impl Matrix {
-  fn new(address: *const f32, block: usize) -> Self {
+  fn new(address: usize, block: usize) -> Self {
     return Matrix { address, block };
   }
 
-  pub fn get_id(&self) -> *const f32 {
+  pub fn get_id(&self) -> usize {
     return self.address;
   }
 
@@ -237,10 +237,10 @@ impl Matrix {
     return result;
   }
 
-  pub fn element_add_inplace(&self, other: &Matrix) -> &Self {
-    assert_same_shape(self, other);
+  pub fn element_add_inplace(&self, other: &Matrix) -> Self {
+    assert_same_shape(&self, other);
     unsafe { cuda_element_add_inplace(self as *const Matrix, other as *const Matrix) }
-    return self;
+    return self.clone();
   }
 
   pub fn element_subtract(&self, other: &Matrix) -> Self {
@@ -251,11 +251,11 @@ impl Matrix {
     return result;
   }
 
-  pub fn element_subtract_inplace(&self, other: &Matrix) -> &Self {
-    assert_same_shape(self, other);
+  pub fn element_subtract_inplace(&self, other: &Matrix) -> Self {
+    assert_same_shape(&self, other);
 
     unsafe { cuda_element_subtract_inplace(self as *const Matrix, other as *const Matrix) }
-    return self;
+    return self.clone();
   }
 
   pub fn element_multiply(&self, other: &Matrix) -> Self {
@@ -266,11 +266,11 @@ impl Matrix {
     return result;
   }
 
-  pub fn element_multiply_inplace(&self, other: &Matrix) -> &Self {
-    assert_same_shape(self, other);
+  pub fn element_multiply_inplace(&self, other: &Matrix) -> Self {
+    assert_same_shape(&self, other);
 
     unsafe { cuda_element_multiply_inplace(self as *const Matrix, other as *const Matrix) }
-    return self;
+    return self.clone();
   }
 
   pub fn element_divide(&self, other: &Matrix) -> Self {
@@ -281,11 +281,11 @@ impl Matrix {
     return result;
   }
 
-  pub fn element_divide_inplace(&self, other: &Matrix) -> &Self {
-    assert_same_shape(self, other);
+  pub fn element_divide_inplace(&self, other: &Matrix) -> Self {
+    assert_same_shape(&self, other);
 
     unsafe { cuda_element_divide_inplace(self as *const Matrix, other as *const Matrix) }
-    return self;
+    return self.clone();
   }
 
   pub fn scalar_multiply(&self, scalar: f32) -> Self {
@@ -295,9 +295,9 @@ impl Matrix {
     return result;
   }
 
-  pub fn scalar_multiply_inplace(&self, scalar: f32) -> &Self {
+  pub fn scalar_multiply_inplace(&self, scalar: f32) -> Self {
     unsafe { cuda_scalar_multiply_inplace(self as *const Matrix, scalar) }
-    return self;
+    return self.clone();
   }
 
   pub fn scalar_divide(&self, scalar: f32) -> Self {
@@ -307,10 +307,10 @@ impl Matrix {
     return result;
   }
 
-  pub fn scalar_divide_inplace(&self, scalar: f32) -> &Self {
+  pub fn scalar_divide_inplace(&self, scalar: f32) -> Self {
     unsafe { cuda_scalar_divide_inplace(self as *const Matrix, scalar) }
 
-    return self;
+    return self.clone();
   }
 
   pub fn scalar_add(&self, scalar: f32) -> Self {
@@ -320,10 +320,10 @@ impl Matrix {
     return result;
   }
 
-  pub fn scalar_add_inplace(&self, scalar: f32) -> &Self {
+  pub fn scalar_add_inplace(&self, scalar: f32) -> Self {
     unsafe { cuda_scalar_add_inplace(self as *const Matrix, scalar) }
 
-    return self;
+    return self.clone();
   }
 
   pub fn scalar_subtract(&self, scalar: f32) -> Self {
@@ -333,10 +333,10 @@ impl Matrix {
     return result;
   }
 
-  pub fn scalar_subtract_inplace(&self, scalar: f32) -> &Self {
+  pub fn scalar_subtract_inplace(&self, scalar: f32) -> Self {
     unsafe { cuda_scalar_subtract_inplace(self as *const Matrix, scalar) }
 
-    return self;
+    return self.clone();
   }
 
   pub fn matrix_multiply(&self, other: &Matrix) -> Matrix {
@@ -376,7 +376,7 @@ impl Matrix {
     return result;
   }
 
-  pub fn add_vector_inplace(&self, other: &Matrix) -> &Self {
+  pub fn add_vector_inplace(&self, other: &Matrix) -> Self {
     if !((self.get_rows() == other.get_rows() && other.get_columns() == 1)
       || (self.get_columns() == other.get_columns() && other.get_rows() == 1))
     {
@@ -391,7 +391,7 @@ impl Matrix {
 
     unsafe { cuda_add_vector_inplace(self as *const Matrix, other as *const Matrix) }
 
-    return self;
+    return self.clone();
   }
 
   pub fn divide_by_vector(&self, other: &Matrix) -> Self {
@@ -413,7 +413,7 @@ impl Matrix {
     return result;
   }
 
-  pub fn divide_by_vector_inplace(&self, other: &Matrix) -> &Self {
+  pub fn divide_by_vector_inplace(&self, other: &Matrix) -> Self {
     if !((self.get_rows() == other.get_rows() && other.get_columns() == 1)
       || (self.get_columns() == other.get_columns() && other.get_rows() == 1))
     {
@@ -427,7 +427,7 @@ impl Matrix {
     }
 
     unsafe { cuda_divide_by_vector_inplace(self as *const Matrix, other as *const Matrix) }
-    return self;
+    return self.clone();
   }
 
   pub fn element_sqrt(&self) -> Self {
@@ -437,9 +437,9 @@ impl Matrix {
     return result;
   }
 
-  pub fn element_sqrt_inplace(&self) -> &Self {
+  pub fn element_sqrt_inplace(&self) -> Self {
     unsafe { cuda_element_sqrt_inplace(self as *const Matrix) }
-    return self;
+    return self.clone();
   }
 
   pub fn element_exp(&self) -> Self {
@@ -449,9 +449,9 @@ impl Matrix {
     return result;
   }
 
-  pub fn element_exp_inplace(&self) -> &Self {
+  pub fn element_exp_inplace(&self) -> Self {
     unsafe { cuda_element_exp_inplace(self as *const Matrix) }
-    return self;
+    return self.clone();
   }
 
   #[allow(non_snake_case)]
@@ -463,9 +463,9 @@ impl Matrix {
   }
 
   #[allow(non_snake_case)]
-  pub fn element_ReLU_inplace(&self) -> &Self {
+  pub fn element_ReLU_inplace(&self) -> Self {
     unsafe { cuda_element_ReLU_inplace(self as *const Matrix) }
-    return self;
+    return self.clone();
   }
 
   #[allow(non_snake_case)]
@@ -477,9 +477,9 @@ impl Matrix {
   }
 
   #[allow(non_snake_case)]
-  pub fn element_ReLU_prime_inplace(&self) -> &Self {
+  pub fn element_ReLU_prime_inplace(&self) -> Self {
     unsafe { cuda_element_ReLU_prime_inplace(self as *const Matrix) }
-    return self;
+    return self.clone();
   }
 
   pub fn sum_rows_matrix(&self) -> Self {
@@ -528,11 +528,11 @@ impl Matrix {
 
   pub fn max_pool(&self) -> (Self, Self) {
     let mut pooled = Matrix {
-      address: std::ptr::null(),
+      address: 0,
       block: 0,
     };
     let mut bitmask = Matrix {
-      address: std::ptr::null(),
+      address: 0,
       block: 0,
     };
     unsafe {
@@ -652,11 +652,11 @@ impl Matrix {
     return result;
   }
 
-  pub fn element_ln_inplace(&self) -> &Self {
+  pub fn element_ln_inplace(&self) -> Self {
     unsafe {
       cuda_element_ln_inplace(self as *const Matrix);
     }
-    return self;
+    return self.clone();
   }
 
   pub fn one_hot_encode(&self, num_classes: usize) -> Self {
@@ -1125,6 +1125,8 @@ pub fn max_pool_packed(matrices: &[Matrix]) -> (Vec<Matrix>, Vec<Matrix>) {
   let mut pooled_results = Vec::with_capacity(num_matrices);
   let mut bitmask_results = Vec::with_capacity(num_matrices);
   unsafe {
+    pooled_results.set_len(num_matrices);
+    bitmask_results.set_len(num_matrices);
     cuda_max_pool_packed(
       matrices.as_ptr(),
       pooled_results.as_mut_ptr(),
@@ -1144,6 +1146,7 @@ pub fn nearest_neighbor_2x_upsample_packed(matrices: &[Matrix], odd_upsample: bo
 
   let mut results = Vec::with_capacity(num_matrices);
   unsafe {
+    results.set_len(num_matrices);
     cuda_nearest_neighbor_2x_upsample_packed(
       matrices.as_ptr(),
       results.as_mut_ptr(),

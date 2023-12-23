@@ -216,10 +216,10 @@ size_t get_matrix_length(Matrix* matrix) {
 void reshape_matrix(Matrix* matrix, size_t rows, size_t columns) {
     MemBlock* block = &mem_blocks[matrix->block_id];
 
-    if (block->mat_count > 1) {
-        printf("Warning, reshape will affect all matrices in this mem group.\n If you do not want this, consider deep cloning to its own mem block.");
-        abort();
-    }
+    // if (block->mat_count > 1) {
+    //     printf("Warning, reshape will affect all matrices in this mem group. If you do not want this, consider deep cloning to its own mem block.");
+    //     abort();
+    // }
 
     if (get_matrix_length(matrix) != rows * columns) {
         printf("Reshape error: new shape must have same number of elements\n");
