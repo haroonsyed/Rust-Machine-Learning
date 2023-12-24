@@ -1,8 +1,8 @@
 use itertools::Itertools;
 use tensor_lib::{
-  element_add_packed, element_add_packed_inplace, element_divide_packed,
-  element_divide_packed_inplace, element_multiply_packed, element_sqrt_packed, scalar_add_packed,
-  scalar_add_packed_inplace, scalar_multiply_packed, scalar_multiply_packed_inplace, Matrix,
+  element_add_packed_inplace, element_divide_packed, element_divide_packed_inplace,
+  element_multiply_packed, element_sqrt_packed, scalar_add_packed_inplace, scalar_multiply_packed,
+  scalar_multiply_packed_inplace, Matrix,
 };
 
 use crate::optimizers::{
@@ -13,7 +13,7 @@ use crate::optimizers::{
 pub trait PackedOptimizer: Send {
   fn calculate_steps(
     &mut self,
-    curr_gradients: &Vec<Matrix>,
+    curr_gradients: &[Matrix],
     normalization_factor: f32,
   ) -> Vec<Matrix>;
   fn get_single_optimizer(&self) -> Box<dyn Optimizer>;
@@ -40,7 +40,7 @@ impl PackedStochasticGradientDescentOptimizer {
 impl PackedOptimizer for PackedStochasticGradientDescentOptimizer {
   fn calculate_steps(
     &mut self,
-    curr_gradients: &Vec<Matrix>,
+    curr_gradients: &[Matrix],
     normalization_factor: f32,
   ) -> Vec<Matrix> {
     return scalar_multiply_packed(curr_gradients, self.learning_rate * normalization_factor);
@@ -73,7 +73,7 @@ impl PackedMomentumOptimizer {
 impl PackedOptimizer for PackedMomentumOptimizer {
   fn calculate_steps(
     &mut self,
-    curr_gradient: &Vec<Matrix>,
+    curr_gradient: &[Matrix],
     normalization_factor: f32,
   ) -> Vec<Matrix> {
     let adjusted_gradients = match &self.prev_gradients {
@@ -129,7 +129,7 @@ impl PackedAdagradOptimizer {
 impl PackedOptimizer for PackedAdagradOptimizer {
   fn calculate_steps(
     &mut self,
-    curr_gradients: &Vec<Matrix>,
+    curr_gradients: &[Matrix],
     normalization_factor: f32,
   ) -> Vec<Matrix> {
     let adjusted_gradients = match &mut self.accumulated_gradients {
@@ -194,7 +194,7 @@ impl PackedRMSPropOptimizer {
 impl PackedOptimizer for PackedRMSPropOptimizer {
   fn calculate_steps(
     &mut self,
-    curr_gradients: &Vec<Matrix>,
+    curr_gradients: &[Matrix],
     normalization_factor: f32,
   ) -> Vec<Matrix> {
     let adjusted_gradients = match &mut self.accumulated_gradients {
@@ -274,7 +274,7 @@ impl PackedAdamOptimizer {
 impl PackedOptimizer for PackedAdamOptimizer {
   fn calculate_steps(
     &mut self,
-    curr_gradients: &Vec<Matrix>,
+    curr_gradients: &[Matrix],
     normalization_factor: f32,
   ) -> Vec<Matrix> {
     let momentum_gradient = match &mut self.d_v {

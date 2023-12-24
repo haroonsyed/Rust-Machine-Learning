@@ -13,7 +13,7 @@ use crate::{
   },
 };
 
-#[pyclass]
+#[pyclass(unsendable)]
 pub struct ConvolutionalNeuralNetwork {
   pub network: ConvolutionalNeuralNetworkRust,
   batch_loader: Option<ImageBatchLoaderRust>,
