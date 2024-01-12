@@ -408,7 +408,6 @@ impl CnnLayer for ConvolutionalLayerRust {
 
   fn backpropogation(&mut self, sample_output_errors: BatchData) -> BatchData {
     let sample_count = sample_output_errors.sample_count;
-    let normalization_factor = 1.0 / sample_count as f32;
 
     // n is the filter
     // m is the channel
@@ -477,14 +476,11 @@ impl CnnLayer for ConvolutionalLayerRust {
     /// DELTA BIASES
     ///////////////////
     // b' = b - de/dy * learning_rate
-    let repeated_bias = (0..sample_count)
-      .flat_map(|_| self.biases.clone())
-      .collect_vec();
     let bias_steps = self
       .packed_bias_optimizer
-      .calculate_steps(bias_gradients, normalization_factor);
+      .calculate_steps(bias_gradients, sample_count);
 
-    element_subtract_packed_inplace(&repeated_bias, &bias_steps);
+    element_subtract_packed_inplace(&self.biases, &bias_steps);
 
     let bias_update_time = start.elapsed() - backprop_setup_time;
 
@@ -497,16 +493,34 @@ impl CnnLayer for ConvolutionalLayerRust {
       &delta_filter_output_error,
       PaddingType::VALID,
     );
+    let correlation_time = start.elapsed() - bias_update_time - backprop_setup_time;
 
     let filter_steps = self
       .packed_filter_optimizer
-      .calculate_steps(&channel_gradients, normalization_factor);
+      .calculate_steps(&channel_gradients, sample_count);
+
+    let filter_step_time =
+      start.elapsed() - correlation_time - bias_update_time - backprop_setup_time;
 
     let flattened_filters = self.filters.to_owned().into_iter().flatten().collect_vec();
-    let repeated_flattened_filters = (0..sample_count)
-      .flat_map(|_| flattened_filters.clone())
-      .collect_vec();
-    element_subtract_packed_inplace(&repeated_flattened_filters, &filter_steps);
+    let flattened_filter_time = start.elapsed()
+      - filter_step_time
+      - correlation_time
+      - bias_update_time
+      - backprop_setup_time;
+    element_subtract_packed_inplace(&flattened_filters, &filter_steps);
+    let filter_update_time = start.elapsed()
+      - flattened_filter_time
+      - filter_step_time
+      - correlation_time
+      - bias_update_time
+      - backprop_setup_time;
+
+    // Print out all the filter update times
+    // println!("correlation_time: {:?}", correlation_time);
+    // println!("filter_step_time: {:?}", filter_step_time);
+    // println!("flattened_filter_time: {:?}", flattened_filter_time);
+    // println!("filter_update_time: {:?}", filter_update_time);
 
     let filter_update_time = start.elapsed() - bias_update_time - backprop_setup_time;
 
@@ -596,11 +610,9 @@ impl CnnLayer for MaxPoolLayerRust {
 
     // Pack the input and pool
     let to_pool = &input.data;
-    let setup_time = start.elapsed();
     let (pooled_samples, bitmasks) = max_pool_packed(to_pool);
-    let pool_time = start.elapsed() - setup_time;
+    let pool_time = start.elapsed();
 
-    // println!("Time to setup packed operations: {:?}", setup_time);
     // println!("Time to pool: {:?}", pool_time);
 
     self.prev_input_bm = BatchData {
@@ -630,6 +642,7 @@ impl CnnLayer for MaxPoolLayerRust {
 
     let total_time = start.elapsed();
     // println!("Time to upsample: {:?}", total_time);
+
     return BatchData {
       data: upsampled,
       sample_count: error.sample_count,
@@ -666,11 +679,16 @@ impl FullyConnectedLayer {
   }
 
   fn train(&mut self, input: BatchData, encoded_labels: &Matrix) -> BatchData {
+    let start = Instant::now();
     let flattened_input = self.flatten(input);
     let fc_error = self
       .fully_connected_layer
       .train_classification_observation_matrix(&flattened_input, encoded_labels);
-    return self.unflatten(fc_error);
+    let error = self.unflatten(fc_error);
+
+    let total_time = start.elapsed();
+    // println!("Time to train FC: {:?}", total_time);
+    return error;
   }
 
   fn flatten(&mut self, input: BatchData) -> Matrix {

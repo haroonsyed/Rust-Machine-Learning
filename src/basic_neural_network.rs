@@ -1,5 +1,5 @@
 // use crate::py_util::py_print;
-use itertools::{izip, Itertools};
+use itertools::Itertools;
 use pyo3::prelude::*;
 use rand::{distributions::Uniform, prelude::Distribution};
 use tensor_lib::{cuda_bindings::cuda_synchronize, Matrix};

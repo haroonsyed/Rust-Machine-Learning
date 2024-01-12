@@ -81,6 +81,27 @@ __device__ float atomicDivide(float* address, float val) {
 //////////////////////////
 /// Util
 //////////////////////////
+
+// Use if you have a device pointer to upload to
+void upload_kernel_args_to_gpu_buffer(Matrix* matrices, Matrix* gpu_buffer, int num_matrices) {
+    const int matrices_size_bytes = sizeof(Matrix) * num_matrices;
+
+    if (matrices != nullptr) {
+        Matrix* pinned_mat1_buffers_ptr = (Matrix*)memory_manager_get_pinned_allocation(matrices_size_bytes);
+        memcpy(pinned_mat1_buffers_ptr, matrices, matrices_size_bytes);
+        memory_manager_upload_from_pinned_buffer(gpu_buffer, pinned_mat1_buffers_ptr, matrices_size_bytes);
+    }
+}
+// Used to upload n kernel args
+std::vector<Matrix*> upload_kernel_args(std::vector<Matrix*>& kernel_args, int num_matrices) {
+    const int num_kernel_args = kernel_args.size();
+    std::vector<Matrix*> kernel_arg_device_pointers = get_device_kernel_args_pointers(num_kernel_args);
+    for (int i = 0; i < num_kernel_args; i++) {
+        upload_kernel_args_to_gpu_buffer(kernel_args[i], kernel_arg_device_pointers[i], num_matrices);
+    }
+    return kernel_arg_device_pointers;
+}
+// used to upload up to 3 kernel args (can pass nullptr for any of them). To be replaced by n args version.
 std::vector<Matrix*> upload_kernel_args(Matrix* matrix_1s, Matrix* matrix_2s, Matrix* out_matrices, int num_matrices) {
     // Get the device buffers to upload to (no allocation takes place here so no memleak)
     std::vector<Matrix*> kernel_arg_device_pointers = get_device_kernel_args_pointers(3);
@@ -88,23 +109,9 @@ std::vector<Matrix*> upload_kernel_args(Matrix* matrix_1s, Matrix* matrix_2s, Ma
     Matrix* gpu_mat2_buffers_dp = (Matrix*)kernel_arg_device_pointers[1];
     Matrix* gpu_out_buffers_dp = (Matrix*)kernel_arg_device_pointers[2];
 
-    const int matrices_size_bytes = sizeof(Matrix) * num_matrices;
-
-    if (matrix_1s != nullptr) {
-        Matrix* pinned_mat1_buffers_ptr = (Matrix*)memory_manager_get_pinned_allocation(matrices_size_bytes);
-        memcpy(pinned_mat1_buffers_ptr, matrix_1s, matrices_size_bytes);
-        memory_manager_upload_from_pinned_buffer(gpu_mat1_buffers_dp, pinned_mat1_buffers_ptr, matrices_size_bytes);
-    }
-    if (matrix_2s != nullptr) {
-        Matrix* pinned_mat2_buffers_ptr = (Matrix*)memory_manager_get_pinned_allocation(matrices_size_bytes);
-        memcpy(pinned_mat2_buffers_ptr, matrix_2s, matrices_size_bytes);
-        memory_manager_upload_from_pinned_buffer(gpu_mat2_buffers_dp, pinned_mat2_buffers_ptr, matrices_size_bytes);
-    }
-    if (out_matrices != nullptr) {
-        Matrix* pinned_out_buffers_ptr = (Matrix*)memory_manager_get_pinned_allocation(matrices_size_bytes);
-        memcpy(pinned_out_buffers_ptr, out_matrices, matrices_size_bytes);
-        memory_manager_upload_from_pinned_buffer(gpu_out_buffers_dp, pinned_out_buffers_ptr, matrices_size_bytes);
-    }
+    upload_kernel_args_to_gpu_buffer(matrix_1s, gpu_mat1_buffers_dp, num_matrices);
+    upload_kernel_args_to_gpu_buffer(matrix_2s, gpu_mat2_buffers_dp, num_matrices);
+    upload_kernel_args_to_gpu_buffer(out_matrices, gpu_out_buffers_dp, num_matrices);
 
     return kernel_arg_device_pointers;
 }
@@ -4371,5 +4378,147 @@ void cuda_element_ln_inplace(Matrix* matrix) {
 
     // Run the kernels
     element_ln_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffer, mat_rows, mat_cols, gpu_out_buffer);
+    gpuErrchk(cudaPeekAtLastError());
+}
+
+//////////////////////////////////
+/// Neural Network Operations API
+//////////////////////////////////
+
+__global__ void cuda_cnn_feed_forward_kernel(Matrix* channel_buffers, Matrix* filter_buffers, Matrix* bias_buffers, Matrix* result_buffers, int channel_count_per_sample, int sample_count, int filter_count) {
+    const int result_idx = blockIdx.x;
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    const int sample_idx = result_idx / filter_count;
+
+    float* result_matrix_buffer = result_buffers[result_idx].address;
+
+    // Go through the filters
+    for (int i = 0; i < filter_count; i++) {
+        const float* bias_buffer = bias_buffers[i].address;
+
+        // To be honest, a packed version isn't necessary if implemented right
+        // A device function can just loop while threads < work left
+
+        // So that is the next thing to do, move a lot of existing functions to device functions
+
+        // Will need scratchpad memory to perform the convolution
+        // Will also need device functions to call
+
+        // Go through channels of the filter and sample
+        // Correlate each sample_channel with filter_channel
+        // Sum the result, add bias, and reLU
+    }
+}
+
+void cuda_cnn_feed_forward(Matrix* channels, Matrix* filters, Matrix* biases, size_t channel_count_per_sample, size_t sample_count, size_t filter_count, Matrix* results) {
+    // Get matrix dimensions
+    int mat_rows = get_matrix_rows(&channels[0]);
+    int mat_cols = get_matrix_columns(&channels[0]);
+    int kernel_rows = get_matrix_rows(&filters[0]);
+    int kernel_cols = get_matrix_columns(&channels[0]);
+
+    // Register the result matrix group
+    // We will use valid correlation for feed forward
+    int out_rows = mat_rows - kernel_rows + 1;
+    int out_cols = mat_cols - kernel_cols + 1;
+    register_matrix_group(out_rows, out_cols, sample_count * filter_count, results);
+
+    // Get the GPU buffers to operate on
+    std::vector<Matrix*> kernel_arg_device_pointers = get_device_kernel_args_pointers(4);
+    Matrix* gpu_channels_buffer = (Matrix*)kernel_arg_device_pointers[0];
+    Matrix* gpu_filters_buffer = (Matrix*)kernel_arg_device_pointers[0];
+    Matrix* gpu_biases_buffer = (Matrix*)kernel_arg_device_pointers[0];
+    Matrix* gpu_results_buffer = (Matrix*)kernel_arg_device_pointers[0];
+
+    // Upload data to gpu buffers
+    upload_kernel_args_to_gpu_buffer(channels, gpu_biases_buffer, channel_count_per_sample * sample_count);
+    upload_kernel_args_to_gpu_buffer(filters, gpu_filters_buffer, channel_count_per_sample * filter_count);
+    upload_kernel_args_to_gpu_buffer(biases, gpu_biases_buffer, filter_count);
+    upload_kernel_args_to_gpu_buffer(results, gpu_results_buffer, filter_count * sample_count);
+
+    // Kernel Launch Parameters
+    // TODO: Based on input dimensions, determine if we do a packed version.
+    //         Right now we will just do packed version since train sets are small
+    const int THREADS_PER_BLOCK = 8;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 gridDim(sample_count * filter_count, 1, 1);  // Each block handles one filter output (packed version)
+
+    // Run the kernels
+    cuda_cnn_feed_forward_kernel<<<gridDim, block_dim, 0, get_stream()>>>(gpu_channels_buffer, gpu_filters_buffer, gpu_biases_buffer, gpu_results_buffer, channel_count_per_sample, sample_count, filter_count);
+    gpuErrchk(cudaPeekAtLastError());
+}
+
+__global__ void cuda_adam_optimizer_packed_kernel(Matrix* d_v_buffers, Matrix* d_s_buffers, Matrix* curr_gradients_buffers, Matrix* results_buffers, int matrix_rows, int matrix_cols, float d_v_beta, float d_s_beta, float learning_rate) {
+    // Each block handles updating a pair of d_s and d_v
+    int block_tid = blockDim.x;
+
+    const float* curr_gradient = curr_gradients_buffers[block_tid].address;
+    float* d_v_buffer = d_v_buffers[block_tid].address;
+    float* d_s_buffer = d_s_buffers[block_tid].address;
+    float* result_buffer = results_buffers[block_tid].address;
+
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    const float epsilon = 1e-8;
+
+    while (tidY < matrix_rows) {
+        while (tidX < matrix_cols) {
+            const int mat_index = tidY * matrix_cols + tidX;
+            const float curr_gradient_val = curr_gradient[mat_index];
+
+            // Momentum dv = (beta * prev_grad + (1 - beta) * curr_gradient)
+            float d_v_previous = d_v_buffer[mat_index];
+            float d_v_new = d_v_beta * d_v_previous + (1 - d_v_beta) * curr_gradient_val;
+
+            // RMS Props ds = beta * prev_accumulated_gradient + (1 - beta) * curr_gradient ^ 2
+            float d_s_previous = d_s_buffer[mat_index];
+            float d_s_new = d_s_beta * d_s_previous + (1 - d_s_beta) * curr_gradient_val * curr_gradient_val;
+
+            // Scale momentum dv and rms prop dss to be similar scale
+            // d_v_new /= (1.0 - self.beta1.powf(timestep))
+            // d_s_new /= (1.0 - self.beta2.powf(timestep))
+
+            // Calculate final delta_gradient = learning_rate * dv / sqrt(ds) + epsilon
+            float delta_gradient = learning_rate * d_v_new / (sqrtf(d_s_new) + epsilon);
+
+            d_v_buffer[mat_index] = d_v_new;
+            d_s_buffer[mat_index] = d_s_new;
+            result_buffer[mat_index] = delta_gradient;
+            tidX += blockDim.x;
+        }
+
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
+void cuda_adam_optimizer_packed(Matrix* d_v, Matrix* d_s, Matrix* curr_gradients, Matrix* results, size_t num_matrices, float d_v_beta, float d_s_beta, float learning_rate) {
+    // Get matrix dimensions
+    int mat_rows = get_matrix_rows(&d_v[0]);
+    int mat_cols = get_matrix_columns(&d_v[0]);
+
+    // Register output matrix group
+    register_matrix_group(mat_rows, mat_cols, num_matrices, results);
+
+    // Get the gpu buffers to operate on
+    std::vector<Matrix*> kernel_args = {d_v, d_s, curr_gradients, results};
+    auto device_pointers = upload_kernel_args(kernel_args, num_matrices);
+
+    // Get the gpu buffers to operate on
+    Matrix* gpu_d_v_buffer = device_pointers[0];
+    Matrix* gpu_d_s_buffer = device_pointers[1];
+    Matrix* gpu_curr_gradients_buffer = device_pointers[2];
+    Matrix* gpu_results_buffer = device_pointers[3];
+
+    // Kernel Launch Parameters
+    const int THREADS_PER_BLOCK = 8;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim(num_matrices, 1, 1);  // Each block handles one matrix
+
+    // Run the kernels
+    cuda_adam_optimizer_packed_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_d_v_buffer, gpu_d_s_buffer, gpu_curr_gradients_buffer, gpu_results_buffer, mat_rows, mat_cols, d_v_beta, d_s_beta, learning_rate);
     gpuErrchk(cudaPeekAtLastError());
 }

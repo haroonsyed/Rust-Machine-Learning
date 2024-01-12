@@ -4,13 +4,17 @@ use crate::Matrix;
 use crate::PaddingType;
 
 extern "C" {
+  // TESTING
   pub fn test();
   pub fn test_array_fill(out: *mut c_float, length: usize);
 
+  // PURE CUDA PASSTHROUGH
   pub fn cuda_synchronize();
 
+  // HOST MEMORY OPERATIONS
   pub fn memory_manager_get_pinned_allocation(size: usize) -> *mut c_float;
 
+  // MATRIX MANAGEMENT
   pub fn register_matrix(rows: usize, cols: usize) -> Matrix;
   pub fn register_matrix_group(rows: usize, cols: usize, count: usize, matrices: *mut Matrix);
   pub fn register_matrix_with_data(data: *const c_float, rows: usize, cols: usize) -> Matrix;
@@ -22,12 +26,14 @@ extern "C" {
   pub fn increase_matrix_ref_count(matrix: *const Matrix);
   pub fn decrease_matrix_ref_count(matrix: *const Matrix);
 
+  // MATRIX META DATA
   pub fn get_matrix_rows(matrix: *const Matrix) -> usize;
   pub fn get_matrix_columns(matrix: *const Matrix) -> usize;
   pub fn get_matrix_length(matrix: *const Matrix) -> usize;
   pub fn get_matrix_data(matrix: *const Matrix, data_buffer: *mut c_float);
   pub fn reshape_matrix(matrix: *const Matrix, rows: usize, columns: usize);
 
+  // MATRIX OPERATIONS
   pub fn cuda_element_add(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
   pub fn cuda_element_add_inplace(matrix_1: *const Matrix, matrix_2: *const Matrix);
   pub fn cuda_element_add_packed(
@@ -250,4 +256,16 @@ extern "C" {
   pub fn cuda_element_ln(matrix: *const Matrix) -> Matrix;
   pub fn cuda_element_ln_inplace(matrix: *const Matrix);
   pub fn cuda_one_hot_encode_vector(matrix: *const Matrix, num_classes: usize) -> Matrix;
+
+  // NEURAL NETWORK FUNCTIONS
+  pub fn cuda_adam_optimizer_packed(
+    d_v: *const Matrix,
+    d_s: *const Matrix,
+    curr_gradients: *const Matrix,
+    results: *mut Matrix,
+    num_matrices: usize,
+    d_v_beta: f32,
+    d_s_beta: f32,
+    learning_rate: f32,
+  );
 }

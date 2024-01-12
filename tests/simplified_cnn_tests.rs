@@ -506,8 +506,8 @@ mod simplified_cnn_tests {
 
     let a_data = a.get_data();
     let b_data = b.get_data();
-    for i in 0..a.rows {
-      for j in 0..a.columns {
+    for i in 0..a.get_rows() {
+      for j in 0..a.get_columns() {
         if !approx_equal(a_data[i][j], b_data[i][j], precision) {
           return false;
         }

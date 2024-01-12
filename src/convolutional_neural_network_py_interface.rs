@@ -8,8 +8,7 @@ use crate::{
   convolutional_neural_network::ConvolutionalNeuralNetworkRust,
   image_util::ImageBatchLoaderRust,
   packed_optimizers::{
-    PackedAdagradOptimizer, PackedAdamOptimizer, PackedMomentumOptimizer, PackedRMSPropOptimizer,
-    PackedStochasticGradientDescentOptimizer,
+    PackedAdamOptimizer, PackedMomentumOptimizer, PackedStochasticGradientDescentOptimizer,
   },
 };
 
@@ -52,15 +51,15 @@ impl ConvolutionalNeuralNetwork {
     self.network.set_optimizer(optimizer);
   }
 
-  fn set_optimizer_adagrad(&mut self, learning_rate: f32) {
-    let optimizer = Box::new(PackedAdagradOptimizer::new(learning_rate));
-    self.network.set_optimizer(optimizer);
-  }
+  // fn set_optimizer_adagrad(&mut self, learning_rate: f32) {
+  //   let optimizer = Box::new(PackedAdagradOptimizer::new(learning_rate));
+  //   self.network.set_optimizer(optimizer);
+  // }
 
-  fn set_optimizer_RMSProp(&mut self, learning_rate: f32, beta: f32) {
-    let optimizer = Box::new(PackedRMSPropOptimizer::new(learning_rate, beta));
-    self.network.set_optimizer(optimizer);
-  }
+  // fn set_optimizer_RMSProp(&mut self, learning_rate: f32, beta: f32) {
+  //   let optimizer = Box::new(PackedRMSPropOptimizer::new(learning_rate, beta));
+  //   self.network.set_optimizer(optimizer);
+  // }
 
   fn set_optimizer_adam(&mut self, learning_rate: f32, beta1: f32, beta2: f32) {
     let optimizer = Box::new(PackedAdamOptimizer::new(learning_rate, beta1, beta2));
