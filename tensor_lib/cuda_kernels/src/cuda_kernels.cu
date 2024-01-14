@@ -672,6 +672,599 @@ __global__ void element_ReLU_prime_packed_kernel(Matrix* mat1_buffers, Matrix* o
     element_ReLU_prime_packed_device(mat1_buffer, out_buffer, mat_rows, mat_cols);
 }
 
+__global__ void matrix_multiply_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_rows && tidY < out_cols) {
+        // O[i][j] = mat1[i][:] weighted sum mat2[:][j]
+        // Where common dimension : is mat1col/mat2row
+
+        float weighted_sum = 0.0;
+        for (int common = 0; common < mat1_cols; common++) {
+            // mat1[i][common]
+            int mat1_index = mat1_cols * tidX + common;
+            // mat1[common][j]
+            int mat2_index = mat2_cols * common + tidY;
+
+            weighted_sum += mat1_buffer[mat1_index] * mat2_buffer[mat2_index];
+        }
+
+        int output_index = tidX * out_cols + tidY;
+        out_buffer[output_index] = weighted_sum;
+    }
+}
+
+__global__ void matrix_multiply_kernel_2(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
+    // Go by col row instead of row col. Enabled memory coalescing
+    const int col = blockDim.x * blockIdx.x + threadIdx.x;
+    const int row = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (row >= out_rows || col >= out_cols) {
+        return;
+    }
+
+    // O[i][j] = mat1[i][:] weighted sum mat2[:][j]
+    // Where common dimension : is mat1col/mat2row
+
+    float weighted_sum = 0.0;
+    for (int common = 0; common < mat1_cols; common++) {
+        // mat1[i][common]
+        int mat1_index = mat1_cols * row + common;
+        // mat1[common][j]
+        int mat2_index = mat2_cols * common + col;
+
+        weighted_sum += mat1_buffer[mat1_index] * mat2_buffer[mat2_index];
+    }
+
+    const int output_index = row * out_cols + col;
+    out_buffer[output_index] = weighted_sum;
+}
+
+__global__ void matrix_multiply_kernel_3(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
+    const int block_dim = 32;
+    const int block_area = block_dim * block_dim;
+
+    // Block tiling with shared memory
+    __shared__ float s_mat1[block_area];
+    __shared__ float s_mat2[block_area];
+
+    const int block_row = blockIdx.y;
+    const int block_col = blockIdx.x;
+
+    int mat1_block_pos = block_row * block_dim * mat1_cols;
+    int mat2_block_pos = block_col * block_dim;
+    int out_block_pos = block_row * block_dim * out_cols + block_col * block_dim;
+
+    // So within our block we are gonna figure out this thread's position
+    int thread_row = threadIdx.y;
+    int thread_col = threadIdx.x;
+
+    int out_row = block_row * block_dim + thread_row;
+    int out_col = block_col * block_dim + thread_col;
+    if (out_row >= out_rows || out_col >= out_cols) {
+        return;
+    }
+
+    float weighted_sum = 0.0;
+    int common_partial_block = mat1_cols % block_dim;
+    int common_in_block = mat1_cols - common_partial_block;
+    for (int k = 0; k < common_in_block; k += block_dim) {
+        s_mat1[thread_row * block_dim + thread_col] = mat1_buffer[mat1_block_pos + thread_row * mat1_cols + thread_col];
+        s_mat2[thread_row * block_dim + thread_col] = mat2_buffer[mat2_block_pos + thread_row * mat2_cols + thread_col];
+        __syncthreads();
+
+        mat1_block_pos += block_dim;
+        mat2_block_pos += block_dim * mat2_cols;
+        for (int i = 0; i < block_dim; i++) {
+            weighted_sum += s_mat1[thread_row * block_dim + i] * s_mat2[i * block_dim + thread_col];
+        }
+        __syncthreads();
+    }
+
+    // Handle partial block case
+    s_mat1[thread_row * block_dim + thread_col] = mat1_buffer[mat1_block_pos + thread_row * mat1_cols + thread_col];
+    s_mat2[thread_row * block_dim + thread_col] = mat2_buffer[mat2_block_pos + thread_row * mat2_cols + thread_col];
+    __syncthreads();
+
+    mat1_block_pos += block_dim;
+    mat2_block_pos += block_dim * mat2_cols;
+    for (int i = 0; i < common_partial_block; i++) {
+        weighted_sum += s_mat1[thread_row * block_dim + i] * s_mat2[i * block_dim + thread_col];
+    }
+
+    out_buffer[out_block_pos + (thread_row * out_cols) + thread_col] = weighted_sum;
+}
+
+// block_M is rows in mat1 shared block
+// block_N is cols in mat2 shared block
+// block_k is shared dimensions for shared block. Also the # of results each thread will compute in C
+// For this to work we want the shared dimension block_K to be smaller than block_M and block_N
+// This way, multiple threads reuse sections from mat1 and mat2 ,with more output work
+// Example: bK is 8 while bM and bN are 64. Output is a 64x64 area.
+//          So you can spin up 512 threads per block. They load vram->shared
+//          Then each thread can work on 8 pieces of the output 64x64 area (64*64/8 = 512)
+template <const int block_M, const int block_N, const int block_K>
+__global__ void matrix_multiply_kernel_4(int M, int N, int K, float* mat1_buffer, float* mat2_buffer, float* out_buffer) {
+    // Block tiling with shared memory
+    // Each one of these threads will handle #block_K output result columns
+    __shared__ float s_mat1[block_M * block_K];
+    __shared__ float s_mat2[block_K * block_N];
+
+    float thread_results[block_K] = {0.0};
+
+    const int block_row = blockIdx.y;
+    const int block_col = blockIdx.x;
+
+    // Get starting positions of each block
+    int mat1_block_pos = block_row * block_M * K;
+    int mat2_block_pos = block_col * block_N;
+    int out_block_pos = block_row * block_M * N + block_col * block_N;
+
+    // Used to track if out of bounds
+    const int mat1_load_index_row = block_row * block_M + threadIdx.x;
+    const int mat2_load_index_col = block_col * block_N + threadIdx.x;
+    int mat_common_index = threadIdx.y;
+    const bool exceeded_mat1_row = mat1_load_index_row >= M;
+    const bool exceeded_mat2_col = mat2_load_index_col >= N;
+
+    // outer loop over block tiles
+    for (unsigned int common_block = 0; common_block < K; common_block += block_K) {
+        const int within_mat1 = (int)!(exceeded_mat1_row || mat_common_index >= K);
+        const int within_mat2 = (int)!(mat_common_index >= K || exceeded_mat2_col);
+        int mat1_load_index = mat1_block_pos + threadIdx.x * K + threadIdx.y;
+        int mat2_load_index = mat2_block_pos + threadIdx.y * N + threadIdx.x;
+
+        // Prevent loading OOB
+        mat1_load_index *= within_mat1;
+        mat2_load_index *= within_mat2;
+
+        // Load block data into shared memory. Load 0 is OOB.
+        s_mat1[threadIdx.x * block_K + threadIdx.y] = mat1_buffer[mat1_load_index] * within_mat1;
+        s_mat2[threadIdx.y * block_N + threadIdx.x] = mat2_buffer[mat2_load_index] * within_mat2;
+        __syncthreads();
+
+        // Advance block
+        mat1_block_pos += block_K;
+        mat2_block_pos += block_K * N;
+        mat_common_index += block_K;
+
+        // Go through common dimensions of block (across row of mat1 and down col of mat2)
+        for (unsigned int block_common_index = 0; block_common_index < block_K; ++block_common_index) {
+            const float shared_mat2_val = s_mat2[block_common_index * block_N + threadIdx.x];
+
+            // Now this thread will accumulate the result for each t_row in the t_col of C
+            for (unsigned int result_index = 0; result_index < block_K; ++result_index) {
+                thread_results[result_index] +=
+                    s_mat1[(threadIdx.y * block_K + result_index) * block_K + block_common_index] * shared_mat2_val;
+            }
+        }
+        __syncthreads();
+    }
+
+    // Write results with bounds checking
+    const int out_index_row = block_row * block_M + threadIdx.y * block_K;
+    const int out_index_col = block_col * block_N + threadIdx.x;
+
+    for (int i = 0; i < block_K; i++) {
+        if (out_index_row + i < M && out_index_col < N) {
+            out_buffer[out_block_pos + (threadIdx.y * block_K + i) * N + threadIdx.x] = thread_results[i];
+        }
+    }
+}
+
+// block_M is rows in mat1 shared block
+// block_N is cols in mat2 shared block
+// block_k is shared dimensions for shared block.
+// The thread will calculate block_k * block_k results (So now a 2d version of v3)
+// For this to work we want the shared dimension block_K to be extremely smaller than block_M and block_N
+// This way, multiple threads reuse sections from mat1 and mat2 ,with more output work
+// Example: bK is 8 while bM and bN are 128. Output is a 128x128 area.
+//          So you can spin up 256 threads per block. They load vram->shared
+//          Then each thread can work on 8x8 pieces of the output 128x128 area (128x128/64 = 256)
+//          You might be wondering why not 512 threads like previously?
+//          Well that increases the mem requirements per block, reducing occupancy.
+template <const int block_M, const int block_N, const int block_K>
+__global__ void matrix_multiply_kernel_5(int M, int N, int K, float* __restrict__ mat1_buffer, float* __restrict__ mat2_buffer, float* __restrict__ out_buffer) {
+    // 2D Block tiling with shared memory
+    __shared__ float s_mat1[block_M * block_K];
+    __shared__ float s_mat2[block_K * block_N];
+
+    float thread_results[block_K * block_K] = {0.0};
+
+    const int block_row = blockIdx.y;
+    const int block_col = blockIdx.x;
+
+    // Output within block details
+    const int tid = threadIdx.y * blockDim.x + threadIdx.x;
+    const int out_block_row = tid / (block_M / block_K);
+    const int out_block_col = tid % (block_N / block_K);
+
+    const int num_threads_per_block = blockDim.x * blockDim.y;
+    const int num_elements_to_load = (block_M * block_K) / num_threads_per_block;
+
+    const int stride_mat1 = num_threads_per_block / block_K;
+    const int stride_mat2 = num_threads_per_block / block_N;
+
+    int mat1_pos = block_row * block_M * K;
+    int mat2_pos = block_col * block_N;
+
+// outer loop over block tiles
+#pragma unroll
+    for (int common_block = 0; common_block < K; common_block += block_K) {
+#pragma unroll 4
+        for (int i = 0; i < num_elements_to_load; i++) {
+            const int mat1_row_within_block = (threadIdx.x + stride_mat1 * i);
+            const int mat1_col_within_block = threadIdx.y;
+            const int mat2_row_within_block = (threadIdx.y / num_elements_to_load) + i * stride_mat2;
+            const int mat2_col_within_block = (threadIdx.y % num_elements_to_load) * blockDim.x + threadIdx.x;
+
+            const int mat1_load_index_row = block_row * block_M + mat1_row_within_block;
+            const int mat1_load_index_col = common_block + mat1_col_within_block;
+            const int mat2_load_index_row = common_block + mat2_row_within_block;
+            const int mat2_load_index_col = block_col * block_N + mat2_col_within_block;
+
+            const bool exceeded_mat1_row = mat1_load_index_row >= M;
+            const bool exceeded_mat1_col = mat1_load_index_col >= K;
+            const bool exceeded_mat2_row = mat2_load_index_row >= K;
+            const bool exceeded_mat2_col = mat2_load_index_col >= N;
+
+            const int within_mat1 = (int)!(exceeded_mat1_row || exceeded_mat1_col);
+            const int within_mat2 = (int)!(exceeded_mat2_row || exceeded_mat2_col);
+            int mat1_load_index = mat1_pos + mat1_row_within_block * K + mat1_col_within_block;
+            int mat2_load_index = mat2_pos + mat2_row_within_block * N + mat2_col_within_block;
+
+            mat1_load_index *= within_mat1;
+            mat2_load_index *= within_mat2;
+
+            s_mat1[mat1_row_within_block * block_K + mat1_col_within_block] =
+                mat1_buffer[mat1_load_index] * within_mat1;
+            s_mat2[mat2_row_within_block * block_N + mat2_col_within_block] =
+                mat2_buffer[mat2_load_index] * within_mat2;
+        }
+
+        mat1_pos += block_K;
+        mat2_pos += block_K * N;
+
+        __syncthreads();
+
+        // Go through common dimensions of block (across row of mat1 and down col of mat2)
+#pragma unroll 8
+        for (int block_common_index = 0; block_common_index < block_K; block_common_index++) {
+            // Now this thread will accumulate the block_K x block_K results from shared memory
+#pragma unroll 8
+            for (int result_index_row = 0; result_index_row < block_K; result_index_row++) {
+#pragma unroll 8
+                for (int result_index_col = 0; result_index_col < block_K; result_index_col++) {
+                    thread_results[result_index_row * block_K + result_index_col] +=
+                        s_mat1[(out_block_row * block_K + result_index_row) * block_K + block_common_index] *
+                        s_mat2[(block_common_index * block_N) + (out_block_col * block_K + result_index_col)];
+                }
+            }
+        }
+        __syncthreads();
+    }
+
+    // Write results with bounds checking
+    const int out_index_row = block_row * block_M + out_block_row * block_K;
+    const int out_index_col = block_col * block_N + out_block_col * block_K;
+
+#pragma unroll 8
+    for (int i = 0; i < block_K; i++) {
+#pragma unroll 8
+        for (int j = 0; j < block_K; j++) {
+            if (out_index_row + i < M && out_index_col + j < N) {
+                out_buffer[(out_index_row + i) * N + out_index_col + j] = thread_results[i * block_K + j];
+            }
+        }
+    }
+}
+
+__global__ void add_vector_to_columns_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = mat1[i][j] + mat2[i][0]
+
+        int mat1_index = tidY * mat1_cols + tidX;
+        int mat2_index = tidY;
+
+        int output_index = mat1_index;
+        out_buffer[output_index] = mat1_buffer[mat1_index] + mat2_buffer[mat2_index];
+    }
+}
+
+__global__ void add_vector_to_rows_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = mat1[i][j] + mat2[0][j]
+
+        int mat1_index = tidY * mat1_cols + tidX;
+        int mat2_index = tidX;
+
+        int output_index = mat1_index;
+        out_buffer[output_index] = mat1_buffer[mat1_index] + mat2_buffer[mat2_index];
+    }
+}
+
+__global__ void divide_by_column_vector_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = mat1[i][j] / mat2[i][0]
+
+        int mat1_index = tidY * mat1_cols + tidX;
+        int mat2_index = tidY;
+
+        int output_index = mat1_index;
+        out_buffer[output_index] = mat1_buffer[mat1_index] / mat2_buffer[mat2_index];
+    }
+}
+
+__global__ void divide_by_row_vector_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = mat1[i][j] / mat2[0][j]
+
+        int mat1_index = tidY * mat1_cols + tidX;
+        int mat2_index = tidX;
+
+        int output_index = mat1_index;
+        out_buffer[output_index] = mat1_buffer[mat1_index] / mat2_buffer[mat2_index];
+    }
+}
+
+__global__ void sum_rows_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][0] = sum (mat1[i][:])
+
+        float row_sum = 0.0;
+        int mat1_row_start_index = tidY * mat1_cols;
+        for (int i = 0; i < mat1_cols; i++) {
+            int mat1_index = mat1_row_start_index + i;
+            row_sum += mat1_buffer[mat1_index];
+        }
+
+        int output_index = tidY * out_cols + tidX;
+        out_buffer[output_index] = row_sum;
+    }
+}
+
+__global__ void sum_columns_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[0][j] = sum (mat1[:][j])
+
+        float col_sum = 0.0;
+        for (int i = 0; i < mat1_rows; i++) {
+            int mat1_index = tidX + i * mat1_cols;
+            col_sum += mat1_buffer[mat1_index];
+        }
+
+        int output_index = tidY * out_cols + tidX;
+        out_buffer[output_index] = col_sum;
+    }
+}
+
+__global__ void transpose_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = mat1[j][i]
+
+        int mat1_index = tidX * mat1_cols + tidY;
+
+        int output_index = tidY * out_cols + tidX;
+        out_buffer[output_index] = mat1_buffer[mat1_index];
+    }
+}
+
+__global__ void max_pool_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols, float* max_bitmask) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // For each 2x2 area pick the maximum value
+        // We will mem coalesce by getting first two in row 1
+        // Then next 2 in row2
+
+        int block_start_row = tidY * 2;
+        int block_start_col = tidX * 2;
+        int block_start = block_start_row * mat1_cols + block_start_col;
+
+        // bool block_00_oob = false;
+        bool block_01_oob = (block_start_col + 1) >= mat1_cols;
+        bool block_10_oob = (block_start_row + 1) >= mat1_rows;
+        bool block_11_oob = block_01_oob || block_10_oob;
+
+        // Unique small values to ensure bitmask is written once
+        const float small_float_1 = -1e30;  // Should probably use FLT_MIN but language server no like it
+        const float small_float_2 = -1e31;
+        const float small_float_3 = -1e32;
+
+        // TODO: Use bit operations instead of ternary (it's faster idk why the compiler can't figure it out)
+        float block_00 = mat1_buffer[block_start];
+        float block_01 = block_01_oob ? small_float_1 : mat1_buffer[block_start + 1];
+        block_start += mat1_cols;
+        float block_10 = block_10_oob ? small_float_2 : mat1_buffer[block_start];
+        float block_11 = block_11_oob ? small_float_3 : mat1_buffer[block_start + 1];
+
+        float result = max(max(block_00, block_01), max(block_10, block_11));
+
+        // Set bitmask
+        max_bitmask[block_start_row * mat1_cols + block_start_col] = (float)(result == block_00);
+        if (!block_01_oob) {
+            max_bitmask[block_start_row * mat1_cols + block_start_col + 1] = (float)(result == block_01);
+        }
+        if (!block_10_oob) {
+            max_bitmask[(block_start_row + 1) * mat1_cols + block_start_col] = (float)(result == block_10);
+        }
+        if (!block_11_oob) {
+            max_bitmask[(block_start_row + 1) * mat1_cols + block_start_col + 1] = (float)(result == block_11);
+        }
+
+        // Write maxpool result
+        int output_index = tidY * out_cols + tidX;
+        out_buffer[output_index] = result;
+    }
+}
+
+// Each block handles one matrix
+__global__ void max_pool_packed_kernel(Matrix* mat_buffers, Matrix* out_buffers, Matrix* max_bitmasks, int mat_rows, int mat_cols, int out_rows, int out_cols) {
+    const int current_matrix = blockIdx.x;
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    // Grab the buffers
+    const float* mat_buffer = mat_buffers[current_matrix].address;
+    float* out_buffer = out_buffers[current_matrix].address;
+    float* max_bitmask = max_bitmasks[current_matrix].address;
+
+    // The work will be split among threads in the block
+    while (tidY < out_rows) {
+        while (tidX < out_cols) {
+            // For each 2x2 area pick the maximum value
+            // We will mem coalesce by getting first two in row 1
+            // Then next 2 in row2
+
+            int block_start_row = tidY * 2;
+            int block_start_col = tidX * 2;
+            int block_start = block_start_row * mat_cols + block_start_col;
+
+            // bool block_00_oob = false;
+            bool block_01_oob = (block_start_col + 1) >= mat_cols;
+            bool block_10_oob = (block_start_row + 1) >= mat_rows;
+            bool block_11_oob = block_01_oob || block_10_oob;
+
+            // Unique small values to ensure bitmask is written once
+            const float small_float_1 = -1e30;  // Should probably use FLT_MIN but language server no like it
+            const float small_float_2 = -1e31;
+            const float small_float_3 = -1e32;
+
+            // TODO: Use bit operations instead of ternary (it's faster idk why the compiler can't figure it out)
+            float block_00 = mat_buffer[block_start];
+            float block_01 = block_01_oob ? small_float_1 : mat_buffer[block_start + 1];
+            block_start += mat_cols;
+            float block_10 = block_10_oob ? small_float_2 : mat_buffer[block_start];
+            float block_11 = block_11_oob ? small_float_3 : mat_buffer[block_start + 1];
+
+            float result = max(max(block_00, block_01), max(block_10, block_11));
+
+            // Set bitmask
+            max_bitmask[block_start_row * mat_cols + block_start_col] = (float)(result == block_00);
+            if (!block_01_oob) {
+                max_bitmask[block_start_row * mat_cols + block_start_col + 1] = (float)(result == block_01);
+            }
+            if (!block_10_oob) {
+                max_bitmask[(block_start_row + 1) * mat_cols + block_start_col] = (float)(result == block_10);
+            }
+            if (!block_11_oob) {
+                max_bitmask[(block_start_row + 1) * mat_cols + block_start_col + 1] = (float)(result == block_11);
+            }
+
+            // Write maxpool result
+            int output_index = tidY * out_cols + tidX;
+            out_buffer[output_index] = result;
+            // printf("Set result to %f at row %d col %d for mat #%d at %d\n", result, tidY, tidX, current_matrix, output_index);
+
+            tidX += blockDim.x;
+        }
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
+__global__ void nearest_neighbor_2x_upsample_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
+    // Upsample by nearest neighbor
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = mat1[i/2][j/2]
+        int mat1_index = (tidY / 2) * mat1_cols + (tidX / 2);
+
+        int output_index = tidY * out_cols + tidX;
+        out_buffer[output_index] = mat1_buffer[mat1_index];
+    }
+}
+
+// Each block handles one matrix
+__global__ void nearest_neighbor_2x_upsample_packed_kernel(Matrix* mat_buffers, Matrix* out_buffers, int mat_rows, int mat_cols, int out_rows, int out_cols) {
+    const int current_matrix = blockIdx.x;
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    // Grab the buffers
+    const float* mat_buffer = mat_buffers[current_matrix].address;
+    float* out_buffer = out_buffers[current_matrix].address;
+
+    // The work will be split among threads in the block
+    while (tidY < out_rows) {
+        while (tidX < out_cols) {
+            // O[i][j] = mat[i/2][j/2]
+            int mat_index = (tidY / 2) * mat_cols + (tidX / 2);
+            int output_index = tidY * out_cols + tidX;
+
+            out_buffer[output_index] = mat_buffer[mat_index];
+
+            tidX += blockDim.x;
+        }
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
+__global__ void rotate_180_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    const int mat_length = mat1_rows * mat1_cols;
+
+    if (tidX < mat_length) {
+        // Rotating an array 180 means
+        // Reversing the linearized array
+        const int reversed_index = mat_length - tidX - 1;
+        const float input = mat1_buffer[reversed_index];
+
+        const int output_index = tidX;
+        out_buffer[output_index] = input;
+    }
+}
+
+// Each block handles one matrix
+__global__ void rotate_180_packed_kernel(Matrix* mat_buffers, Matrix* out_buffers, int mat_rows, int mat_cols, int out_rows, int out_cols) {
+    const int current_matrix = blockIdx.x;
+    int tidX = threadIdx.x;
+    const int mat_length = out_rows * out_cols;
+
+    // Grab the buffers
+    const float* mat_buffer = mat_buffers[current_matrix].address;
+    float* out_buffer = out_buffers[current_matrix].address;
+
+    // The work will be split among threads in the block
+    while (tidX < mat_length) {
+        // Rotating an array 180 means
+        // Reversing the linearized array
+        const int reversed_index = mat_length - tidX - 1;
+        const float input = mat_buffer[reversed_index];
+
+        int output_index = tidX;
+        out_buffer[output_index] = input;
+
+        tidX += blockDim.x;
+    }
+}
+
 //////////////////////////
 /// Util
 //////////////////////////
@@ -1285,294 +1878,6 @@ void cuda_scalar_divide_packed_inplace(Matrix* matrices, size_t num_matrices, fl
     cuda_scalar_divide_packed_impl(matrices, nullptr, num_matrices, scalar);
 }
 
-__global__ void matrix_multiply_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_rows && tidY < out_cols) {
-        // O[i][j] = mat1[i][:] weighted sum mat2[:][j]
-        // Where common dimension : is mat1col/mat2row
-
-        float weighted_sum = 0.0;
-        for (int common = 0; common < mat1_cols; common++) {
-            // mat1[i][common]
-            int mat1_index = mat1_cols * tidX + common;
-            // mat1[common][j]
-            int mat2_index = mat2_cols * common + tidY;
-
-            weighted_sum += mat1_buffer[mat1_index] * mat2_buffer[mat2_index];
-        }
-
-        int output_index = tidX * out_cols + tidY;
-        out_buffer[output_index] = weighted_sum;
-    }
-}
-
-__global__ void matrix_multiply_kernel_2(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
-    // Go by col row instead of row col. Enabled memory coalescing
-    const int col = blockDim.x * blockIdx.x + threadIdx.x;
-    const int row = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (row >= out_rows || col >= out_cols) {
-        return;
-    }
-
-    // O[i][j] = mat1[i][:] weighted sum mat2[:][j]
-    // Where common dimension : is mat1col/mat2row
-
-    float weighted_sum = 0.0;
-    for (int common = 0; common < mat1_cols; common++) {
-        // mat1[i][common]
-        int mat1_index = mat1_cols * row + common;
-        // mat1[common][j]
-        int mat2_index = mat2_cols * common + col;
-
-        weighted_sum += mat1_buffer[mat1_index] * mat2_buffer[mat2_index];
-    }
-
-    const int output_index = row * out_cols + col;
-    out_buffer[output_index] = weighted_sum;
-}
-
-__global__ void matrix_multiply_kernel_3(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
-    const int block_dim = 32;
-    const int block_area = block_dim * block_dim;
-
-    // Block tiling with shared memory
-    __shared__ float s_mat1[block_area];
-    __shared__ float s_mat2[block_area];
-
-    const int block_row = blockIdx.y;
-    const int block_col = blockIdx.x;
-
-    int mat1_block_pos = block_row * block_dim * mat1_cols;
-    int mat2_block_pos = block_col * block_dim;
-    int out_block_pos = block_row * block_dim * out_cols + block_col * block_dim;
-
-    // So within our block we are gonna figure out this thread's position
-    int thread_row = threadIdx.y;
-    int thread_col = threadIdx.x;
-
-    int out_row = block_row * block_dim + thread_row;
-    int out_col = block_col * block_dim + thread_col;
-    if (out_row >= out_rows || out_col >= out_cols) {
-        return;
-    }
-
-    float weighted_sum = 0.0;
-    int common_partial_block = mat1_cols % block_dim;
-    int common_in_block = mat1_cols - common_partial_block;
-    for (int k = 0; k < common_in_block; k += block_dim) {
-        s_mat1[thread_row * block_dim + thread_col] = mat1_buffer[mat1_block_pos + thread_row * mat1_cols + thread_col];
-        s_mat2[thread_row * block_dim + thread_col] = mat2_buffer[mat2_block_pos + thread_row * mat2_cols + thread_col];
-        __syncthreads();
-
-        mat1_block_pos += block_dim;
-        mat2_block_pos += block_dim * mat2_cols;
-        for (int i = 0; i < block_dim; i++) {
-            weighted_sum += s_mat1[thread_row * block_dim + i] * s_mat2[i * block_dim + thread_col];
-        }
-        __syncthreads();
-    }
-
-    // Handle partial block case
-    s_mat1[thread_row * block_dim + thread_col] = mat1_buffer[mat1_block_pos + thread_row * mat1_cols + thread_col];
-    s_mat2[thread_row * block_dim + thread_col] = mat2_buffer[mat2_block_pos + thread_row * mat2_cols + thread_col];
-    __syncthreads();
-
-    mat1_block_pos += block_dim;
-    mat2_block_pos += block_dim * mat2_cols;
-    for (int i = 0; i < common_partial_block; i++) {
-        weighted_sum += s_mat1[thread_row * block_dim + i] * s_mat2[i * block_dim + thread_col];
-    }
-
-    out_buffer[out_block_pos + (thread_row * out_cols) + thread_col] = weighted_sum;
-}
-
-// block_M is rows in mat1 shared block
-// block_N is cols in mat2 shared block
-// block_k is shared dimensions for shared block. Also the # of results each thread will compute in C
-// For this to work we want the shared dimension block_K to be smaller than block_M and block_N
-// This way, multiple threads reuse sections from mat1 and mat2 ,with more output work
-// Example: bK is 8 while bM and bN are 64. Output is a 64x64 area.
-//          So you can spin up 512 threads per block. They load vram->shared
-//          Then each thread can work on 8 pieces of the output 64x64 area (64*64/8 = 512)
-template <const int block_M, const int block_N, const int block_K>
-__global__ void matrix_multiply_kernel_4(int M, int N, int K, float* mat1_buffer, float* mat2_buffer, float* out_buffer) {
-    // Block tiling with shared memory
-    // Each one of these threads will handle #block_K output result columns
-    __shared__ float s_mat1[block_M * block_K];
-    __shared__ float s_mat2[block_K * block_N];
-
-    float thread_results[block_K] = {0.0};
-
-    const int block_row = blockIdx.y;
-    const int block_col = blockIdx.x;
-
-    // Get starting positions of each block
-    int mat1_block_pos = block_row * block_M * K;
-    int mat2_block_pos = block_col * block_N;
-    int out_block_pos = block_row * block_M * N + block_col * block_N;
-
-    // Used to track if out of bounds
-    const int mat1_load_index_row = block_row * block_M + threadIdx.x;
-    const int mat2_load_index_col = block_col * block_N + threadIdx.x;
-    int mat_common_index = threadIdx.y;
-    const bool exceeded_mat1_row = mat1_load_index_row >= M;
-    const bool exceeded_mat2_col = mat2_load_index_col >= N;
-
-    // outer loop over block tiles
-    for (unsigned int common_block = 0; common_block < K; common_block += block_K) {
-        const int within_mat1 = (int)!(exceeded_mat1_row || mat_common_index >= K);
-        const int within_mat2 = (int)!(mat_common_index >= K || exceeded_mat2_col);
-        int mat1_load_index = mat1_block_pos + threadIdx.x * K + threadIdx.y;
-        int mat2_load_index = mat2_block_pos + threadIdx.y * N + threadIdx.x;
-
-        // Prevent loading OOB
-        mat1_load_index *= within_mat1;
-        mat2_load_index *= within_mat2;
-
-        // Load block data into shared memory. Load 0 is OOB.
-        s_mat1[threadIdx.x * block_K + threadIdx.y] = mat1_buffer[mat1_load_index] * within_mat1;
-        s_mat2[threadIdx.y * block_N + threadIdx.x] = mat2_buffer[mat2_load_index] * within_mat2;
-        __syncthreads();
-
-        // Advance block
-        mat1_block_pos += block_K;
-        mat2_block_pos += block_K * N;
-        mat_common_index += block_K;
-
-        // Go through common dimensions of block (across row of mat1 and down col of mat2)
-        for (unsigned int block_common_index = 0; block_common_index < block_K; ++block_common_index) {
-            const float shared_mat2_val = s_mat2[block_common_index * block_N + threadIdx.x];
-
-            // Now this thread will accumulate the result for each t_row in the t_col of C
-            for (unsigned int result_index = 0; result_index < block_K; ++result_index) {
-                thread_results[result_index] +=
-                    s_mat1[(threadIdx.y * block_K + result_index) * block_K + block_common_index] * shared_mat2_val;
-            }
-        }
-        __syncthreads();
-    }
-
-    // Write results with bounds checking
-    const int out_index_row = block_row * block_M + threadIdx.y * block_K;
-    const int out_index_col = block_col * block_N + threadIdx.x;
-
-    for (int i = 0; i < block_K; i++) {
-        if (out_index_row + i < M && out_index_col < N) {
-            out_buffer[out_block_pos + (threadIdx.y * block_K + i) * N + threadIdx.x] = thread_results[i];
-        }
-    }
-}
-
-// block_M is rows in mat1 shared block
-// block_N is cols in mat2 shared block
-// block_k is shared dimensions for shared block.
-// The thread will calculate block_k * block_k results (So now a 2d version of v3)
-// For this to work we want the shared dimension block_K to be extremely smaller than block_M and block_N
-// This way, multiple threads reuse sections from mat1 and mat2 ,with more output work
-// Example: bK is 8 while bM and bN are 128. Output is a 128x128 area.
-//          So you can spin up 256 threads per block. They load vram->shared
-//          Then each thread can work on 8x8 pieces of the output 128x128 area (128x128/64 = 256)
-//          You might be wondering why not 512 threads like previously?
-//          Well that increases the mem requirements per block, reducing occupancy.
-template <const int block_M, const int block_N, const int block_K>
-__global__ void matrix_multiply_kernel_5(int M, int N, int K, float* __restrict__ mat1_buffer, float* __restrict__ mat2_buffer, float* __restrict__ out_buffer) {
-    // 2D Block tiling with shared memory
-    __shared__ float s_mat1[block_M * block_K];
-    __shared__ float s_mat2[block_K * block_N];
-
-    float thread_results[block_K * block_K] = {0.0};
-
-    const int block_row = blockIdx.y;
-    const int block_col = blockIdx.x;
-
-    // Output within block details
-    const int tid = threadIdx.y * blockDim.x + threadIdx.x;
-    const int out_block_row = tid / (block_M / block_K);
-    const int out_block_col = tid % (block_N / block_K);
-
-    const int num_threads_per_block = blockDim.x * blockDim.y;
-    const int num_elements_to_load = (block_M * block_K) / num_threads_per_block;
-
-    const int stride_mat1 = num_threads_per_block / block_K;
-    const int stride_mat2 = num_threads_per_block / block_N;
-
-    int mat1_pos = block_row * block_M * K;
-    int mat2_pos = block_col * block_N;
-
-// outer loop over block tiles
-#pragma unroll
-    for (int common_block = 0; common_block < K; common_block += block_K) {
-#pragma unroll 4
-        for (int i = 0; i < num_elements_to_load; i++) {
-            const int mat1_row_within_block = (threadIdx.x + stride_mat1 * i);
-            const int mat1_col_within_block = threadIdx.y;
-            const int mat2_row_within_block = (threadIdx.y / num_elements_to_load) + i * stride_mat2;
-            const int mat2_col_within_block = (threadIdx.y % num_elements_to_load) * blockDim.x + threadIdx.x;
-
-            const int mat1_load_index_row = block_row * block_M + mat1_row_within_block;
-            const int mat1_load_index_col = common_block + mat1_col_within_block;
-            const int mat2_load_index_row = common_block + mat2_row_within_block;
-            const int mat2_load_index_col = block_col * block_N + mat2_col_within_block;
-
-            const bool exceeded_mat1_row = mat1_load_index_row >= M;
-            const bool exceeded_mat1_col = mat1_load_index_col >= K;
-            const bool exceeded_mat2_row = mat2_load_index_row >= K;
-            const bool exceeded_mat2_col = mat2_load_index_col >= N;
-
-            const int within_mat1 = (int)!(exceeded_mat1_row || exceeded_mat1_col);
-            const int within_mat2 = (int)!(exceeded_mat2_row || exceeded_mat2_col);
-            int mat1_load_index = mat1_pos + mat1_row_within_block * K + mat1_col_within_block;
-            int mat2_load_index = mat2_pos + mat2_row_within_block * N + mat2_col_within_block;
-
-            mat1_load_index *= within_mat1;
-            mat2_load_index *= within_mat2;
-
-            s_mat1[mat1_row_within_block * block_K + mat1_col_within_block] =
-                mat1_buffer[mat1_load_index] * within_mat1;
-            s_mat2[mat2_row_within_block * block_N + mat2_col_within_block] =
-                mat2_buffer[mat2_load_index] * within_mat2;
-        }
-
-        mat1_pos += block_K;
-        mat2_pos += block_K * N;
-
-        __syncthreads();
-
-        // Go through common dimensions of block (across row of mat1 and down col of mat2)
-#pragma unroll 8
-        for (int block_common_index = 0; block_common_index < block_K; block_common_index++) {
-            // Now this thread will accumulate the block_K x block_K results from shared memory
-#pragma unroll 8
-            for (int result_index_row = 0; result_index_row < block_K; result_index_row++) {
-#pragma unroll 8
-                for (int result_index_col = 0; result_index_col < block_K; result_index_col++) {
-                    thread_results[result_index_row * block_K + result_index_col] +=
-                        s_mat1[(out_block_row * block_K + result_index_row) * block_K + block_common_index] *
-                        s_mat2[(block_common_index * block_N) + (out_block_col * block_K + result_index_col)];
-                }
-            }
-        }
-        __syncthreads();
-    }
-
-    // Write results with bounds checking
-    const int out_index_row = block_row * block_M + out_block_row * block_K;
-    const int out_index_col = block_col * block_N + out_block_col * block_K;
-
-#pragma unroll 8
-    for (int i = 0; i < block_K; i++) {
-#pragma unroll 8
-        for (int j = 0; j < block_K; j++) {
-            if (out_index_row + i < M && out_index_col + j < N) {
-                out_buffer[(out_index_row + i) * N + out_index_col + j] = thread_results[i * block_K + j];
-            }
-        }
-    }
-}
-
 Matrix cuda_matrix_multiply(Matrix* matrix_1, Matrix* matrix_2) {
     // Get matrix dimensions
     int mat1_rows = get_matrix_rows(matrix_1);
@@ -1622,134 +1927,48 @@ Matrix cuda_matrix_multiply(Matrix* matrix_1, Matrix* matrix_2) {
     return out_matrix;
 }
 
-__global__ void add_vector_to_columns_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+Matrix cuda_add_vector_impl(Matrix* matrix_1, Matrix* matrix_2, bool inplace) {
+    // Get matrix dimensions
+    int mat1_rows = get_matrix_rows(matrix_1);
+    int mat1_cols = get_matrix_columns(matrix_1);
+    int mat2_rows = get_matrix_rows(matrix_2);
+    int mat2_cols = get_matrix_columns(matrix_2);
 
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = mat1[i][j] + mat2[i][0]
+    bool is_column_vector = (mat2_cols == 1 && mat2_rows == mat1_rows);
 
-        int mat1_index = tidY * mat1_cols + tidX;
-        int mat2_index = tidY;
+    // Create output buffer
+    int out_rows = mat1_rows;
+    int out_cols = mat1_cols;
+    Matrix out_matrix = inplace ? *matrix_1 : register_matrix(out_rows, out_cols);
 
-        int output_index = mat1_index;
-        out_buffer[output_index] = mat1_buffer[mat1_index] + mat2_buffer[mat2_index];
+    // Get the gpu buffers to operate on
+    float* gpu_mat1_buffer = reinterpret_cast<float*>(matrix_1->address);
+    float* gpu_mat2_buffer = reinterpret_cast<float*>(matrix_2->address);
+    float* gpu_out_buffer = reinterpret_cast<float*>(out_matrix.address);
+
+    // Kernel launch parameters
+    const int THREADS_PER_BLOCK = 32;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
+
+    // Run the kernels
+    if (is_column_vector) {
+        add_vector_to_columns_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
+    } else {
+        add_vector_to_rows_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
     }
+    gpuErrchk(cudaPeekAtLastError());
+
+    return out_matrix;
 }
-
-__global__ void add_vector_to_rows_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = mat1[i][j] + mat2[0][j]
-
-        int mat1_index = tidY * mat1_cols + tidX;
-        int mat2_index = tidX;
-
-        int output_index = mat1_index;
-        out_buffer[output_index] = mat1_buffer[mat1_index] + mat2_buffer[mat2_index];
-    }
-}
-
 Matrix cuda_add_vector(Matrix* matrix_1, Matrix* matrix_2) {
-    // Get matrix dimensions
-    int mat1_rows = get_matrix_rows(matrix_1);
-    int mat1_cols = get_matrix_columns(matrix_1);
-    int mat2_rows = get_matrix_rows(matrix_2);
-    int mat2_cols = get_matrix_columns(matrix_2);
-
-    bool is_column_vector = (mat2_cols == 1 && mat2_rows == mat1_rows);
-
-    // Create output buffer
-    int out_rows = mat1_rows;
-    int out_cols = mat1_cols;
-    Matrix out_matrix = register_matrix(out_rows, out_cols);
-
-    // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = reinterpret_cast<float*>(matrix_1->address);
-    float* gpu_mat2_buffer = reinterpret_cast<float*>(matrix_2->address);
-    float* gpu_out_buffer = reinterpret_cast<float*>(out_matrix.address);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 32;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
-
-    // Run the kernels
-    if (is_column_vector) {
-        add_vector_to_columns_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
-    } else {
-        add_vector_to_rows_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
-    }
-    gpuErrchk(cudaPeekAtLastError());
-
-    return out_matrix;
+    return cuda_add_vector_impl(matrix_1, matrix_2, false);
 }
-
 void cuda_add_vector_inplace(Matrix* matrix_1, Matrix* matrix_2) {
-    // Get matrix dimensions
-    int mat1_rows = get_matrix_rows(matrix_1);
-    int mat1_cols = get_matrix_columns(matrix_1);
-    int mat2_rows = get_matrix_rows(matrix_2);
-    int mat2_cols = get_matrix_columns(matrix_2);
-
-    bool is_column_vector = (mat2_cols == 1 && mat2_rows == mat1_rows);
-
-    // Create output buffer
-    int out_rows = mat1_rows;
-    int out_cols = mat1_cols;
-
-    // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = reinterpret_cast<float*>(matrix_1->address);
-    float* gpu_mat2_buffer = reinterpret_cast<float*>(matrix_2->address);
-    float* gpu_out_buffer = gpu_mat1_buffer;
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 32;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
-
-    // Run the kernels
-    if (is_column_vector) {
-        add_vector_to_columns_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
-    } else {
-        add_vector_to_rows_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
-    }
-    gpuErrchk(cudaPeekAtLastError());
+    cuda_add_vector_impl(matrix_1, matrix_2, true);
 }
 
-__global__ void divide_by_column_vector_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = mat1[i][j] / mat2[i][0]
-
-        int mat1_index = tidY * mat1_cols + tidX;
-        int mat2_index = tidY;
-
-        int output_index = mat1_index;
-        out_buffer[output_index] = mat1_buffer[mat1_index] / mat2_buffer[mat2_index];
-    }
-}
-
-__global__ void divide_by_row_vector_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* mat2_buffer, int mat2_rows, int mat2_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = mat1[i][j] / mat2[0][j]
-
-        int mat1_index = tidY * mat1_cols + tidX;
-        int mat2_index = tidX;
-
-        int output_index = mat1_index;
-        out_buffer[output_index] = mat1_buffer[mat1_index] / mat2_buffer[mat2_index];
-    }
-}
-
-Matrix cuda_divide_by_vector(Matrix* matrix_1, Matrix* matrix_2) {
+Matrix cuda_divide_by_vector_impl(Matrix* matrix_1, Matrix* matrix_2, bool inplace) {
     // Get matrix dimensions
     int mat1_rows = get_matrix_rows(matrix_1);
     int mat1_cols = get_matrix_columns(matrix_1);
@@ -1762,7 +1981,7 @@ Matrix cuda_divide_by_vector(Matrix* matrix_1, Matrix* matrix_2) {
     // Create output buffer
     int out_rows = mat1_rows;
     int out_cols = mat1_cols;
-    Matrix out_matrix = register_matrix(out_rows, out_cols);
+    Matrix out_matrix = inplace ? *matrix_1 : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
     float* gpu_mat1_buffer = reinterpret_cast<float*>(matrix_1->address);
@@ -1784,38 +2003,11 @@ Matrix cuda_divide_by_vector(Matrix* matrix_1, Matrix* matrix_2) {
 
     return out_matrix;
 }
-
+Matrix cuda_divide_by_vector(Matrix* matrix_1, Matrix* matrix_2) {
+    return cuda_divide_by_vector_impl(matrix_1, matrix_2, false);
+}
 void cuda_divide_by_vector_inplace(Matrix* matrix_1, Matrix* matrix_2) {
-    // Get matrix dimensions
-    int mat1_rows = get_matrix_rows(matrix_1);
-    int mat1_cols = get_matrix_columns(matrix_1);
-    int mat2_rows = get_matrix_rows(matrix_2);
-    int mat2_cols = get_matrix_columns(matrix_2);
-
-    // Determine orientation
-    bool is_column_vector = (mat2_cols == 1 && mat2_rows == mat1_rows);
-
-    // Create output buffer
-    int out_rows = mat1_rows;
-    int out_cols = mat1_cols;
-
-    // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = reinterpret_cast<float*>(matrix_1->address);
-    float* gpu_mat2_buffer = reinterpret_cast<float*>(matrix_2->address);
-    float* gpu_out_buffer = gpu_mat1_buffer;
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 32;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
-
-    // Run the kernels
-    if (is_column_vector) {
-        divide_by_column_vector_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
-    } else {
-        divide_by_row_vector_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
-    }
-    gpuErrchk(cudaPeekAtLastError());
+    cuda_divide_by_vector_impl(matrix_1, matrix_2, true);
 }
 
 Matrix cuda_element_sqrt_impl(Matrix* matrix, bool inplace) {
@@ -2102,25 +2294,6 @@ void cuda_element_ReLU_prime_packed_inplace(Matrix* matrices, size_t num_matrice
     cuda_element_ReLU_prime_packed_impl(matrices, nullptr, num_matrices);
 }
 
-__global__ void sum_rows_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][0] = sum (mat1[i][:])
-
-        float row_sum = 0.0;
-        int mat1_row_start_index = tidY * mat1_cols;
-        for (int i = 0; i < mat1_cols; i++) {
-            int mat1_index = mat1_row_start_index + i;
-            row_sum += mat1_buffer[mat1_index];
-        }
-
-        int output_index = tidY * out_cols + tidX;
-        out_buffer[output_index] = row_sum;
-    }
-}
-
 Matrix cuda_sum_rows(Matrix* matrix) {
     // Get matrix info
     int mat_rows = get_matrix_rows(matrix);
@@ -2145,24 +2318,6 @@ Matrix cuda_sum_rows(Matrix* matrix) {
     gpuErrchk(cudaPeekAtLastError());
 
     return out_matrix;
-}
-
-__global__ void sum_columns_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[0][j] = sum (mat1[:][j])
-
-        float col_sum = 0.0;
-        for (int i = 0; i < mat1_rows; i++) {
-            int mat1_index = tidX + i * mat1_cols;
-            col_sum += mat1_buffer[mat1_index];
-        }
-
-        int output_index = tidY * out_cols + tidX;
-        out_buffer[output_index] = col_sum;
-    }
 }
 
 Matrix cuda_sum_columns(Matrix* matrix) {
@@ -2191,20 +2346,6 @@ Matrix cuda_sum_columns(Matrix* matrix) {
     return out_matrix;
 }
 
-__global__ void transpose_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = mat1[j][i]
-
-        int mat1_index = tidX * mat1_cols + tidY;
-
-        int output_index = tidY * out_cols + tidX;
-        out_buffer[output_index] = mat1_buffer[mat1_index];
-    }
-}
-
 Matrix cuda_transpose(Matrix* matrix) {
     // Get matrix info
     int mat_rows = get_matrix_rows(matrix);
@@ -2231,56 +2372,6 @@ Matrix cuda_transpose(Matrix* matrix) {
     return out_matrix;
 }
 
-__global__ void cuda_max_pool_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols, float* max_bitmask) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // For each 2x2 area pick the maximum value
-        // We will mem coalesce by getting first two in row 1
-        // Then next 2 in row2
-
-        int block_start_row = tidY * 2;
-        int block_start_col = tidX * 2;
-        int block_start = block_start_row * mat1_cols + block_start_col;
-
-        // bool block_00_oob = false;
-        bool block_01_oob = (block_start_col + 1) >= mat1_cols;
-        bool block_10_oob = (block_start_row + 1) >= mat1_rows;
-        bool block_11_oob = block_01_oob || block_10_oob;
-
-        // Unique small values to ensure bitmask is written once
-        const float small_float_1 = -1e30;  // Should probably use FLT_MIN but language server no like it
-        const float small_float_2 = -1e31;
-        const float small_float_3 = -1e32;
-
-        // TODO: Use bit operations instead of ternary (it's faster idk why the compiler can't figure it out)
-        float block_00 = mat1_buffer[block_start];
-        float block_01 = block_01_oob ? small_float_1 : mat1_buffer[block_start + 1];
-        block_start += mat1_cols;
-        float block_10 = block_10_oob ? small_float_2 : mat1_buffer[block_start];
-        float block_11 = block_11_oob ? small_float_3 : mat1_buffer[block_start + 1];
-
-        float result = max(max(block_00, block_01), max(block_10, block_11));
-
-        // Set bitmask
-        max_bitmask[block_start_row * mat1_cols + block_start_col] = (float)(result == block_00);
-        if (!block_01_oob) {
-            max_bitmask[block_start_row * mat1_cols + block_start_col + 1] = (float)(result == block_01);
-        }
-        if (!block_10_oob) {
-            max_bitmask[(block_start_row + 1) * mat1_cols + block_start_col] = (float)(result == block_10);
-        }
-        if (!block_11_oob) {
-            max_bitmask[(block_start_row + 1) * mat1_cols + block_start_col + 1] = (float)(result == block_11);
-        }
-
-        // Write maxpool result
-        int output_index = tidY * out_cols + tidX;
-        out_buffer[output_index] = result;
-    }
-}
-
 // 2x2 since other reduction sizes are not really used
 void cuda_max_pool(Matrix* matrix, Matrix* out_pooled, Matrix* out_bitmask) {
     // Get matrix info
@@ -2304,73 +2395,8 @@ void cuda_max_pool(Matrix* matrix, Matrix* out_pooled, Matrix* out_bitmask) {
     dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
 
     // Run the kernels
-    cuda_max_pool_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat_rows, mat_cols, gpu_out_buffer, out_rows, out_cols, gpu_max_bitmask);
+    max_pool_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat_rows, mat_cols, gpu_out_buffer, out_rows, out_cols, gpu_max_bitmask);
     gpuErrchk(cudaPeekAtLastError());
-}
-
-// Each block handles one matrix
-__global__ void cuda_max_pool_packed_kernel(Matrix* mat_buffers, Matrix* out_buffers, Matrix* max_bitmasks, int mat_rows, int mat_cols, int out_rows, int out_cols) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix].address;
-    float* out_buffer = out_buffers[current_matrix].address;
-    float* max_bitmask = max_bitmasks[current_matrix].address;
-
-    // The work will be split among threads in the block
-    while (tidY < out_rows) {
-        while (tidX < out_cols) {
-            // For each 2x2 area pick the maximum value
-            // We will mem coalesce by getting first two in row 1
-            // Then next 2 in row2
-
-            int block_start_row = tidY * 2;
-            int block_start_col = tidX * 2;
-            int block_start = block_start_row * mat_cols + block_start_col;
-
-            // bool block_00_oob = false;
-            bool block_01_oob = (block_start_col + 1) >= mat_cols;
-            bool block_10_oob = (block_start_row + 1) >= mat_rows;
-            bool block_11_oob = block_01_oob || block_10_oob;
-
-            // Unique small values to ensure bitmask is written once
-            const float small_float_1 = -1e30;  // Should probably use FLT_MIN but language server no like it
-            const float small_float_2 = -1e31;
-            const float small_float_3 = -1e32;
-
-            // TODO: Use bit operations instead of ternary (it's faster idk why the compiler can't figure it out)
-            float block_00 = mat_buffer[block_start];
-            float block_01 = block_01_oob ? small_float_1 : mat_buffer[block_start + 1];
-            block_start += mat_cols;
-            float block_10 = block_10_oob ? small_float_2 : mat_buffer[block_start];
-            float block_11 = block_11_oob ? small_float_3 : mat_buffer[block_start + 1];
-
-            float result = max(max(block_00, block_01), max(block_10, block_11));
-
-            // Set bitmask
-            max_bitmask[block_start_row * mat_cols + block_start_col] = (float)(result == block_00);
-            if (!block_01_oob) {
-                max_bitmask[block_start_row * mat_cols + block_start_col + 1] = (float)(result == block_01);
-            }
-            if (!block_10_oob) {
-                max_bitmask[(block_start_row + 1) * mat_cols + block_start_col] = (float)(result == block_10);
-            }
-            if (!block_11_oob) {
-                max_bitmask[(block_start_row + 1) * mat_cols + block_start_col + 1] = (float)(result == block_11);
-            }
-
-            // Write maxpool result
-            int output_index = tidY * out_cols + tidX;
-            out_buffer[output_index] = result;
-            // printf("Set result to %f at row %d col %d for mat #%d at %d\n", result, tidY, tidX, current_matrix, output_index);
-
-            tidX += blockDim.x;
-        }
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
 }
 
 void cuda_max_pool_packed(Matrix* matrices, Matrix* out_pooled, Matrix* out_bitmasks, size_t num_matrices) {
@@ -2396,22 +2422,8 @@ void cuda_max_pool_packed(Matrix* matrices, Matrix* out_pooled, Matrix* out_bitm
     dim3 grid_dim(num_matrices, 1, 1);
 
     // Run the kernels
-    cuda_max_pool_packed_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, gpu_out_buffers_dp, gpu_out_bitmask_buffers_dp, mat_rows, mat_cols, out_rows, out_cols);
+    max_pool_packed_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, gpu_out_buffers_dp, gpu_out_bitmask_buffers_dp, mat_rows, mat_cols, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
-}
-
-__global__ void cuda_nearest_neighbor_2x_upsample_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
-    // Upsample by nearest neighbor
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = mat1[i/2][j/2]
-        int mat1_index = (tidY / 2) * mat1_cols + (tidX / 2);
-
-        int output_index = tidY * out_cols + tidX;
-        out_buffer[output_index] = mat1_buffer[mat1_index];
-    }
 }
 
 // Odd upsample will leave out one row and one column from the upsampled matrix
@@ -2435,36 +2447,10 @@ Matrix cuda_nearest_neighbor_2x_upsample(Matrix* matrix, bool odd_upsample) {
 
     dim3 block_dim(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y, 1);
     dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
-    cuda_nearest_neighbor_2x_upsample_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffer, mat_rows, mat_cols, gpu_out_buffer, out_rows, out_cols);
+    nearest_neighbor_2x_upsample_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffer, mat_rows, mat_cols, gpu_out_buffer, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 
     return out_matrix;
-}
-
-// Each block handles one matrix
-__global__ void cuda_nearest_neighbor_2x_upsample_packed_kernel(Matrix* mat_buffers, Matrix* out_buffers, int mat_rows, int mat_cols, int out_rows, int out_cols) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix].address;
-    float* out_buffer = out_buffers[current_matrix].address;
-
-    // The work will be split among threads in the block
-    while (tidY < out_rows) {
-        while (tidX < out_cols) {
-            // O[i][j] = mat[i/2][j/2]
-            int mat_index = (tidY / 2) * mat_cols + (tidX / 2);
-            int output_index = tidY * out_cols + tidX;
-
-            out_buffer[output_index] = mat_buffer[mat_index];
-
-            tidX += blockDim.x;
-        }
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
 }
 
 void cuda_nearest_neighbor_2x_upsample_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices, bool odd_upsample) {
@@ -2488,23 +2474,8 @@ void cuda_nearest_neighbor_2x_upsample_packed(Matrix* matrices, Matrix* out_matr
     dim3 grid_dim(num_matrices, 1, 1);
 
     // Run the kernels
-    cuda_nearest_neighbor_2x_upsample_packed_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, out_rows, out_cols);
+    nearest_neighbor_2x_upsample_packed_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
-}
-
-__global__ void cuda_rotate_180_kernel(float* mat1_buffer, int mat1_rows, int mat1_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    const int mat_length = mat1_rows * mat1_cols;
-
-    if (tidX < mat_length) {
-        // Rotating an array 180 means
-        // Reversing the linearized array
-        const int reversed_index = mat_length - tidX - 1;
-        const float input = mat1_buffer[reversed_index];
-
-        const int output_index = tidX;
-        out_buffer[output_index] = input;
-    }
 }
 
 Matrix cuda_rotate_180(Matrix* matrix) {
@@ -2528,34 +2499,10 @@ Matrix cuda_rotate_180(Matrix* matrix) {
     dim3 grid_dim((out_length + block_dim.x - 1) / block_dim.x, 1, 1);
 
     // Run the kernels
-    cuda_rotate_180_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffer, mat_rows, mat_cols, gpu_out_buffer, out_rows, out_cols);
+    rotate_180_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffer, mat_rows, mat_cols, gpu_out_buffer, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 
     return out_matrix;
-}
-
-// Each block handles one matrix
-__global__ void cuda_rotate_180_packed_kernel(Matrix* mat_buffers, Matrix* out_buffers, int mat_rows, int mat_cols, int out_rows, int out_cols) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    const int mat_length = out_rows * out_cols;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix].address;
-    float* out_buffer = out_buffers[current_matrix].address;
-
-    // The work will be split among threads in the block
-    while (tidX < mat_length) {
-        // Rotating an array 180 means
-        // Reversing the linearized array
-        const int reversed_index = mat_length - tidX - 1;
-        const float input = mat_buffer[reversed_index];
-
-        int output_index = tidX;
-        out_buffer[output_index] = input;
-
-        tidX += blockDim.x;
-    }
 }
 
 void cuda_rotate_180_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices) {
@@ -2579,7 +2526,7 @@ void cuda_rotate_180_packed(Matrix* matrices, Matrix* out_matrices, size_t num_m
     dim3 grid_dim(num_matrices, 1, 1);
 
     // Run the kernels
-    cuda_rotate_180_packed_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, out_rows, out_cols);
+    rotate_180_packed_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, gpu_out_buffers_dp, mat_rows, mat_cols, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 }
 
@@ -4131,17 +4078,13 @@ __global__ void cuda_cnn_feed_forward_kernel(Matrix* channel_buffers, Matrix* fi
     for (int i = 0; i < filter_count; i++) {
         const float* bias_buffer = bias_buffers[i].address;
 
-        // To be honest, a packed version isn't necessary if implemented right
-        // A device function can just loop while threads < work left
-
-        // So that is the next thing to do, move a lot of existing functions to device functions
-
-        // Will need scratchpad memory to perform the convolution
-        // Will also need device functions to call
-
         // Go through channels of the filter and sample
         // Correlate each sample_channel with filter_channel
         // Sum the result, add bias, and reLU
+
+        // Will need scratchpad memory to perform the convolution
+        // Will also need device functions to call
+        // Device functions needed are correlate, sum, relu
     }
 }
 
