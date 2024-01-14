@@ -1753,6 +1753,333 @@ __global__ void convolve_kernel_packed_full(Matrix* mat_buffers, int num_matrice
     convolve_full_packed_device(mat_buffer, mat_rows, mat_cols, kernel_buffer, kernel_rows, kernel_cols, out_buffer, out_rows, out_cols);
 }
 
+__global__ void cuda_img2col_valid_kernel(Matrix* mat_buffers, int input_depth, int input_rows, int input_cols, int filter_depth, int filter_rows, int filter_cols, float* out_buffer, int out_rows, int out_cols) {
+    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+
+    // This thread will handle one patch of the image, through all the kernels
+    // This means each thread handle one column of the output
+    const int number_of_patches = out_cols;
+    const int current_patch = tidX;
+
+    if (current_patch < number_of_patches) {
+// Go through each of the kernels
+#pragma unroll
+        for (int curr_channel = 0; curr_channel < input_depth; curr_channel++) {
+            const float* current_buffer = mat_buffers[curr_channel].address;
+
+            // Now translate current_patch into the patch's top left corner
+            const int kernel_top_left_row = current_patch / (input_cols - filter_cols + 1);
+            const int kernel_top_left_col = current_patch % (input_cols - filter_cols + 1);
+            const int base_output_row = curr_channel * filter_rows * filter_cols;
+            const int output_col = current_patch;
+
+// Now construct the patch
+#pragma unroll 3
+            for (int m = 0; m < filter_rows; m++) {
+#pragma unroll 3
+                for (int n = 0; n < filter_cols; n++) {
+                    const float mat_val = current_buffer[(kernel_top_left_row + m) * input_cols + (kernel_top_left_col + n)];
+                    const int output_index = base_output_row + m * filter_cols + n;
+                    out_buffer[output_index * out_cols + output_col] = mat_val;
+                }
+            }
+        }
+    }
+}
+
+__global__ void cuda_flatten_array_kernel(Matrix* mat_buffers, int mat_rows, int mat_cols, float* out_buffer, int out_rows, int out_cols) {
+    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    const int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+    const int output_index = tidY * out_cols + tidX;
+    const int output_img_size = out_rows * out_cols;
+    const int each_input_img_size = mat_rows * mat_cols;
+
+    if (output_index < output_img_size) {
+        // Grab the gpu buffer we are reffering to
+        const int current_buffer_index = output_index / each_input_img_size;
+        const float* current_buffer = mat_buffers[current_buffer_index].address;
+
+        // Determine the pixel to copy
+        const int current_buffer_pixel = output_index % each_input_img_size;
+
+        // Write result
+        out_buffer[output_index] = current_buffer[current_buffer_pixel];
+    }
+}
+
+__global__ void cuda_unflatten_array_kernel(float* array_buffer, int arr_size, int mat_rows, int mat_cols, Matrix* mat_buffers) {
+    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    const int array_buffer_index = tidX;
+
+    if (array_buffer_index < arr_size) {
+        // Check which mat_buffer to write to
+        const int mat_size = mat_rows * mat_cols;
+        const int mat_buffer_index = array_buffer_index / mat_size;
+        const int mat_buffer_pixel = array_buffer_index % mat_size;
+
+        // Write result
+        mat_buffers[mat_buffer_index].address[mat_buffer_pixel] = array_buffer[array_buffer_index];
+    }
+}
+
+__global__ void cuda_unflatten_array_strided_kernel(float* array_buffer, int arr_size, int num_matrices, int mat_rows, int mat_cols, Matrix* mat_buffers) {
+    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    const int array_buffer_index = tidX;
+
+    if (array_buffer_index < arr_size) {
+        // Check which mat_buffer to write to
+        const int mat_buffer_index = array_buffer_index % num_matrices;
+        const int mat_buffer_pixel = array_buffer_index / num_matrices;
+
+        // Write result
+        mat_buffers[mat_buffer_index].address[mat_buffer_pixel] = array_buffer[array_buffer_index];
+    }
+}
+
+__global__ void cuda_center_pad_kernel(float* mat_buffer, int mat_rows, int mat_cols, int pad_rows, int pad_cols, float* out_buffer, int out_rows, int out_cols) {
+    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    const int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = I[i - pad_rows][j - pad_cols] if in bounds, else 0
+        const int input_row = tidY - pad_rows;
+        const int input_col = tidX - pad_cols;
+        const bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
+        const bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
+        const bool in_bounds = input_row_in_bounds && input_col_in_bounds;
+
+        const float result = in_bounds ? mat_buffer[input_row * mat_cols + input_col] : 0.0;
+        out_buffer[tidY * out_cols + tidX] = result;
+    }
+}
+
+__global__ void cuda_softmax_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
+    const int col = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (col < mat_cols) {
+        // Go down all the rows, find the max
+        float max = -INFINITY;
+        for (int row = 0; row < mat_rows; row++) {
+            const float val = mat_buffer[row * mat_cols + col];
+            max = val > max ? val : max;
+        }
+
+        // Now go down all the rows and subtract the max, then exponentiate
+        float sum = 0.0;
+        for (int row = mat_rows - 1; row >= 0; row--) {
+            const float val = mat_buffer[row * mat_cols + col];
+            const float exp_val = __expf(val - max);
+            out_buffer[row * mat_cols + col] = exp_val;
+            sum += exp_val;
+        }
+
+        // Now go down all the rows and divide by the sum
+        for (int row = 0; row < mat_rows; row++) {
+            out_buffer[row * mat_cols + col] /= sum;
+        }
+    }
+}
+
+__global__ void cuda_crop_kernel(float* mat_buffer, int mat_rows, int mat_cols, int crop_offset_rows, int crop_offset_cols, int crop_rows, int crop_cols, float* out_buffer) {
+    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    const int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < crop_cols && tidY < crop_rows) {
+        // O[i][j] = I[i + crop_offset_rows][j + crop_offset_cols]
+        const int input_row = tidY + crop_offset_rows;
+        const int input_col = tidX + crop_offset_cols;
+
+        const float result = mat_buffer[input_row * mat_cols + input_col];
+        out_buffer[tidY * crop_cols + tidX] = result;
+    }
+}
+
+template <const int block_size>
+__global__ void cuda_sum_all_matrix_elements_kernel(float* mat_buffer, int elements_to_sum) {
+    // Shared memory for each block. each block handles blockDim elements
+    __shared__ float sdata[block_size];
+
+    // Load element into shared
+    const int input_index = blockIdx.x * blockDim.x + threadIdx.x;
+    sdata[threadIdx.x] = input_index < elements_to_sum ? mat_buffer[input_index] : 0.0;
+    __syncthreads();
+
+    // Do reduction in shared memory
+    const int sdata_index = threadIdx.x;
+    int active_threads = blockDim.x / 2;
+    while (active_threads > 0 && sdata_index < active_threads) {
+        sdata[sdata_index] += sdata[sdata_index + active_threads];
+        __syncthreads();
+        active_threads /= 2;
+    }
+
+    // Write result for this block to global memory
+    if (sdata_index == 0) {
+        mat_buffer[blockIdx.x] = sdata[0];
+    }
+}
+
+__global__ void cuda_max_by_column_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
+    const int col = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (col < mat_cols) {
+        // Go down all the rows, find the max
+        float max = -INFINITY;
+        for (int row = 0; row < mat_rows; row++) {
+            const float val = mat_buffer[row * mat_cols + col];
+            max = val > max ? val : max;
+        }
+
+        // Write result
+        out_buffer[col] = max;
+    }
+}
+
+__global__ void cuda_max_by_row_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
+    const int row = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (row < mat_rows) {
+        // Go down all the rows, find the max
+        float max = -INFINITY;
+        for (int col = 0; col < mat_cols; col++) {
+            const float val = mat_buffer[row * mat_cols + col];
+            max = val > max ? val : max;
+        }
+
+        // Write result
+        out_buffer[row] = max;
+    }
+}
+
+__global__ void cuda_argmax_by_column_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
+    const int col = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (col < mat_cols) {
+        // Go down all the rows, find the max
+        float max = -INFINITY;
+        float max_index = 0;
+        for (int row = 0; row < mat_rows; row++) {
+            const float val = mat_buffer[row * mat_cols + col];
+            max_index = val > max ? row : max_index;
+            max = val > max ? val : max;
+        }
+
+        // Write result
+        out_buffer[col] = max_index;
+    }
+}
+
+__global__ void cuda_argmax_by_row_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
+    const int row = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (row < mat_rows) {
+        // Go down all the rows, find the max
+        float max = -INFINITY;
+        float max_index = 0;
+        for (int col = 0; col < mat_cols; col++) {
+            const float val = mat_buffer[row * mat_cols + col];
+            max_index = val > max ? col : max_index;
+            max = val > max ? val : max;
+        }
+
+        // Write result
+        out_buffer[row] = max_index;
+    }
+}
+
+__global__ void cuda_one_hot_encode_kernel(float* data_buffer, int data_size, int num_classes, float* out_buffer) {
+    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (tidX < data_size) {
+        // Each thread handles one row
+        // O[i][j] = 1 if j == data[i], else 0
+        const int column_to_write_to = data_buffer[tidX];
+        out_buffer[tidX * num_classes + column_to_write_to] = 1.0;
+    }
+}
+
+__global__ void element_ln_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < mat_cols && tidY < mat_rows) {
+        // O[i][j] = ln(mat1[i][j])
+
+        int index = tidY * mat_cols + tidX;
+        const float val = mat_buffer[index];
+        out_buffer[index] = val <= 0.0 ? 0.0 : log(mat_buffer[index]);  // Handle <= 0 to avoid NAN
+    }
+}
+
+__global__ void cuda_cnn_feed_forward_kernel(Matrix* channel_buffers, Matrix* filter_buffers, Matrix* bias_buffers, Matrix* result_buffers, Matrix* scratchpad_buffers, int channel_count_per_sample, int sample_count, int filter_count) {
+    const int result_idx = blockIdx.x;
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    const int sample_idx = result_idx / filter_count;
+
+    float* result_matrix_buffer = result_buffers[result_idx].address;
+    float* scratchpad_matrix_buffer = scratchpad_buffers[result_idx].address;
+
+    // Go through the filters
+    for (int i = 0; i < filter_count; i++) {
+        const float* bias_buffer = bias_buffers[i].address;
+
+        // Go through channels of the filter and sample
+        // Correlate each sample_channel with filter_channel
+        // Sum the result, add bias, and reLU
+
+        // Will need scratchpad memory to perform the convolution
+        // Will also need device functions to call
+        // Device functions needed are correlate, sum, relu
+    }
+}
+
+__global__ void cuda_adam_optimizer_packed_kernel(Matrix* d_v_buffers, Matrix* d_s_buffers, Matrix* curr_gradients_buffers, Matrix* results_buffers, int matrix_rows, int matrix_cols, float d_v_beta, float d_s_beta, float learning_rate) {
+    // Each block handles updating a pair of d_s and d_v
+    int block_tid = blockDim.x;
+
+    const float* curr_gradient = curr_gradients_buffers[block_tid].address;
+    float* d_v_buffer = d_v_buffers[block_tid].address;
+    float* d_s_buffer = d_s_buffers[block_tid].address;
+    float* result_buffer = results_buffers[block_tid].address;
+
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    const float epsilon = 1e-8;
+
+    while (tidY < matrix_rows) {
+        while (tidX < matrix_cols) {
+            const int mat_index = tidY * matrix_cols + tidX;
+            const float curr_gradient_val = curr_gradient[mat_index];
+
+            // Momentum dv = (beta * prev_grad + (1 - beta) * curr_gradient)
+            float d_v_previous = d_v_buffer[mat_index];
+            float d_v_new = d_v_beta * d_v_previous + (1 - d_v_beta) * curr_gradient_val;
+
+            // RMS Props ds = beta * prev_accumulated_gradient + (1 - beta) * curr_gradient ^ 2
+            float d_s_previous = d_s_buffer[mat_index];
+            float d_s_new = d_s_beta * d_s_previous + (1 - d_s_beta) * curr_gradient_val * curr_gradient_val;
+
+            // Scale momentum dv and rms prop dss to be similar scale
+            // d_v_new /= (1.0 - self.beta1.powf(timestep))
+            // d_s_new /= (1.0 - self.beta2.powf(timestep))
+
+            // Calculate final delta_gradient = learning_rate * dv / sqrt(ds) + epsilon
+            float delta_gradient = learning_rate * d_v_new / (sqrtf(d_s_new) + epsilon);
+
+            d_v_buffer[mat_index] = d_v_new;
+            d_s_buffer[mat_index] = d_s_new;
+            result_buffer[mat_index] = delta_gradient;
+            tidX += blockDim.x;
+        }
+
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
 //////////////////////////
 /// Util
 //////////////////////////
@@ -3198,40 +3525,6 @@ void cuda_convolve_packed(Matrix* matrices, size_t num_matrices, Matrix* kernels
     }
 }
 
-__global__ void cuda_img2col_valid_kernel(Matrix* mat_buffers, int input_depth, int input_rows, int input_cols, int filter_depth, int filter_rows, int filter_cols, float* out_buffer, int out_rows, int out_cols) {
-    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-
-    // This thread will handle one patch of the image, through all the kernels
-    // This means each thread handle one column of the output
-    const int number_of_patches = out_cols;
-    const int current_patch = tidX;
-
-    if (current_patch < number_of_patches) {
-// Go through each of the kernels
-#pragma unroll
-        for (int curr_channel = 0; curr_channel < input_depth; curr_channel++) {
-            const float* current_buffer = mat_buffers[curr_channel].address;
-
-            // Now translate current_patch into the patch's top left corner
-            const int kernel_top_left_row = current_patch / (input_cols - filter_cols + 1);
-            const int kernel_top_left_col = current_patch % (input_cols - filter_cols + 1);
-            const int base_output_row = curr_channel * filter_rows * filter_cols;
-            const int output_col = current_patch;
-
-// Now construct the patch
-#pragma unroll 3
-            for (int m = 0; m < filter_rows; m++) {
-#pragma unroll 3
-                for (int n = 0; n < filter_cols; n++) {
-                    const float mat_val = current_buffer[(kernel_top_left_row + m) * input_cols + (kernel_top_left_col + n)];
-                    const int output_index = base_output_row + m * filter_cols + n;
-                    out_buffer[output_index * out_cols + output_col] = mat_val;
-                }
-            }
-        }
-    }
-}
-
 Matrix cuda_img2col_valid(Matrix* matrices, size_t num_matrices, size_t kernel_rows, size_t kernel_cols) {
     // Get matrix dimensions
     int mat_rows = get_matrix_rows(&matrices[0]);
@@ -3276,26 +3569,6 @@ Matrix cuda_img2col(Matrix* matrices, size_t num_matrices, size_t kernel_rows, s
     }
 }
 
-__global__ void cuda_flatten_array_kernel(Matrix* mat_buffers, int mat_rows, int mat_cols, float* out_buffer, int out_rows, int out_cols) {
-    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    const int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-    const int output_index = tidY * out_cols + tidX;
-    const int output_img_size = out_rows * out_cols;
-    const int each_input_img_size = mat_rows * mat_cols;
-
-    if (output_index < output_img_size) {
-        // Grab the gpu buffer we are reffering to
-        const int current_buffer_index = output_index / each_input_img_size;
-        const float* current_buffer = mat_buffers[current_buffer_index].address;
-
-        // Determine the pixel to copy
-        const int current_buffer_pixel = output_index % each_input_img_size;
-
-        // Write result
-        out_buffer[output_index] = current_buffer[current_buffer_pixel];
-    }
-}
-
 // Take n same_dimension matrices and flatten them into an array
 Matrix cuda_flatten_array(Matrix* matrices, size_t num_matrices) {
     // Get matrix dimensions
@@ -3319,21 +3592,6 @@ Matrix cuda_flatten_array(Matrix* matrices, size_t num_matrices) {
     gpuErrchk(cudaPeekAtLastError());
 
     return out_matrix;
-}
-
-__global__ void cuda_unflatten_array_kernel(float* array_buffer, int arr_size, int mat_rows, int mat_cols, Matrix* mat_buffers) {
-    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    const int array_buffer_index = tidX;
-
-    if (array_buffer_index < arr_size) {
-        // Check which mat_buffer to write to
-        const int mat_size = mat_rows * mat_cols;
-        const int mat_buffer_index = array_buffer_index / mat_size;
-        const int mat_buffer_pixel = array_buffer_index % mat_size;
-
-        // Write result
-        mat_buffers[mat_buffer_index].address[mat_buffer_pixel] = array_buffer[array_buffer_index];
-    }
 }
 
 // Take an array and unflatten it into n same_dimension matrices.
@@ -3360,20 +3618,6 @@ void cuda_unflatten_array(Matrix* array, size_t out_rows, size_t out_cols, Matri
     gpuErrchk(cudaPeekAtLastError());
 }
 
-__global__ void cuda_unflatten_array_strided_kernel(float* array_buffer, int arr_size, int num_matrices, int mat_rows, int mat_cols, Matrix* mat_buffers) {
-    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    const int array_buffer_index = tidX;
-
-    if (array_buffer_index < arr_size) {
-        // Check which mat_buffer to write to
-        const int mat_buffer_index = array_buffer_index % num_matrices;
-        const int mat_buffer_pixel = array_buffer_index / num_matrices;
-
-        // Write result
-        mat_buffers[mat_buffer_index].address[mat_buffer_pixel] = array_buffer[array_buffer_index];
-    }
-}
-
 // Take an array and unflatten it into n same_dimension matrices. Each array's first n elements are the first elements in memory. [arr1_elem1, arr2_elem1, arr3_elem1, arr1_elem2, arr2_elem2, arr3_elem2, ...]
 void cuda_unflatten_array_strided(Matrix* array, size_t out_rows, size_t out_cols, Matrix* out_matrices) {
     int arr_size = get_matrix_length(array);
@@ -3397,23 +3641,6 @@ void cuda_unflatten_array_strided(Matrix* array, size_t out_rows, size_t out_col
     // Run the kernels
     cuda_unflatten_array_strided_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_array_buffer, arr_size, num_matrices, out_rows, out_cols, gpu_mat_buffers_dp);
     gpuErrchk(cudaPeekAtLastError());
-}
-
-__global__ void cuda_center_pad_kernel(float* mat_buffer, int mat_rows, int mat_cols, int pad_rows, int pad_cols, float* out_buffer, int out_rows, int out_cols) {
-    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    const int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = I[i - pad_rows][j - pad_cols] if in bounds, else 0
-        const int input_row = tidY - pad_rows;
-        const int input_col = tidX - pad_cols;
-        const bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
-        const bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
-        const bool in_bounds = input_row_in_bounds && input_col_in_bounds;
-
-        const float result = in_bounds ? mat_buffer[input_row * mat_cols + input_col] : 0.0;
-        out_buffer[tidY * out_cols + tidX] = result;
-    }
 }
 
 Matrix cuda_center_pad(Matrix* matrix, size_t pad_rows, size_t pad_cols) {
@@ -3442,33 +3669,6 @@ Matrix cuda_center_pad(Matrix* matrix, size_t pad_rows, size_t pad_cols) {
     return out_matrix;
 }
 
-__global__ void cuda_softmax_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
-    const int col = blockDim.x * blockIdx.x + threadIdx.x;
-
-    if (col < mat_cols) {
-        // Go down all the rows, find the max
-        float max = -INFINITY;
-        for (int row = 0; row < mat_rows; row++) {
-            const float val = mat_buffer[row * mat_cols + col];
-            max = val > max ? val : max;
-        }
-
-        // Now go down all the rows and subtract the max, then exponentiate
-        float sum = 0.0;
-        for (int row = mat_rows - 1; row >= 0; row--) {
-            const float val = mat_buffer[row * mat_cols + col];
-            const float exp_val = __expf(val - max);
-            out_buffer[row * mat_cols + col] = exp_val;
-            sum += exp_val;
-        }
-
-        // Now go down all the rows and divide by the sum
-        for (int row = 0; row < mat_rows; row++) {
-            out_buffer[row * mat_cols + col] /= sum;
-        }
-    }
-}
-
 Matrix cuda_softmax(Matrix* matrix) {
     // Get matrix dimensions
     int mat_rows = get_matrix_rows(matrix);
@@ -3491,20 +3691,6 @@ Matrix cuda_softmax(Matrix* matrix) {
     gpuErrchk(cudaPeekAtLastError());
 
     return out_matrix;
-}
-
-__global__ void cuda_crop_kernel(float* mat_buffer, int mat_rows, int mat_cols, int crop_offset_rows, int crop_offset_cols, int crop_rows, int crop_cols, float* out_buffer) {
-    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    const int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < crop_cols && tidY < crop_rows) {
-        // O[i][j] = I[i + crop_offset_rows][j + crop_offset_cols]
-        const int input_row = tidY + crop_offset_rows;
-        const int input_col = tidX + crop_offset_cols;
-
-        const float result = mat_buffer[input_row * mat_cols + input_col];
-        out_buffer[tidY * crop_cols + tidX] = result;
-    }
 }
 
 Matrix cuda_crop(Matrix* matrix, size_t crop_offset_rows, size_t crop_offset_cols, size_t crop_rows, size_t crop_cols) {
@@ -3537,31 +3723,6 @@ Matrix cuda_copy(Matrix* matrix) {
 
     // We will just use the crop function
     return cuda_crop(matrix, 0, 0, mat_rows, mat_cols);
-}
-
-template <const int block_size>
-__global__ void cuda_sum_all_matrix_elements_kernel(float* mat_buffer, int elements_to_sum) {
-    // Shared memory for each block. each block handles blockDim elements
-    __shared__ float sdata[block_size];
-
-    // Load element into shared
-    const int input_index = blockIdx.x * blockDim.x + threadIdx.x;
-    sdata[threadIdx.x] = input_index < elements_to_sum ? mat_buffer[input_index] : 0.0;
-    __syncthreads();
-
-    // Do reduction in shared memory
-    const int sdata_index = threadIdx.x;
-    int active_threads = blockDim.x / 2;
-    while (active_threads > 0 && sdata_index < active_threads) {
-        sdata[sdata_index] += sdata[sdata_index + active_threads];
-        __syncthreads();
-        active_threads /= 2;
-    }
-
-    // Write result for this block to global memory
-    if (sdata_index == 0) {
-        mat_buffer[blockIdx.x] = sdata[0];
-    }
 }
 
 Matrix cuda_sum_all_matrix_elements(Matrix* matrix) {
@@ -3598,21 +3759,6 @@ Matrix cuda_sum_all_matrix_elements(Matrix* matrix) {
     return result;
 }
 
-__global__ void cuda_max_by_column_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
-    const int col = blockDim.x * blockIdx.x + threadIdx.x;
-
-    if (col < mat_cols) {
-        // Go down all the rows, find the max
-        float max = -INFINITY;
-        for (int row = 0; row < mat_rows; row++) {
-            const float val = mat_buffer[row * mat_cols + col];
-            max = val > max ? val : max;
-        }
-
-        // Write result
-        out_buffer[col] = max;
-    }
-}
 Matrix cuda_max_by_column(Matrix* matrix) {
     // Get matrix dimensions
     int mat_rows = get_matrix_rows(matrix);
@@ -3635,21 +3781,6 @@ Matrix cuda_max_by_column(Matrix* matrix) {
     return out_matrix;
 }
 
-__global__ void cuda_max_by_row_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
-    const int row = blockDim.x * blockIdx.x + threadIdx.x;
-
-    if (row < mat_rows) {
-        // Go down all the rows, find the max
-        float max = -INFINITY;
-        for (int col = 0; col < mat_cols; col++) {
-            const float val = mat_buffer[row * mat_cols + col];
-            max = val > max ? val : max;
-        }
-
-        // Write result
-        out_buffer[row] = max;
-    }
-}
 Matrix cuda_max_by_row(Matrix* matrix) {
     // Get matrix dimensions
     int mat_rows = get_matrix_rows(matrix);
@@ -3672,23 +3803,6 @@ Matrix cuda_max_by_row(Matrix* matrix) {
     return out_matrix;
 }
 
-__global__ void cuda_argmax_by_column_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
-    const int col = blockDim.x * blockIdx.x + threadIdx.x;
-
-    if (col < mat_cols) {
-        // Go down all the rows, find the max
-        float max = -INFINITY;
-        float max_index = 0;
-        for (int row = 0; row < mat_rows; row++) {
-            const float val = mat_buffer[row * mat_cols + col];
-            max_index = val > max ? row : max_index;
-            max = val > max ? val : max;
-        }
-
-        // Write result
-        out_buffer[col] = max_index;
-    }
-}
 Matrix cuda_argmax_by_column(Matrix* matrix) {
     // Get matrix dimensions
     int mat_rows = get_matrix_rows(matrix);
@@ -3711,23 +3825,6 @@ Matrix cuda_argmax_by_column(Matrix* matrix) {
     return out_matrix;
 }
 
-__global__ void cuda_argmax_by_row_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
-    const int row = blockDim.x * blockIdx.x + threadIdx.x;
-
-    if (row < mat_rows) {
-        // Go down all the rows, find the max
-        float max = -INFINITY;
-        float max_index = 0;
-        for (int col = 0; col < mat_cols; col++) {
-            const float val = mat_buffer[row * mat_cols + col];
-            max_index = val > max ? col : max_index;
-            max = val > max ? val : max;
-        }
-
-        // Write result
-        out_buffer[row] = max_index;
-    }
-}
 Matrix cuda_argmax_by_row(Matrix* matrix) {
     // Get matrix dimensions
     int mat_rows = get_matrix_rows(matrix);
@@ -3750,16 +3847,6 @@ Matrix cuda_argmax_by_row(Matrix* matrix) {
     return out_matrix;
 }
 
-__global__ void cuda_one_hot_encode_kernel(float* data_buffer, int data_size, int num_classes, float* out_buffer) {
-    const int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-
-    if (tidX < data_size) {
-        // Each thread handles one row
-        // O[i][j] = 1 if j == data[i], else 0
-        const int column_to_write_to = data_buffer[tidX];
-        out_buffer[tidX * num_classes + column_to_write_to] = 1.0;
-    }
-}
 Matrix cuda_one_hot_encode(float* data, size_t data_size, size_t num_classes) {
     // Create output buffer
     Matrix out_matrix = register_matrix(data_size, num_classes);
@@ -3813,20 +3900,7 @@ Matrix cuda_one_hot_encode_vector(Matrix* matrix, size_t num_classes) {
     return out_matrix;
 }
 
-__global__ void element_ln_kernel(float* mat_buffer, int mat_rows, int mat_cols, float* out_buffer) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < mat_cols && tidY < mat_rows) {
-        // O[i][j] = ln(mat1[i][j])
-
-        int index = tidY * mat_cols + tidX;
-        const float val = mat_buffer[index];
-        out_buffer[index] = val <= 0.0 ? 0.0 : log(mat_buffer[index]);  // Handle <= 0 to avoid NAN
-    }
-}
-
-Matrix cuda_element_ln(Matrix* matrix) {
+Matrix cuda_element_ln_impl(Matrix* matrix, bool inplace) {
     // Get matrix dimensions
     int mat_rows = get_matrix_rows(matrix);
     int mat_cols = get_matrix_columns(matrix);
@@ -3834,7 +3908,7 @@ Matrix cuda_element_ln(Matrix* matrix) {
     // Create output buffer
     int out_rows = mat_rows;
     int out_cols = mat_cols;
-    Matrix out_matrix = register_matrix(out_rows, out_cols);
+    Matrix out_matrix = inplace ? *matrix : register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
     float* gpu_mat_buffer = reinterpret_cast<float*>(matrix->address);
@@ -3851,57 +3925,16 @@ Matrix cuda_element_ln(Matrix* matrix) {
 
     return out_matrix;
 }
+Matrix cuda_element_ln(Matrix* matrix) {
+    return cuda_element_ln_impl(matrix, false);
+}
 void cuda_element_ln_inplace(Matrix* matrix) {
-    // Get matrix dimensions
-    int mat_rows = get_matrix_rows(matrix);
-    int mat_cols = get_matrix_columns(matrix);
-
-    // Create output buffer
-    int out_rows = mat_rows;
-    int out_cols = mat_cols;
-
-    // Get the gpu buffers to operate on
-    float* gpu_mat_buffer = reinterpret_cast<float*>(matrix->address);
-    float* gpu_out_buffer = gpu_mat_buffer;
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 32;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
-
-    // Run the kernels
-    element_ln_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffer, mat_rows, mat_cols, gpu_out_buffer);
-    gpuErrchk(cudaPeekAtLastError());
+    cuda_element_ln_impl(matrix, true);
 }
 
 //////////////////////////////////
 /// Neural Network Operations API
 //////////////////////////////////
-
-__global__ void cuda_cnn_feed_forward_kernel(Matrix* channel_buffers, Matrix* filter_buffers, Matrix* bias_buffers, Matrix* result_buffers, Matrix* scratchpad_buffers, int channel_count_per_sample, int sample_count, int filter_count) {
-    const int result_idx = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    const int sample_idx = result_idx / filter_count;
-
-    float* result_matrix_buffer = result_buffers[result_idx].address;
-    float* scratchpad_matrix_buffer = scratchpad_buffers[result_idx].address;
-
-    // Go through the filters
-    for (int i = 0; i < filter_count; i++) {
-        const float* bias_buffer = bias_buffers[i].address;
-
-        // Go through channels of the filter and sample
-        // Correlate each sample_channel with filter_channel
-        // Sum the result, add bias, and reLU
-
-        // Will need scratchpad memory to perform the convolution
-        // Will also need device functions to call
-        // Device functions needed are correlate, sum, relu
-    }
-}
-
 void cuda_cnn_feed_forward(Matrix* channels, Matrix* filters, Matrix* biases, size_t channel_count_per_sample, size_t sample_count, size_t filter_count, Matrix* results) {
     // Get matrix dimensions
     int mat_rows = get_matrix_rows(&channels[0]);
@@ -3947,51 +3980,6 @@ void cuda_cnn_feed_forward(Matrix* channels, Matrix* filters, Matrix* biases, si
 
     // Free scratchpad memory
     unregister_matrix_group(scratchpad_matrix_group);
-}
-
-__global__ void cuda_adam_optimizer_packed_kernel(Matrix* d_v_buffers, Matrix* d_s_buffers, Matrix* curr_gradients_buffers, Matrix* results_buffers, int matrix_rows, int matrix_cols, float d_v_beta, float d_s_beta, float learning_rate) {
-    // Each block handles updating a pair of d_s and d_v
-    int block_tid = blockDim.x;
-
-    const float* curr_gradient = curr_gradients_buffers[block_tid].address;
-    float* d_v_buffer = d_v_buffers[block_tid].address;
-    float* d_s_buffer = d_s_buffers[block_tid].address;
-    float* result_buffer = results_buffers[block_tid].address;
-
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    const float epsilon = 1e-8;
-
-    while (tidY < matrix_rows) {
-        while (tidX < matrix_cols) {
-            const int mat_index = tidY * matrix_cols + tidX;
-            const float curr_gradient_val = curr_gradient[mat_index];
-
-            // Momentum dv = (beta * prev_grad + (1 - beta) * curr_gradient)
-            float d_v_previous = d_v_buffer[mat_index];
-            float d_v_new = d_v_beta * d_v_previous + (1 - d_v_beta) * curr_gradient_val;
-
-            // RMS Props ds = beta * prev_accumulated_gradient + (1 - beta) * curr_gradient ^ 2
-            float d_s_previous = d_s_buffer[mat_index];
-            float d_s_new = d_s_beta * d_s_previous + (1 - d_s_beta) * curr_gradient_val * curr_gradient_val;
-
-            // Scale momentum dv and rms prop dss to be similar scale
-            // d_v_new /= (1.0 - self.beta1.powf(timestep))
-            // d_s_new /= (1.0 - self.beta2.powf(timestep))
-
-            // Calculate final delta_gradient = learning_rate * dv / sqrt(ds) + epsilon
-            float delta_gradient = learning_rate * d_v_new / (sqrtf(d_s_new) + epsilon);
-
-            d_v_buffer[mat_index] = d_v_new;
-            d_s_buffer[mat_index] = d_s_new;
-            result_buffer[mat_index] = delta_gradient;
-            tidX += blockDim.x;
-        }
-
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
 }
 
 void cuda_adam_optimizer_packed(Matrix* d_v, Matrix* d_s, Matrix* curr_gradients, Matrix* results, size_t num_matrices, float d_v_beta, float d_s_beta, float learning_rate) {
