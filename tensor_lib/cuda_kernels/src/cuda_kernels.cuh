@@ -27,22 +27,22 @@ Matrix cuda_element_divide(Matrix* matrix_1, Matrix* matrix_2);
 void cuda_element_divide_inplace(Matrix* matrix_1, Matrix* matrix_2);
 void cuda_element_divide_packed(Matrix* matrix_1s, Matrix* matrix_2s, Matrix* out_matrices, size_t num_matrices);
 void cuda_element_divide_packed_inplace(Matrix* matrix_1s, Matrix* matrix_2s, size_t num_matrices);
-Matrix cuda_scalar_multiply(Matrix* matrix, float scalar);
-void cuda_scalar_multiply_inplace(Matrix* matrix, float scalar);
-void cuda_scalar_multiply_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices, float scalar);
-void cuda_scalar_multiply_packed_inplace(Matrix* matrices, size_t num_matrices, float scalar);
-Matrix cuda_scalar_divide(Matrix* matrix, float scalar);
-void cuda_scalar_divide_inplace(Matrix* matrix, float scalar);
-void cuda_scalar_divide_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices, float scalar);
-void cuda_scalar_divide_packed_inplace(Matrix* matrices, size_t num_matrices, float scalar);
 Matrix cuda_scalar_add(Matrix* matrix, float scalar);
 void cuda_scalar_add_inplace(Matrix* matrix, float scalar);
 void cuda_scalar_add_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices, float scalar);
-void cuda_scalar_add_packed_inplace(Matrix* matrices, size_t num_matrices, float scalar);
+void cuda_scalar_add_packed_inplace(Matrix* matrices, size_t num_matrices, float scalar);  // No longer safe to repeat matrix in matrices (i.e double multiply a matrix) (removed atomic operation)
 Matrix cuda_scalar_subtract(Matrix* matrix, float scalar);
 void cuda_scalar_subtract_inplace(Matrix* matrix, float scalar);
 void cuda_scalar_subtract_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices, float scalar);
-void cuda_scalar_subtract_packed_inplace(Matrix* matrices, size_t num_matrices, float scalar);
+void cuda_scalar_subtract_packed_inplace(Matrix* matrices, size_t num_matrices, float scalar);  // No longer safe to repeat matrix in matrices (i.e double multiply a matrix) (removed atomic operation)
+Matrix cuda_scalar_multiply(Matrix* matrix, float scalar);
+void cuda_scalar_multiply_inplace(Matrix* matrix, float scalar);
+void cuda_scalar_multiply_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices, float scalar);
+void cuda_scalar_multiply_packed_inplace(Matrix* matrices, size_t num_matrices, float scalar);  // No longer safe to repeat matrix in matrices (i.e double multiply a matrix) (removed atomic operation)
+Matrix cuda_scalar_divide(Matrix* matrix, float scalar);
+void cuda_scalar_divide_inplace(Matrix* matrix, float scalar);
+void cuda_scalar_divide_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices, float scalar);
+void cuda_scalar_divide_packed_inplace(Matrix* matrices, size_t num_matrices, float scalar);  // No longer safe to repeat matrix in matrices (i.e double multiply a matrix) (removed atomic operation)
 Matrix cuda_matrix_multiply(Matrix* matrix_1, Matrix* matrix_2);
 Matrix cuda_add_vector(Matrix* matrix_1, Matrix* matrix_2);
 void cuda_add_vector_inplace(Matrix* matrix_1, Matrix* matrix_2);
