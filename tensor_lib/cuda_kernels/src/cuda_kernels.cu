@@ -477,6 +477,398 @@ __device__ void element_ReLU_prime_packed_device(float* mat1_buffer, float* out_
     }
 }
 
+__device__ void correlate_valid_device(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = weighted sum of kernel with input, where kernel is kept within bounds of input
+        float result = 0.0;
+        const int kernel_top_left_row = tidY;
+        const int kernel_top_left_col = tidX;
+
+#pragma unroll 3
+        for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
+            for (int n = 0; n < kernel_cols; n++) {
+                const float mat1_val = mat1_buffer[(kernel_top_left_row + m) * mat1_cols + (kernel_top_left_col + n)];
+                const float kernel_val = kernel_buffer[m * kernel_cols + n];
+                result += mat1_val * kernel_val;
+            }
+        }
+
+        const int out_index = tidY * out_cols + tidX;
+        out_buffer[out_index] = result;
+    }
+}
+
+__device__ void correlate_same_device(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
+
+        float result = 0.0;
+        const int apothem = kernel_rows / 2;
+#pragma unroll 3
+        for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
+            for (int n = 0; n < kernel_cols; n++) {
+                int input_row = m - apothem + tidY;
+                int input_col = n - apothem + tidX;
+                bool input_row_in_bounds = input_row >= 0 && input_row < mat1_rows;
+                bool input_col_in_bounds = input_col >= 0 && input_col < mat1_cols;
+
+                if (input_row_in_bounds && input_col_in_bounds) {
+                    const int curr_mat1_index = input_row * mat1_cols + input_col;
+                    const int curr_kernel_index = m * kernel_cols + n;
+                    result += mat1_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
+                }
+            }
+        }
+
+        int output_index = tidY * out_cols + tidX;
+        out_buffer[output_index] = result;
+    }
+}
+
+__device__ void correlate_full_device(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
+        float result = 0.0;
+        const int input_start_row = (-kernel_rows + 1) + tidY;
+        const int input_start_col = (-kernel_cols + 1) + tidX;
+        for (int m = 0; m < kernel_rows; m++) {
+            for (int n = 0; n < kernel_cols; n++) {
+                int input_row = input_start_row + m;
+                int input_col = input_start_col + n;
+                bool input_row_in_bounds = input_row >= 0 && input_row < mat1_rows;
+                bool input_col_in_bounds = input_col >= 0 && input_col < mat1_cols;
+
+                if (input_row_in_bounds && input_col_in_bounds) {
+                    const int curr_mat1_index = input_row * mat1_cols + input_col;
+                    const int curr_kernel_index = m * kernel_cols + n;
+                    result += mat1_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
+                }
+            }
+        }
+
+        int output_index = tidY * out_cols + tidX;
+        out_buffer[output_index] = result;
+    }
+}
+
+__device__ void correlate_valid_packed_device(const float* mat_buffer, int mat_rows, int mat_cols, const float* kernel_buffer, int kernel_rows, int kernel_cols, float* __restrict__ out_buffer, int out_rows, int out_cols) {
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    // The work will be split among the threads in the block
+    // Each thread will work until of tidX or tidY is out of bounds
+    while (tidY < out_rows) {
+        while (tidX < out_cols) {
+            // Now perform correlation at this location
+            float result = 0.0;
+            const int kernel_top_left_row = tidY;
+            const int kernel_top_left_col = tidX;
+
+#pragma unroll 3
+            for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
+                for (int n = 0; n < kernel_cols; n++) {
+                    const float mat1_val = mat_buffer[(kernel_top_left_row + m) * mat_cols + (kernel_top_left_col + n)];
+                    const float kernel_val = kernel_buffer[m * kernel_cols + n];
+                    result += mat1_val * kernel_val;
+                }
+            }
+
+            const int out_index = tidY * out_cols + tidX;
+            out_buffer[out_index] = result;
+            tidX += blockDim.x;
+        }
+
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
+__device__ void correlate_same_packed_device(const float* mat_buffer, int mat_rows, int mat_cols, const float* kernel_buffer, int kernel_rows, int kernel_cols, float* __restrict__ out_buffer, int out_rows, int out_cols) {
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    // The work will be split among the threads in the block
+    // Each thread will work until of tidX or tidY is out of bounds
+    while (tidY < out_rows) {
+        while (tidX < out_cols) {
+            float result = 0.0;
+            const int apothem = kernel_rows / 2;
+#pragma unroll 3
+            for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
+                for (int n = 0; n < kernel_cols; n++) {
+                    int input_row = m - apothem + tidY;
+                    int input_col = n - apothem + tidX;
+                    bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
+                    bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
+
+                    if (input_row_in_bounds && input_col_in_bounds) {
+                        const int curr_mat1_index = input_row * mat_cols + input_col;
+                        const int curr_kernel_index = m * kernel_cols + n;
+                        result += mat_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
+                    }
+                }
+            }
+
+            int output_index = tidY * out_cols + tidX;
+            out_buffer[output_index] = result;
+            tidX += blockDim.x;
+        }
+
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
+__device__ void correlate_full_packed_device(const float* mat_buffer, int mat_rows, int mat_cols, const float* kernel_buffer, int kernel_rows, int kernel_cols, float* __restrict__ out_buffer, int out_rows, int out_cols) {
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    // The work will be split among the threads in the block
+    // Each thread will work until of tidX or tidY is out of bounds
+    while (tidY < out_rows) {
+        while (tidX < out_cols) {
+            // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
+            float result = 0.0;
+            const int input_start_row = (-kernel_rows + 1) + tidY;
+            const int input_start_col = (-kernel_cols + 1) + tidX;
+            for (int m = 0; m < kernel_rows; m++) {
+                for (int n = 0; n < kernel_cols; n++) {
+                    int input_row = input_start_row + m;
+                    int input_col = input_start_col + n;
+                    bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
+                    bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
+
+                    if (input_row_in_bounds && input_col_in_bounds) {
+                        const int curr_mat1_index = input_row * mat_cols + input_col;
+                        const int curr_kernel_index = m * kernel_cols + n;
+                        result += mat_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
+                    }
+                }
+            }
+
+            int output_index = tidY * out_cols + tidX;
+            out_buffer[output_index] = result;
+            tidX += blockDim.x;
+        }
+
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
+__device__ void convolve_valid_device(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+    const int kernel_length = kernel_rows * kernel_cols;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = weighted sum of kernel with input, where kernel is kept within bounds of input
+        float result = 0.0;
+        const int kernel_top_left_row = tidY;
+        const int kernel_top_left_col = tidX;
+
+#pragma unroll 3
+        for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
+            for (int n = 0; n < kernel_cols; n++) {
+                const float mat1_val = mat1_buffer[(kernel_top_left_row + m) * mat1_cols + (kernel_top_left_col + n)];
+                const int rotated_kernel_position = kernel_length - (m * kernel_cols + n) - 1;  // Equivalent to reversing linearized kernel
+                const float kernel_val = kernel_buffer[rotated_kernel_position];
+                result += mat1_val * kernel_val;
+            }
+        }
+
+        const int out_index = tidY * out_cols + tidX;
+        out_buffer[out_index] = result;
+    }
+}
+
+__device__ void convolve_same_device(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+    const int kernel_length = kernel_rows * kernel_cols;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
+
+        float result = 0.0;
+        const int apothem = kernel_rows / 2;
+#pragma unroll 3
+        for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
+            for (int n = 0; n < kernel_cols; n++) {
+                int input_row = m - apothem + tidY;
+                int input_col = n - apothem + tidX;
+                bool input_row_in_bounds = input_row >= 0 && input_row < mat1_rows;
+                bool input_col_in_bounds = input_col >= 0 && input_col < mat1_cols;
+
+                if (input_row_in_bounds && input_col_in_bounds) {
+                    const int curr_mat1_index = input_row * mat1_cols + input_col;
+                    const int rotated_kernel_position = kernel_length - (m * kernel_cols + n) - 1;  // Equivalent to reversing linearized kernel
+                    result += mat1_buffer[curr_mat1_index] * kernel_buffer[rotated_kernel_position];
+                }
+            }
+        }
+
+        int output_index = tidY * out_cols + tidX;
+        out_buffer[output_index] = result;
+    }
+}
+
+__device__ void convolve_full_device(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
+    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
+    const int kernel_length = kernel_rows * kernel_cols;
+
+    if (tidX < out_cols && tidY < out_rows) {
+        // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
+        float result = 0.0;
+        const int input_start_row = (-kernel_rows + 1) + tidY;
+        const int input_start_col = (-kernel_cols + 1) + tidX;
+        for (int m = 0; m < kernel_rows; m++) {
+            for (int n = 0; n < kernel_cols; n++) {
+                int input_row = input_start_row + m;
+                int input_col = input_start_col + n;
+                bool input_row_in_bounds = input_row >= 0 && input_row < mat1_rows;
+                bool input_col_in_bounds = input_col >= 0 && input_col < mat1_cols;
+
+                if (input_row_in_bounds && input_col_in_bounds) {
+                    const int curr_mat1_index = input_row * mat1_cols + input_col;
+                    const int rotated_kernel_position = kernel_length - (m * kernel_cols + n) - 1;  // Equivalent to reversing linearized kernel
+                    result += mat1_buffer[curr_mat1_index] * kernel_buffer[rotated_kernel_position];
+                }
+            }
+        }
+
+        int output_index = tidY * out_cols + tidX;
+        out_buffer[output_index] = result;
+    }
+}
+
+__device__ void convolve_valid_packed_device(const float* mat_buffer, int mat_rows, int mat_cols, const float* kernel_buffer, int kernel_rows, int kernel_cols, float* __restrict__ out_buffer, int out_rows, int out_cols) {
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+    const int kernel_length = kernel_rows * kernel_cols;
+
+    // The work will be split among the threads in the block
+    // Each thread will work until of tidX or tidY is out of bounds
+    while (tidY < out_rows) {
+        while (tidX < out_cols) {
+            // Now perform correlation at this location
+            float result = 0.0;
+            const int kernel_top_left_row = tidY;
+            const int kernel_top_left_col = tidX;
+
+#pragma unroll 3
+            for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
+                for (int n = 0; n < kernel_cols; n++) {
+                    const float mat1_val = mat_buffer[(kernel_top_left_row + m) * mat_cols + (kernel_top_left_col + n)];
+                    const int rotated_kernel_position = kernel_length - (m * kernel_cols + n) - 1;  // Equivalent to reversing linearized kernel
+                    const float kernel_val = kernel_buffer[rotated_kernel_position];
+                    result += mat1_val * kernel_val;
+                }
+            }
+
+            const int out_index = tidY * out_cols + tidX;
+            out_buffer[out_index] = result;
+            tidX += blockDim.x;
+        }
+
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
+__device__ void convolve_same_packed_device(const float* mat_buffer, int mat_rows, int mat_cols, const float* kernel_buffer, int kernel_rows, int kernel_cols, float* __restrict__ out_buffer, int out_rows, int out_cols) {
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+    const int kernel_length = kernel_rows * kernel_cols;
+
+    // The work will be split among the threads in the block
+    // Each thread will work until of tidX or tidY is out of bounds
+    while (tidY < out_rows) {
+        while (tidX < out_cols) {
+            float result = 0.0;
+            const int apothem = kernel_rows / 2;
+#pragma unroll 3
+            for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
+                for (int n = 0; n < kernel_cols; n++) {
+                    int input_row = m - apothem + tidY;
+                    int input_col = n - apothem + tidX;
+                    bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
+                    bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
+
+                    if (input_row_in_bounds && input_col_in_bounds) {
+                        const int curr_mat1_index = input_row * mat_cols + input_col;
+                        const int rotated_kernel_position = kernel_length - (m * kernel_cols + n) - 1;  // Equivalent to reversing linearized kernel
+                        result += mat_buffer[curr_mat1_index] * kernel_buffer[rotated_kernel_position];
+                    }
+                }
+            }
+
+            int output_index = tidY * out_cols + tidX;
+            out_buffer[output_index] = result;
+            tidX += blockDim.x;
+        }
+
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
+__device__ void convolve_full_packed_device(const float* mat_buffer, int mat_rows, int mat_cols, const float* kernel_buffer, int kernel_rows, int kernel_cols, float* __restrict__ out_buffer, int out_rows, int out_cols) {
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+    const int kernel_length = kernel_rows * kernel_cols;
+
+    // The work will be split among the threads in the block
+    // Each thread will work until of tidX or tidY is out of bounds
+    while (tidY < out_rows) {
+        while (tidX < out_cols) {
+            // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
+            float result = 0.0;
+            const int input_start_row = (-kernel_rows + 1) + tidY;
+            const int input_start_col = (-kernel_cols + 1) + tidX;
+            for (int m = 0; m < kernel_rows; m++) {
+                for (int n = 0; n < kernel_cols; n++) {
+                    int input_row = input_start_row + m;
+                    int input_col = input_start_col + n;
+                    bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
+                    bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
+
+                    if (input_row_in_bounds && input_col_in_bounds) {
+                        const int curr_mat1_index = input_row * mat_cols + input_col;
+                        const int rotated_kernel_position = kernel_length - (m * kernel_cols + n) - 1;  // Equivalent to reversing linearized kernel
+                        result += mat_buffer[curr_mat1_index] * kernel_buffer[rotated_kernel_position];
+                    }
+                }
+            }
+
+            int output_index = tidY * out_cols + tidX;
+            out_buffer[output_index] = result;
+            tidX += blockDim.x;
+        }
+
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
 ////////////////////////////////
 /// Host Callable Kernels
 ////////////////////////////////
@@ -1263,6 +1655,102 @@ __global__ void rotate_180_packed_kernel(Matrix* mat_buffers, Matrix* out_buffer
 
         tidX += blockDim.x;
     }
+}
+
+__global__ void correlate_kernel_valid(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    correlate_valid_device(mat1_buffer, mat1_rows, mat1_cols, kernel_buffer, kernel_rows, kernel_cols, out_buffer, out_rows, out_cols);
+}
+
+__global__ void correlate_kernel_same(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    correlate_same_device(mat1_buffer, mat1_rows, mat1_cols, kernel_buffer, kernel_rows, kernel_cols, out_buffer, out_rows, out_cols);
+}
+
+__global__ void correlate_kernel_full(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    correlate_full_device(mat1_buffer, mat1_rows, mat1_cols, kernel_buffer, kernel_rows, kernel_cols, out_buffer, out_rows, out_cols);
+}
+
+// Each block handles one matrix
+__global__ void correlate_kernel_packed_valid(Matrix* mat_buffers, int num_matrices, int mat_rows, int mat_cols, Matrix* kernel_buffers, int kernel_rows, int kernel_cols, Matrix* out_buffers, int out_rows, int out_cols) {
+    const int current_matrix = blockIdx.x;
+
+    // Grab the buffers
+    const float* mat_buffer = mat_buffers[current_matrix].address;
+    const float* kernel_buffer = kernel_buffers[current_matrix].address;
+    float* out_buffer = out_buffers[current_matrix].address;
+
+    correlate_valid_packed_device(mat_buffer, mat_rows, mat_cols, kernel_buffer, kernel_rows, kernel_cols, out_buffer, out_rows, out_cols);
+}
+
+// Each block handles one correlation
+__global__ void correlate_kernel_packed_same(Matrix* mat_buffers, int num_matrices, int mat_rows, int mat_cols, Matrix* kernel_buffers, int kernel_rows, int kernel_cols, Matrix* out_buffers, int out_rows, int out_cols) {
+    const int current_matrix = blockIdx.x;
+
+    // Grab the buffers
+    const float* mat_buffer = mat_buffers[current_matrix].address;
+    const float* kernel_buffer = kernel_buffers[current_matrix].address;
+    float* out_buffer = out_buffers[current_matrix].address;
+
+    correlate_same_packed_device(mat_buffer, mat_rows, mat_cols, kernel_buffer, kernel_rows, kernel_cols, out_buffer, out_rows, out_cols);
+}
+
+// Each block handles one correlation
+__global__ void correlate_kernel_packed_full(Matrix* mat_buffers, int num_matrices, int mat_rows, int mat_cols, Matrix* kernel_buffers, int kernel_rows, int kernel_cols, Matrix* out_buffers, int out_rows, int out_cols) {
+    const int current_matrix = blockIdx.x;
+
+    // Grab the buffers
+    const float* mat_buffer = mat_buffers[current_matrix].address;
+    const float* kernel_buffer = kernel_buffers[current_matrix].address;
+    float* out_buffer = out_buffers[current_matrix].address;
+
+    correlate_full_packed_device(mat_buffer, mat_rows, mat_cols, kernel_buffer, kernel_rows, kernel_cols, out_buffer, out_rows, out_cols);
+}
+
+__global__ void convolve_kernel_valid(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    convolve_valid_device(mat1_buffer, mat1_rows, mat1_cols, kernel_buffer, kernel_rows, kernel_cols, out_buffer, out_rows, out_cols);
+}
+
+__global__ void convolve_kernel_same(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    convolve_same_device(mat1_buffer, mat1_rows, mat1_cols, kernel_buffer, kernel_rows, kernel_cols, out_buffer, out_rows, out_cols);
+}
+
+__global__ void convolve_kernel_full(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    convolve_full_device(mat1_buffer, mat1_rows, mat1_cols, kernel_buffer, kernel_rows, kernel_cols, out_buffer, out_rows, out_cols);
+}
+
+// Each block handles one matrix
+__global__ void convolve_kernel_packed_valid(Matrix* mat_buffers, int num_matrices, int mat_rows, int mat_cols, Matrix* kernel_buffers, int kernel_rows, int kernel_cols, Matrix* out_buffers, int out_rows, int out_cols) {
+    const int current_matrix = blockIdx.x;
+
+    // Grab the buffers
+    const float* mat_buffer = mat_buffers[current_matrix].address;
+    const float* kernel_buffer = kernel_buffers[current_matrix].address;
+    float* out_buffer = out_buffers[current_matrix].address;
+
+    convolve_valid_packed_device(mat_buffer, mat_rows, mat_cols, kernel_buffer, kernel_rows, kernel_cols, out_buffer, out_rows, out_cols);
+}
+
+// Each block handles one correlation
+__global__ void convolve_kernel_packed_same(Matrix* mat_buffers, int num_matrices, int mat_rows, int mat_cols, Matrix* kernel_buffers, int kernel_rows, int kernel_cols, Matrix* out_buffers, int out_rows, int out_cols) {
+    const int current_matrix = blockIdx.x;
+
+    // Grab the buffers
+    const float* mat_buffer = mat_buffers[current_matrix].address;
+    const float* kernel_buffer = kernel_buffers[current_matrix].address;
+    float* out_buffer = out_buffers[current_matrix].address;
+
+    convolve_same_packed_device(mat_buffer, mat_rows, mat_cols, kernel_buffer, kernel_rows, kernel_cols, out_buffer, out_rows, out_cols);
+}
+
+// Each block handles one correlation
+__global__ void convolve_kernel_packed_full(Matrix* mat_buffers, int num_matrices, int mat_rows, int mat_cols, Matrix* kernel_buffers, int kernel_rows, int kernel_cols, Matrix* out_buffers, int out_rows, int out_cols) {
+    const int current_matrix = blockIdx.x;
+
+    // Grab the buffers
+    const float* mat_buffer = mat_buffers[current_matrix].address;
+    const float* kernel_buffer = kernel_buffers[current_matrix].address;
+    float* out_buffer = out_buffers[current_matrix].address;
+
+    convolve_full_packed_device(mat_buffer, mat_rows, mat_cols, kernel_buffer, kernel_rows, kernel_cols, out_buffer, out_rows, out_cols);
 }
 
 //////////////////////////
@@ -2530,34 +3018,7 @@ void cuda_rotate_180_packed(Matrix* matrices, Matrix* out_matrices, size_t num_m
     gpuErrchk(cudaPeekAtLastError());
 }
 
-// Naive implementation
-__global__ void cuda_correlate_kernel_valid(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = weighted sum of kernel with input, where kernel is kept within bounds of input
-        float result = 0.0;
-        const int kernel_top_left_row = tidY;
-        const int kernel_top_left_col = tidX;
-
-#pragma unroll 3
-        for (int m = 0; m < kernel_rows; m++) {
-#pragma unroll 3
-            for (int n = 0; n < kernel_cols; n++) {
-                const float mat1_val = mat1_buffer[(kernel_top_left_row + m) * mat1_cols + (kernel_top_left_col + n)];
-                const float kernel_val = kernel_buffer[m * kernel_cols + n];
-                result += mat1_val * kernel_val;
-            }
-        }
-
-        const int out_index = tidY * out_cols + tidX;
-        out_buffer[out_index] = result;
-    }
-}
-
-// Be careful, this needs to be optimized or your CNN will suffer
-Matrix cuda_correlate_valid(Matrix* matrix, Matrix* kernel) {
+Matrix cuda_correlate_impl(Matrix* matrix, Matrix* kernel, int out_rows, int out_cols, void (*correlation_kernel)(float*, int, int, float*, int, int, float*, int, int)) {
     // Get matrix dimensions
     int mat1_rows = get_matrix_rows(matrix);
     int mat1_cols = get_matrix_columns(matrix);
@@ -2565,9 +3026,6 @@ Matrix cuda_correlate_valid(Matrix* matrix, Matrix* kernel) {
     int kernel_cols = get_matrix_columns(kernel);
 
     // Create output buffer
-    // Dimension of output is input - kernel + 1
-    int out_rows = mat1_rows - kernel_rows + 1;
-    int out_cols = mat1_cols - kernel_cols + 1;
     Matrix out_matrix = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
@@ -2581,199 +3039,36 @@ Matrix cuda_correlate_valid(Matrix* matrix, Matrix* kernel) {
     dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
 
     // Run the kernels
-    cuda_correlate_kernel_valid<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
+    correlation_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 
     return out_matrix;
 }
-
-// Naive implementation
-__global__ void cuda_correlate_kernel_same_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
-
-        float result = 0.0;
-        const int apothem = kernel_rows / 2;
-#pragma unroll 3
-        for (int m = 0; m < kernel_rows; m++) {
-#pragma unroll 3
-            for (int n = 0; n < kernel_cols; n++) {
-                int input_row = m - apothem + tidY;
-                int input_col = n - apothem + tidX;
-                bool input_row_in_bounds = input_row >= 0 && input_row < mat1_rows;
-                bool input_col_in_bounds = input_col >= 0 && input_col < mat1_cols;
-
-                if (input_row_in_bounds && input_col_in_bounds) {
-                    const int curr_mat1_index = input_row * mat1_cols + input_col;
-                    const int curr_kernel_index = m * kernel_cols + n;
-                    result += mat1_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
-                }
-            }
-        }
-
-        int output_index = tidY * out_cols + tidX;
-        out_buffer[output_index] = result;
-    }
-}
-
-// correlation is zero-padded (Output is the same size as input)
-// Expects odd size, square kernels ONLY
-// Be careful, this needs to be optimized or your CNN will suffer
-Matrix cuda_correlate_same(Matrix* matrix, Matrix* kernel) {
-    // Get matrix dimensions
-    int mat1_rows = get_matrix_rows(matrix);
-    int mat1_cols = get_matrix_columns(matrix);
-    int kernel_rows = get_matrix_rows(kernel);
-    int kernel_cols = get_matrix_columns(kernel);
-
-    // Create output buffer
-    int out_rows = mat1_rows;
-    int out_cols = mat1_cols;
-    Matrix out_matrix = register_matrix(out_rows, out_cols);
-
-    // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = reinterpret_cast<float*>(matrix->address);
-    float* gpu_kernel_buffer = reinterpret_cast<float*>(kernel->address);
-    float* gpu_out_buffer = reinterpret_cast<float*>(out_matrix.address);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
-
-    // Run the kernels
-    cuda_correlate_kernel_same_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-
-    return out_matrix;
-}
-
-// Naive implementation
-__global__ void cuda_correlate_kernel_full_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
-        float result = 0.0;
-        const int input_start_row = (-kernel_rows + 1) + tidY;
-        const int input_start_col = (-kernel_cols + 1) + tidX;
-        for (int m = 0; m < kernel_rows; m++) {
-            for (int n = 0; n < kernel_cols; n++) {
-                int input_row = input_start_row + m;
-                int input_col = input_start_col + n;
-                bool input_row_in_bounds = input_row >= 0 && input_row < mat1_rows;
-                bool input_col_in_bounds = input_col >= 0 && input_col < mat1_cols;
-
-                if (input_row_in_bounds && input_col_in_bounds) {
-                    const int curr_mat1_index = input_row * mat1_cols + input_col;
-                    const int curr_kernel_index = m * kernel_cols + n;
-                    result += mat1_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
-                }
-            }
-        }
-
-        int output_index = tidY * out_cols + tidX;
-        out_buffer[output_index] = result;
-    }
-}
-
-// Be careful, this needs to be optimized or your CNN will suffer
-Matrix cuda_correlate_full(Matrix* matrix, Matrix* kernel) {
-    // Get matrix dimensions
-    int mat1_rows = get_matrix_rows(matrix);
-    int mat1_cols = get_matrix_columns(matrix);
-    int kernel_rows = get_matrix_rows(kernel);
-    int kernel_cols = get_matrix_columns(kernel);
-
-    // Create output buffer
-    // Dimension of output is input + kernel - 1
-    int out_rows = mat1_rows + kernel_rows - 1;
-    int out_cols = mat1_cols + kernel_cols - 1;
-    Matrix out_matrix = register_matrix(out_rows, out_cols);
-
-    // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = reinterpret_cast<float*>(matrix->address);
-    float* gpu_kernel_buffer = reinterpret_cast<float*>(kernel->address);
-    float* gpu_out_buffer = reinterpret_cast<float*>(out_matrix.address);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
-
-    // Run the kernels
-    cuda_correlate_kernel_full_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-
-    return out_matrix;
-}
-
 Matrix cuda_correlate(Matrix* matrix, Matrix* kernel, PaddingType padding_type) {
     if (padding_type == PaddingType::VALID) {
-        return cuda_correlate_valid(matrix, kernel);
+        // Dimension of output is input - kernel + 1
+        int out_rows = get_matrix_rows(matrix) - get_matrix_rows(kernel) + 1;
+        int out_cols = get_matrix_columns(matrix) - get_matrix_columns(kernel) + 1;
+        return cuda_correlate_impl(matrix, kernel, out_rows, out_cols, correlate_kernel_valid);
     } else if (padding_type == PaddingType::SAME) {
-        return cuda_correlate_same(matrix, kernel);
+        // Dimension of output is input
+        int out_rows = get_matrix_rows(matrix);
+        int out_cols = get_matrix_columns(matrix);
+        return cuda_correlate_impl(matrix, kernel, out_rows, out_cols, correlate_kernel_same);
     } else if (padding_type == PaddingType::FULL) {
-        return cuda_correlate_full(matrix, kernel);
+        // Dimension of output is input + kernel - 1
+        int out_rows = get_matrix_rows(matrix) + get_matrix_rows(kernel) - 1;
+        int out_cols = get_matrix_columns(matrix) + get_matrix_columns(kernel) - 1;
+        return cuda_correlate_impl(matrix, kernel, out_rows, out_cols, correlate_kernel_full);
     }
 }
 
-// Each block handles one matrix
-__global__ void cuda_correlate_kernel_packed_valid_1(Matrix* mat_buffers, int num_matrices, int mat_rows, int mat_cols, Matrix* kernel_buffers, int kernel_rows, int kernel_cols, Matrix* out_buffers, int out_rows, int out_cols) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix].address;
-    const float* kernel_buffer = kernel_buffers[current_matrix].address;
-    float* out_buffer = out_buffers[current_matrix].address;
-
-    // The work will be split among the threads in the block
-    // Each thread will work until of tidX or tidY is out of bounds
-    while (tidY < out_rows) {
-        while (tidX < out_cols) {
-            // Now perform correlation at this location
-            float result = 0.0;
-            const int kernel_top_left_row = tidY;
-            const int kernel_top_left_col = tidX;
-
-#pragma unroll 3
-            for (int m = 0; m < kernel_rows; m++) {
-#pragma unroll 3
-                for (int n = 0; n < kernel_cols; n++) {
-                    const float mat1_val = mat_buffer[(kernel_top_left_row + m) * mat_cols + (kernel_top_left_col + n)];
-                    const float kernel_val = kernel_buffer[m * kernel_cols + n];
-                    result += mat1_val * kernel_val;
-                }
-            }
-
-            const int out_index = tidY * out_cols + tidX;
-            out_buffer[out_index] = result;
-            tidX += blockDim.x;
-        }
-
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-
-// Should be used when you have a lot of small matrices to convolve
-void cuda_correlate_valid_packed(Matrix* matrices, size_t num_matrices, Matrix* kernels, Matrix* out_matrices) {
+void cuda_correlate_packed_impl(Matrix* matrices, size_t num_matrices, Matrix* kernels, Matrix* out_matrices, int out_rows, int out_cols, void (*correlation_kernel_packed)(Matrix*, int, int, int, Matrix*, int, int, Matrix*, int, int)) {
     // Create output buffer
     int mat_rows = get_matrix_rows(&matrices[0]);
     int mat_cols = get_matrix_columns(&matrices[0]);
     int kernel_rows = get_matrix_rows(&kernels[0]);
     int kernel_cols = get_matrix_columns(&kernels[0]);
-
-    // Create output buffer
-    // Dimension of output is input - kernel + 1
-    int out_rows = mat_rows - kernel_rows + 1;
-    int out_cols = mat_cols - kernel_cols + 1;
 
     // Register output matrices
     register_matrix_group(out_rows, out_cols, num_matrices, out_matrices);
@@ -2790,199 +3085,28 @@ void cuda_correlate_valid_packed(Matrix* matrices, size_t num_matrices, Matrix* 
     dim3 grid_dim(num_matrices, 1, 1);
 
     // Run the kernels
-    cuda_correlate_kernel_packed_valid_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_dp, kernel_rows, kernel_cols, gpu_out_buffers_dp, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-}
-
-// Each block handles one correlation
-__global__ void cuda_correlate_kernel_packed_same_1(Matrix* mat_buffers, int num_matrices, int mat_rows, int mat_cols, Matrix* kernel_buffers, int kernel_rows, int kernel_cols, Matrix* out_buffers, int out_rows, int out_cols) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix].address;
-    const float* kernel_buffer = kernel_buffers[current_matrix].address;
-    float* out_buffer = out_buffers[current_matrix].address;
-
-    // The work will be split among the threads in the block
-    // Each thread will work until of tidX or tidY is out of bounds
-    while (tidY < out_rows) {
-        while (tidX < out_cols) {
-            float result = 0.0;
-            const int apothem = kernel_rows / 2;
-#pragma unroll 3
-            for (int m = 0; m < kernel_rows; m++) {
-#pragma unroll 3
-                for (int n = 0; n < kernel_cols; n++) {
-                    int input_row = m - apothem + tidY;
-                    int input_col = n - apothem + tidX;
-                    bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
-                    bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
-
-                    if (input_row_in_bounds && input_col_in_bounds) {
-                        const int curr_mat1_index = input_row * mat_cols + input_col;
-                        const int curr_kernel_index = m * kernel_cols + n;
-                        result += mat_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
-                    }
-                }
-            }
-
-            int output_index = tidY * out_cols + tidX;
-            out_buffer[output_index] = result;
-            tidX += blockDim.x;
-        }
-
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-
-// Should be used when you have a lot of small matrices to convolve
-void cuda_correlate_same_packed(Matrix* matrices, size_t num_matrices, Matrix* kernels, Matrix* out_matrices) {
-    // Get matrix dimensions
-    int mat_rows = get_matrix_rows(&matrices[0]);
-    int mat_cols = get_matrix_columns(&matrices[0]);
-    int kernel_rows = get_matrix_rows(&kernels[0]);
-    int kernel_cols = get_matrix_columns(&kernels[0]);
-
-    // Create output buffer
-    int out_rows = mat_rows;
-    int out_cols = mat_cols;
-
-    // Register output matrices
-    register_matrix_group(out_rows, out_cols, num_matrices, out_matrices);
-
-    // Upload kernel args
-    auto device_pointers = upload_kernel_args(matrices, kernels, out_matrices, num_matrices);
-    auto gpu_mat_buffers_dp = device_pointers[0];
-    auto gpu_kernel_buffers_dp = device_pointers[1];
-    auto gpu_out_buffers_dp = device_pointers[2];
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 8;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim(num_matrices, 1, 1);
-
-    // Run the kernels
-    cuda_correlate_kernel_packed_same_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_dp, kernel_rows, kernel_cols, gpu_out_buffers_dp, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-}
-
-// Each block handles one correlation
-__global__ void cuda_correlate_kernel_packed_full_1(Matrix* mat_buffers, int num_matrices, int mat_rows, int mat_cols, Matrix* kernel_buffers, int kernel_rows, int kernel_cols, Matrix* out_buffers, int out_rows, int out_cols) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix].address;
-    const float* kernel_buffer = kernel_buffers[current_matrix].address;
-    float* out_buffer = out_buffers[current_matrix].address;
-
-    // The work will be split among the threads in the block
-    // Each thread will work until of tidX or tidY is out of bounds
-    while (tidY < out_rows) {
-        while (tidX < out_cols) {
-            // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
-            float result = 0.0;
-            const int input_start_row = (-kernel_rows + 1) + tidY;
-            const int input_start_col = (-kernel_cols + 1) + tidX;
-            for (int m = 0; m < kernel_rows; m++) {
-                for (int n = 0; n < kernel_cols; n++) {
-                    int input_row = input_start_row + m;
-                    int input_col = input_start_col + n;
-                    bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
-                    bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
-
-                    if (input_row_in_bounds && input_col_in_bounds) {
-                        const int curr_mat1_index = input_row * mat_cols + input_col;
-                        const int curr_kernel_index = m * kernel_cols + n;
-                        result += mat_buffer[curr_mat1_index] * kernel_buffer[curr_kernel_index];
-                    }
-                }
-            }
-
-            int output_index = tidY * out_cols + tidX;
-            out_buffer[output_index] = result;
-            tidX += blockDim.x;
-        }
-
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-
-// Should be used when you have a lot of small matrices to convolve
-void cuda_correlate_full_packed(Matrix* matrices, size_t num_matrices, Matrix* kernels, Matrix* out_matrices) {
-    int mat_rows = get_matrix_rows(&matrices[0]);
-    int mat_cols = get_matrix_columns(&matrices[0]);
-    int kernel_rows = get_matrix_rows(&kernels[0]);
-    int kernel_cols = get_matrix_columns(&kernels[0]);
-
-    // Create output buffer
-    // Dimension of output is input + kernel - 1
-    int out_rows = mat_rows + kernel_rows - 1;
-    int out_cols = mat_cols + kernel_cols - 1;
-
-    // Register output matrices
-    register_matrix_group(out_rows, out_cols, num_matrices, out_matrices);
-
-    // Upload kernel args
-    auto device_pointers = upload_kernel_args(matrices, kernels, out_matrices, num_matrices);
-    auto gpu_mat_buffers_dp = device_pointers[0];
-    auto gpu_kernel_buffers_dp = device_pointers[1];
-    auto gpu_out_buffers_dp = device_pointers[2];
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 8;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim(num_matrices, 1, 1);
-
-    // Run the kernels
-    cuda_correlate_kernel_packed_full_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_dp, kernel_rows, kernel_cols, gpu_out_buffers_dp, out_rows, out_cols);
+    correlation_kernel_packed<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_dp, kernel_rows, kernel_cols, gpu_out_buffers_dp, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 }
 void cuda_correlate_packed(Matrix* matrices, size_t num_matrices, Matrix* kernels, Matrix* out_matrices, PaddingType padding_type) {
     if (padding_type == PaddingType::VALID) {
-        return cuda_correlate_valid_packed(matrices, num_matrices, kernels, out_matrices);
+        // Dimension of output is input - kernel + 1
+        int out_rows = get_matrix_rows(&matrices[0]) - get_matrix_rows(&kernels[0]) + 1;
+        int out_cols = get_matrix_columns(&matrices[0]) - get_matrix_columns(&kernels[0]) + 1;
+        return cuda_correlate_packed_impl(matrices, num_matrices, kernels, out_matrices, out_rows, out_cols, correlate_kernel_packed_valid);
     } else if (padding_type == PaddingType::SAME) {
-        return cuda_correlate_same_packed(matrices, num_matrices, kernels, out_matrices);
+        int out_rows = get_matrix_rows(&matrices[0]);
+        int out_cols = get_matrix_columns(&matrices[0]);
+        return cuda_correlate_packed_impl(matrices, num_matrices, kernels, out_matrices, out_rows, out_cols, correlate_kernel_packed_same);
     } else if (padding_type == PaddingType::FULL) {
-        return cuda_correlate_full_packed(matrices, num_matrices, kernels, out_matrices);
+        // Dimension of output is input + kernel - 1
+        int out_rows = get_matrix_rows(&matrices[0]) + get_matrix_rows(&kernels[0]) - 1;
+        int out_cols = get_matrix_columns(&matrices[0]) + get_matrix_columns(&kernels[0]) - 1;
+        return cuda_correlate_packed_impl(matrices, num_matrices, kernels, out_matrices, out_rows, out_cols, correlate_kernel_packed_full);
     }
 }
 
-// Naive implementation
-__global__ void cuda_convolve_kernel_valid_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-    const int kernel_length = kernel_rows * kernel_cols;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = weighted sum of kernel with input, where kernel is kept within bounds of input
-        float result = 0.0;
-        const int kernel_top_left_row = tidY;
-        const int kernel_top_left_col = tidX;
-
-#pragma unroll 3
-        for (int m = 0; m < kernel_rows; m++) {
-#pragma unroll 3
-            for (int n = 0; n < kernel_cols; n++) {
-                const float mat1_val = mat1_buffer[(kernel_top_left_row + m) * mat1_cols + (kernel_top_left_col + n)];
-                const int rotated_kernel_position = kernel_length - (m * kernel_cols + n) - 1;  // Equivalent to reversing linearized kernel
-                const float kernel_val = kernel_buffer[rotated_kernel_position];
-                result += mat1_val * kernel_val;
-            }
-        }
-
-        const int out_index = tidY * out_cols + tidX;
-        out_buffer[out_index] = result;
-    }
-}
-
-// Be careful, this needs to be optimized or your CNN will suffer
-Matrix cuda_convolve_valid(Matrix* matrix, Matrix* kernel) {
+Matrix cuda_convolve_impl(Matrix* matrix, Matrix* kernel, int out_rows, int out_cols, void (*convolve_kernel)(float*, int, int, float*, int, int, float*, int, int)) {
     // Get matrix dimensions
     int mat1_rows = get_matrix_rows(matrix);
     int mat1_cols = get_matrix_columns(matrix);
@@ -2990,9 +3114,6 @@ Matrix cuda_convolve_valid(Matrix* matrix, Matrix* kernel) {
     int kernel_cols = get_matrix_columns(kernel);
 
     // Create output buffer
-    // Dimension of output is input - kernel + 1
-    int out_rows = mat1_rows - kernel_rows + 1;
-    int out_cols = mat1_cols - kernel_cols + 1;
     Matrix out_matrix = register_matrix(out_rows, out_cols);
 
     // Get the gpu buffers to operate on
@@ -3006,193 +3127,33 @@ Matrix cuda_convolve_valid(Matrix* matrix, Matrix* kernel) {
     dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
 
     // Run the kernels
-    cuda_convolve_kernel_valid_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
+    convolve_kernel<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 
     return out_matrix;
 }
-
-// Naive implementation
-__global__ void cuda_convolve_kernel_same_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-    const int kernel_length = kernel_rows * kernel_cols;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
-
-        float result = 0.0;
-        const int apothem = kernel_rows / 2;
-#pragma unroll 3
-        for (int m = 0; m < kernel_rows; m++) {
-#pragma unroll 3
-            for (int n = 0; n < kernel_cols; n++) {
-                int input_row = m - apothem + tidY;
-                int input_col = n - apothem + tidX;
-                bool input_row_in_bounds = input_row >= 0 && input_row < mat1_rows;
-                bool input_col_in_bounds = input_col >= 0 && input_col < mat1_cols;
-
-                if (input_row_in_bounds && input_col_in_bounds) {
-                    const int curr_mat1_index = input_row * mat1_cols + input_col;
-                    const int rotated_kernel_position = kernel_length - (m * kernel_cols + n) - 1;  // Equivalent to reversing linearized kernel
-                    result += mat1_buffer[curr_mat1_index] * kernel_buffer[rotated_kernel_position];
-                }
-            }
-        }
-
-        int output_index = tidY * out_cols + tidX;
-        out_buffer[output_index] = result;
-    }
-}
-
-// correlation is zero-padded (Output is the same size as input)
-// Expects odd size, square kernels ONLY
-// Be careful, this needs to be optimized or your CNN will suffer
-Matrix cuda_convolve_same(Matrix* matrix, Matrix* kernel) {
-    // Get matrix dimensions
-    int mat1_rows = get_matrix_rows(matrix);
-    int mat1_cols = get_matrix_columns(matrix);
-    int kernel_rows = get_matrix_rows(kernel);
-    int kernel_cols = get_matrix_columns(kernel);
-
-    // Create output buffer
-    int out_rows = mat1_rows;
-    int out_cols = mat1_cols;
-    Matrix out_matrix = register_matrix(out_rows, out_cols);
-
-    // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = reinterpret_cast<float*>(matrix->address);
-    float* gpu_kernel_buffer = reinterpret_cast<float*>(kernel->address);
-    float* gpu_out_buffer = reinterpret_cast<float*>(out_matrix.address);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
-
-    // Run the kernels
-    cuda_convolve_kernel_same_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-
-    return out_matrix;
-}
-
-// Naive implementation
-__global__ void cuda_convolve_kernel_full_1(float* mat1_buffer, int mat1_rows, int mat1_cols, float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
-    int tidX = blockDim.x * blockIdx.x + threadIdx.x;
-    int tidY = blockDim.y * blockIdx.y + threadIdx.y;
-    const int kernel_length = kernel_rows * kernel_cols;
-
-    if (tidX < out_cols && tidY < out_rows) {
-        // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
-        float result = 0.0;
-        const int input_start_row = (-kernel_rows + 1) + tidY;
-        const int input_start_col = (-kernel_cols + 1) + tidX;
-        for (int m = 0; m < kernel_rows; m++) {
-            for (int n = 0; n < kernel_cols; n++) {
-                int input_row = input_start_row + m;
-                int input_col = input_start_col + n;
-                bool input_row_in_bounds = input_row >= 0 && input_row < mat1_rows;
-                bool input_col_in_bounds = input_col >= 0 && input_col < mat1_cols;
-
-                if (input_row_in_bounds && input_col_in_bounds) {
-                    const int curr_mat1_index = input_row * mat1_cols + input_col;
-                    const int rotated_kernel_position = kernel_length - (m * kernel_cols + n) - 1;  // Equivalent to reversing linearized kernel
-                    result += mat1_buffer[curr_mat1_index] * kernel_buffer[rotated_kernel_position];
-                }
-            }
-        }
-
-        int output_index = tidY * out_cols + tidX;
-        out_buffer[output_index] = result;
-    }
-}
-
-// Be careful, this needs to be optimized or your CNN will suffer
-Matrix cuda_convolve_full(Matrix* matrix, Matrix* kernel) {
-    // Get matrix dimensions
-    int mat1_rows = get_matrix_rows(matrix);
-    int mat1_cols = get_matrix_columns(matrix);
-    int kernel_rows = get_matrix_rows(kernel);
-    int kernel_cols = get_matrix_columns(kernel);
-
-    // Create output buffer
-    // Dimension of output is input + kernel - 1
-    int out_rows = mat1_rows + kernel_rows - 1;
-    int out_cols = mat1_cols + kernel_cols - 1;
-    Matrix out_matrix = register_matrix(out_rows, out_cols);
-
-    // Get the gpu buffers to operate on
-    float* gpu_mat1_buffer = reinterpret_cast<float*>(matrix->address);
-    float* gpu_kernel_buffer = reinterpret_cast<float*>(kernel->address);
-    float* gpu_out_buffer = reinterpret_cast<float*>(out_matrix.address);
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 16;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim((out_cols + block_dim.x - 1) / block_dim.x, (out_rows + block_dim.y - 1) / block_dim.y, 1);
-
-    // Run the kernels
-    cuda_convolve_kernel_full_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_kernel_buffer, kernel_rows, kernel_cols, gpu_out_buffer, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-
-    return out_matrix;
-}
-
 Matrix cuda_convolve(Matrix* matrix, Matrix* kernel, PaddingType padding_type) {
     if (padding_type == PaddingType::VALID) {
-        return cuda_convolve_valid(matrix, kernel);
+        // Dimension of output is input - kernel + 1
+        int out_rows = get_matrix_rows(matrix) - get_matrix_rows(kernel) + 1;
+        int out_cols = get_matrix_columns(matrix) - get_matrix_columns(kernel) + 1;
+        return cuda_convolve_impl(matrix, kernel, out_rows, out_cols, convolve_kernel_valid);
     } else if (padding_type == PaddingType::SAME) {
-        return cuda_convolve_same(matrix, kernel);
+        // correlation is zero-padded (Output is the same size as input)
+        // Expects odd size, square kernels ONLY
+        // Dimension of output is input
+        int out_rows = get_matrix_rows(matrix);
+        int out_cols = get_matrix_columns(matrix);
+        return cuda_convolve_impl(matrix, kernel, out_rows, out_cols, convolve_kernel_same);
     } else if (padding_type == PaddingType::FULL) {
-        return cuda_convolve_full(matrix, kernel);
+        // Dimension of output is input + kernel - 1
+        int out_rows = get_matrix_rows(matrix) + get_matrix_rows(kernel) - 1;
+        int out_cols = get_matrix_columns(matrix) + get_matrix_columns(kernel) - 1;
+        return cuda_convolve_impl(matrix, kernel, out_rows, out_cols, convolve_kernel_full);
     }
 }
 
-// Each block handles one matrix
-__global__ void cuda_convolve_kernel_packed_valid_1(Matrix* mat_buffers, int num_matrices, int mat_rows, int mat_cols, Matrix* kernel_buffers, int kernel_rows, int kernel_cols, Matrix* out_buffers, int out_rows, int out_cols) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-    const int kernel_length = kernel_rows * kernel_cols;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix].address;
-    const float* kernel_buffer = kernel_buffers[current_matrix].address;
-    float* out_buffer = out_buffers[current_matrix].address;
-
-    // The work will be split among the threads in the block
-    // Each thread will work until of tidX or tidY is out of bounds
-    while (tidY < out_rows) {
-        while (tidX < out_cols) {
-            // Now perform correlation at this location
-            float result = 0.0;
-            const int kernel_top_left_row = tidY;
-            const int kernel_top_left_col = tidX;
-
-#pragma unroll 3
-            for (int m = 0; m < kernel_rows; m++) {
-#pragma unroll 3
-                for (int n = 0; n < kernel_cols; n++) {
-                    const float mat1_val = mat_buffer[(kernel_top_left_row + m) * mat_cols + (kernel_top_left_col + n)];
-                    const int rotated_kernel_position = kernel_length - (m * kernel_cols + n) - 1;  // Equivalent to reversing linearized kernel
-                    const float kernel_val = kernel_buffer[rotated_kernel_position];
-                    result += mat1_val * kernel_val;
-                }
-            }
-
-            const int out_index = tidY * out_cols + tidX;
-            out_buffer[out_index] = result;
-            tidX += blockDim.x;
-        }
-
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-
-// Should be used when you have a lot of small matrices to convolve
-void cuda_convolve_valid_packed(Matrix* matrices, size_t num_matrices, Matrix* kernels, Matrix* out_matrices) {
+void cuda_convolve_packed_impl(Matrix* matrices, size_t num_matrices, Matrix* kernels, Matrix* out_matrices, int out_rows, int out_cols, void (*convolution_kernel_packed)(Matrix*, int, int, int, Matrix*, int, int, Matrix*, int, int)) {
     // Create output buffer
     int mat_rows = get_matrix_rows(&matrices[0]);
     int mat_cols = get_matrix_columns(&matrices[0]);
@@ -3200,10 +3161,6 @@ void cuda_convolve_valid_packed(Matrix* matrices, size_t num_matrices, Matrix* k
     int kernel_cols = get_matrix_columns(&kernels[0]);
 
     // Create output buffer
-    // Dimension of output is input - kernel + 1
-    int out_rows = mat_rows - kernel_rows + 1;
-    int out_cols = mat_cols - kernel_cols + 1;
-
     // Register output matrices
     register_matrix_group(out_rows, out_cols, num_matrices, out_matrices);
 
@@ -3219,168 +3176,25 @@ void cuda_convolve_valid_packed(Matrix* matrices, size_t num_matrices, Matrix* k
     dim3 grid_dim(num_matrices, 1, 1);
 
     // Run the kernels
-    cuda_convolve_kernel_packed_valid_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_dp, kernel_rows, kernel_cols, gpu_out_buffers_dp, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-}
-
-// Each block handles one correlation
-__global__ void cuda_convolve_kernel_packed_same_1(Matrix* mat_buffers, int num_matrices, int mat_rows, int mat_cols, Matrix* kernel_buffers, int kernel_rows, int kernel_cols, Matrix* out_buffers, int out_rows, int out_cols) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-    const int kernel_length = kernel_rows * kernel_cols;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix].address;
-    const float* kernel_buffer = kernel_buffers[current_matrix].address;
-    float* out_buffer = out_buffers[current_matrix].address;
-
-    // The work will be split among the threads in the block
-    // Each thread will work until of tidX or tidY is out of bounds
-    while (tidY < out_rows) {
-        while (tidX < out_cols) {
-            float result = 0.0;
-            const int apothem = kernel_rows / 2;
-#pragma unroll 3
-            for (int m = 0; m < kernel_rows; m++) {
-#pragma unroll 3
-                for (int n = 0; n < kernel_cols; n++) {
-                    int input_row = m - apothem + tidY;
-                    int input_col = n - apothem + tidX;
-                    bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
-                    bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
-
-                    if (input_row_in_bounds && input_col_in_bounds) {
-                        const int curr_mat1_index = input_row * mat_cols + input_col;
-                        const int rotated_kernel_position = kernel_length - (m * kernel_cols + n) - 1;  // Equivalent to reversing linearized kernel
-                        result += mat_buffer[curr_mat1_index] * kernel_buffer[rotated_kernel_position];
-                    }
-                }
-            }
-
-            int output_index = tidY * out_cols + tidX;
-            out_buffer[output_index] = result;
-            tidX += blockDim.x;
-        }
-
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-
-// Should be used when you have a lot of small matrices to convolve
-void cuda_convolve_same_packed(Matrix* matrices, size_t num_matrices, Matrix* kernels, Matrix* out_matrices) {
-    // Get matrix dimensions
-    int mat_rows = get_matrix_rows(&matrices[0]);
-    int mat_cols = get_matrix_columns(&matrices[0]);
-    int kernel_rows = get_matrix_rows(&kernels[0]);
-    int kernel_cols = get_matrix_columns(&kernels[0]);
-
-    // Create output buffer
-    int out_rows = mat_rows;
-    int out_cols = mat_cols;
-
-    // Register output matrices
-    register_matrix_group(out_rows, out_cols, num_matrices, out_matrices);
-
-    // Upload kernel args
-    auto device_pointers = upload_kernel_args(matrices, kernels, out_matrices, num_matrices);
-    auto gpu_mat_buffers_dp = device_pointers[0];
-    auto gpu_kernel_buffers_dp = device_pointers[1];
-    auto gpu_out_buffers_dp = device_pointers[2];
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 8;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim(num_matrices, 1, 1);
-
-    // Run the kernels
-    cuda_convolve_kernel_packed_same_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_dp, kernel_rows, kernel_cols, gpu_out_buffers_dp, out_rows, out_cols);
-    gpuErrchk(cudaPeekAtLastError());
-}
-
-// Each block handles one correlation
-__global__ void cuda_convolve_kernel_packed_full_1(Matrix* mat_buffers, int num_matrices, int mat_rows, int mat_cols, Matrix* kernel_buffers, int kernel_rows, int kernel_cols, Matrix* out_buffers, int out_rows, int out_cols) {
-    const int current_matrix = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
-    const int kernel_length = kernel_rows * kernel_cols;
-
-    // Grab the buffers
-    const float* mat_buffer = mat_buffers[current_matrix].address;
-    const float* kernel_buffer = kernel_buffers[current_matrix].address;
-    float* out_buffer = out_buffers[current_matrix].address;
-
-    // The work will be split among the threads in the block
-    // Each thread will work until of tidX or tidY is out of bounds
-    while (tidY < out_rows) {
-        while (tidX < out_cols) {
-            // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
-            float result = 0.0;
-            const int input_start_row = (-kernel_rows + 1) + tidY;
-            const int input_start_col = (-kernel_cols + 1) + tidX;
-            for (int m = 0; m < kernel_rows; m++) {
-                for (int n = 0; n < kernel_cols; n++) {
-                    int input_row = input_start_row + m;
-                    int input_col = input_start_col + n;
-                    bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
-                    bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
-
-                    if (input_row_in_bounds && input_col_in_bounds) {
-                        const int curr_mat1_index = input_row * mat_cols + input_col;
-                        const int rotated_kernel_position = kernel_length - (m * kernel_cols + n) - 1;  // Equivalent to reversing linearized kernel
-                        result += mat_buffer[curr_mat1_index] * kernel_buffer[rotated_kernel_position];
-                    }
-                }
-            }
-
-            int output_index = tidY * out_cols + tidX;
-            out_buffer[output_index] = result;
-            tidX += blockDim.x;
-        }
-
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-}
-
-// Should be used when you have a lot of small matrices to convolve
-void cuda_convolve_full_packed(Matrix* matrices, size_t num_matrices, Matrix* kernels, Matrix* out_matrices) {
-    int mat_rows = get_matrix_rows(&matrices[0]);
-    int mat_cols = get_matrix_columns(&matrices[0]);
-    int kernel_rows = get_matrix_rows(&kernels[0]);
-    int kernel_cols = get_matrix_columns(&kernels[0]);
-
-    // Create output buffer
-    // Dimension of output is input + kernel - 1
-    int out_rows = mat_rows + kernel_rows - 1;
-    int out_cols = mat_cols + kernel_cols - 1;
-
-    // Register output matrices
-    register_matrix_group(out_rows, out_cols, num_matrices, out_matrices);
-
-    // Upload kernel args
-    auto device_pointers = upload_kernel_args(matrices, kernels, out_matrices, num_matrices);
-    auto gpu_mat_buffers_dp = device_pointers[0];
-    auto gpu_kernel_buffers_dp = device_pointers[1];
-    auto gpu_out_buffers_dp = device_pointers[2];
-
-    // Kernel launch parameters
-    const int THREADS_PER_BLOCK = 8;
-    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
-    dim3 grid_dim(num_matrices, 1, 1);
-
-    // Run the kernels
-    cuda_convolve_kernel_packed_full_1<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_dp, kernel_rows, kernel_cols, gpu_out_buffers_dp, out_rows, out_cols);
+    convolution_kernel_packed<<<grid_dim, block_dim, 0, get_stream()>>>(gpu_mat_buffers_dp, num_matrices, mat_rows, mat_cols, gpu_kernel_buffers_dp, kernel_rows, kernel_cols, gpu_out_buffers_dp, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 }
 void cuda_convolve_packed(Matrix* matrices, size_t num_matrices, Matrix* kernels, Matrix* out_matrices, PaddingType padding_type) {
     if (padding_type == PaddingType::VALID) {
-        return cuda_convolve_valid_packed(matrices, num_matrices, kernels, out_matrices);
+        // Dimension of output is input - kernel + 1
+        int out_rows = get_matrix_rows(&matrices[0]) - get_matrix_rows(&kernels[0]) + 1;
+        int out_cols = get_matrix_columns(&matrices[0]) - get_matrix_columns(&kernels[0]) + 1;
+        return cuda_convolve_packed_impl(matrices, num_matrices, kernels, out_matrices, out_rows, out_cols, convolve_kernel_packed_valid);
     } else if (padding_type == PaddingType::SAME) {
-        return cuda_convolve_same_packed(matrices, num_matrices, kernels, out_matrices);
+        // Dimension of output is input
+        int out_rows = get_matrix_rows(&matrices[0]);
+        int out_cols = get_matrix_columns(&matrices[0]);
+        return cuda_convolve_packed_impl(matrices, num_matrices, kernels, out_matrices, out_rows, out_cols, convolve_kernel_packed_same);
     } else if (padding_type == PaddingType::FULL) {
-        return cuda_convolve_full_packed(matrices, num_matrices, kernels, out_matrices);
+        // Dimension of output is input + kernel - 1
+        int out_rows = get_matrix_rows(&matrices[0]) + get_matrix_rows(&kernels[0]) - 1;
+        int out_cols = get_matrix_columns(&matrices[0]) + get_matrix_columns(&kernels[0]) - 1;
+        return cuda_convolve_packed_impl(matrices, num_matrices, kernels, out_matrices, out_rows, out_cols, convolve_kernel_packed_full);
     }
 }
 
