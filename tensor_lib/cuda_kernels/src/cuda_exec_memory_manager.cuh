@@ -26,6 +26,7 @@ std::vector<Matrix*> get_device_kernel_args_pointers(size_t num_buffers);
 cudaStream_t get_stream();
 Matrix register_matrix(size_t rows, size_t columns);
 void register_matrix_group(size_t rows, size_t columns, size_t count, Matrix* matrices);
+void unregister_matrix_group(Matrix* matrix_group);
 void upload_matrix_data(Matrix* matrix, float* data);
 void upload_matrix_data_async(Matrix* matrix, float* data);
 Matrix register_matrix_with_data(float* data, size_t rows, size_t columns);

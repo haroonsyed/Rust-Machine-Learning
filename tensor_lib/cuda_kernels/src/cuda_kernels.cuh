@@ -96,6 +96,6 @@ Matrix cuda_one_hot_encode(float* data, size_t data_size, size_t num_classes);
 Matrix cuda_one_hot_encode_vector(Matrix* matrix, size_t num_classes);
 
 // Neural Network Specific Functions
-void cuda_cnn_feed_forward(Matrix* channels, size_t channel_count_per_sample, size_t sample_count, Matrix* results);
+void cuda_cnn_feed_forward(Matrix* channels, Matrix* filters, Matrix* biases, size_t channel_count_per_sample, size_t sample_count, size_t filter_count, Matrix* results);
 void cuda_adam_optimizer_packed(Matrix* d_v, Matrix* d_s, Matrix* curr_gradients, Matrix* results, size_t num_matrices, float d_v_beta, float d_s_beta, float learning_rate);
 }

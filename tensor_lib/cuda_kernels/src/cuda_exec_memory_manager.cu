@@ -274,6 +274,9 @@ void register_matrix_group(size_t rows, size_t columns, size_t count, Matrix* ma
         };
     }
 }
+void unregister_matrix_group(Matrix* matrix_group) {
+    memory_manager_delete(matrix_group[0].block_id);
+}
 void upload_matrix_data(Matrix* matrix, float* data) {
     void* device_address = reinterpret_cast<void*>(matrix->address);
     size_t data_size = get_matrix_length(matrix) * sizeof(float);
