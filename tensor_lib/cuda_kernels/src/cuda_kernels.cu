@@ -88,7 +88,7 @@ __device__ void element_add_device(const float* mat1_buffer, const float* mat2_b
     }
 }
 
-__device__ void element_add_packed_device(const float* mat1_buffer, const float* mat2_buffer, float* __restrict__ out_buffer, int rows, int cols) {
+__device__ void element_add_packed_device(const float* mat1_buffer, const float* mat2_buffer, float* out_buffer, int rows, int cols) {
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
 
@@ -133,7 +133,7 @@ __device__ void element_subtract_device(const float* mat1_buffer, const float* m
     }
 }
 
-__device__ void element_subtract_packed_device(const float* mat1_buffer, const float* mat2_buffer, float* __restrict__ out_buffer, int rows, int cols) {
+__device__ void element_subtract_packed_device(const float* mat1_buffer, const float* mat2_buffer, float* out_buffer, int rows, int cols) {
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
 
@@ -178,7 +178,7 @@ __device__ void element_multiply_device(const float* mat1_buffer, const float* m
     }
 }
 
-__device__ void element_multiply_packed_device(const float* mat1_buffer, const float* mat2_buffer, float* __restrict__ out_buffer, int rows, int cols) {
+__device__ void element_multiply_packed_device(const float* mat1_buffer, const float* mat2_buffer, float* out_buffer, int rows, int cols) {
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
 
@@ -223,7 +223,7 @@ __device__ void element_divide_device(const float* mat1_buffer, const float* mat
     }
 }
 
-__device__ void element_divide_packed_device(const float* mat1_buffer, const float* mat2_buffer, float* __restrict__ out_buffer, int rows, int cols) {
+__device__ void element_divide_packed_device(const float* mat1_buffer, const float* mat2_buffer, float* out_buffer, int rows, int cols) {
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
 
@@ -869,6 +869,22 @@ __device__ void convolve_full_packed_device(const float* mat_buffer, int mat_row
     }
 }
 
+__device__ void element_set_value(float* mat_buffer, const float value, const int rows, const int cols) {
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    // The work will be split among threads in the block
+    while (tidY < rows) {
+        while (tidX < cols) {
+            const int index = tidY * cols + tidX;
+            mat_buffer[index] = value;
+            tidX += blockDim.x;
+        }
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
 ////////////////////////////////
 /// Host Callable Kernels
 ////////////////////////////////
@@ -1257,7 +1273,7 @@ __global__ void matrix_multiply_kernel_4(int M, int N, int K, float* mat1_buffer
 //          You might be wondering why not 512 threads like previously?
 //          Well that increases the mem requirements per block, reducing occupancy.
 template <const int block_M, const int block_N, const int block_K>
-__global__ void matrix_multiply_kernel_5(int M, int N, int K, float* __restrict__ mat1_buffer, float* __restrict__ mat2_buffer, float* __restrict__ out_buffer) {
+__global__ void matrix_multiply_kernel_5(int M, int N, int K, const float* __restrict__ mat1_buffer, const float* __restrict__ mat2_buffer, float* __restrict__ out_buffer) {
     // 2D Block tiling with shared memory
     __shared__ float s_mat1[block_M * block_K];
     __shared__ float s_mat2[block_K * block_N];
@@ -2011,28 +2027,30 @@ __global__ void element_ln_kernel(float* mat_buffer, int mat_rows, int mat_cols,
     }
 }
 
-__global__ void cuda_cnn_feed_forward_kernel(Matrix* channel_buffers, Matrix* filter_buffers, Matrix* bias_buffers, Matrix* result_buffers, Matrix* scratchpad_buffers, int channel_count_per_sample, int sample_count, int filter_count) {
-    const int result_idx = blockIdx.x;
-    int tidX = threadIdx.x;
-    int tidY = threadIdx.y;
+__global__ void cuda_cnn_feed_forward_kernel(Matrix* channel_buffers, Matrix* filter_buffers, Matrix* bias_buffers, Matrix* result_buffers, Matrix* scratchpad_buffers, int channel_count_per_sample, int sample_count, int filter_count, int sample_rows, int sample_cols, int filter_rows, int filter_cols, int result_rows, int result_cols) {
+    const int result_index = blockIdx.x;
+    const int sample_index = result_index / filter_count;
+    const int filter_index = result_index % filter_count;
 
-    const int sample_idx = result_idx / filter_count;
+    float* result_matrix_buffer = result_buffers[result_index].address;
+    float* scratchpad_matrix_buffer = scratchpad_buffers[result_index].address;
 
-    float* result_matrix_buffer = result_buffers[result_idx].address;
-    float* scratchpad_matrix_buffer = scratchpad_buffers[result_idx].address;
+    // Set initial result value to first convolution result
+    correlate_valid_packed_device(channel_buffers[sample_index * channel_count_per_sample].address, sample_rows, sample_cols, filter_buffers[filter_index * channel_count_per_sample].address, filter_rows, filter_cols, result_matrix_buffer, result_rows, result_cols);
 
-    // Go through the filters
-    for (int i = 0; i < filter_count; i++) {
-        const float* bias_buffer = bias_buffers[i].address;
-
-        // Go through channels of the filter and sample
-        // Correlate each sample_channel with filter_channel
-        // Sum the result, add bias, and reLU
-
-        // Will need scratchpad memory to perform the convolution
-        // Will also need device functions to call
-        // Device functions needed are correlate, sum, relu
+    // Go through each channel of the sample and filter
+    for (int channel_index = 1; channel_index < channel_count_per_sample; channel_index++) {
+        // Correlate valid the sample channel with filter channel and sum to scratchpad
+        correlate_valid_packed_device(channel_buffers[sample_index * channel_count_per_sample + channel_index].address, sample_rows, sample_cols, filter_buffers[filter_index * channel_count_per_sample + channel_index].address, filter_rows, filter_cols, scratchpad_matrix_buffer, result_rows, result_cols);
+        element_add_packed_device(scratchpad_matrix_buffer, result_matrix_buffer, result_matrix_buffer, result_rows, result_cols);
     }
+
+    // Add bias
+    const float* bias_buffer = bias_buffers[filter_index].address;
+    element_add_packed_device(result_matrix_buffer, bias_buffer, result_matrix_buffer, result_rows, result_cols);
+
+    // ReLU
+    element_ReLU_packed_device(result_matrix_buffer, result_matrix_buffer, result_rows, result_cols);
 }
 
 __global__ void cuda_adam_optimizer_packed_kernel(Matrix* d_v_buffers, Matrix* d_s_buffers, Matrix* curr_gradients_buffers, Matrix* results_buffers, int matrix_rows, int matrix_cols, float d_v_beta, float d_s_beta, float learning_rate) {
@@ -3940,7 +3958,7 @@ void cuda_cnn_feed_forward(Matrix* channels, Matrix* filters, Matrix* biases, si
     int mat_rows = get_matrix_rows(&channels[0]);
     int mat_cols = get_matrix_columns(&channels[0]);
     int kernel_rows = get_matrix_rows(&filters[0]);
-    int kernel_cols = get_matrix_columns(&channels[0]);
+    int kernel_cols = get_matrix_columns(&filters[0]);
 
     // Register the result matrix group
     // We will use valid correlation for feed forward
@@ -3954,14 +3972,14 @@ void cuda_cnn_feed_forward(Matrix* channels, Matrix* filters, Matrix* biases, si
 
     // Get the GPU buffers to operate on
     std::vector<Matrix*> kernel_arg_device_pointers = get_device_kernel_args_pointers(5);
-    Matrix* gpu_channels_buffer = (Matrix*)kernel_arg_device_pointers[0];
-    Matrix* gpu_filters_buffer = (Matrix*)kernel_arg_device_pointers[0];
-    Matrix* gpu_biases_buffer = (Matrix*)kernel_arg_device_pointers[0];
-    Matrix* gpu_results_buffer = (Matrix*)kernel_arg_device_pointers[0];
-    Matrix* gpu_scratchpad_buffer = (Matrix*)kernel_arg_device_pointers[0];
+    Matrix* gpu_channels_buffer = kernel_arg_device_pointers[0];
+    Matrix* gpu_filters_buffer = kernel_arg_device_pointers[1];
+    Matrix* gpu_biases_buffer = kernel_arg_device_pointers[2];
+    Matrix* gpu_results_buffer = kernel_arg_device_pointers[3];
+    Matrix* gpu_scratchpad_buffer = kernel_arg_device_pointers[4];
 
     // Upload data to gpu buffers
-    upload_kernel_args_to_gpu_buffer(channels, gpu_biases_buffer, channel_count_per_sample * sample_count);
+    upload_kernel_args_to_gpu_buffer(channels, gpu_channels_buffer, channel_count_per_sample * sample_count);
     upload_kernel_args_to_gpu_buffer(filters, gpu_filters_buffer, channel_count_per_sample * filter_count);
     upload_kernel_args_to_gpu_buffer(biases, gpu_biases_buffer, filter_count);
     upload_kernel_args_to_gpu_buffer(results, gpu_results_buffer, filter_count * sample_count);
@@ -3975,11 +3993,12 @@ void cuda_cnn_feed_forward(Matrix* channels, Matrix* filters, Matrix* biases, si
     dim3 gridDim(sample_count * filter_count, 1, 1);  // Each block handles one filter output (packed version)
 
     // Run the kernels
-    cuda_cnn_feed_forward_kernel<<<gridDim, block_dim, 0, get_stream()>>>(gpu_channels_buffer, gpu_filters_buffer, gpu_biases_buffer, gpu_results_buffer, gpu_scratchpad_buffer, channel_count_per_sample, sample_count, filter_count);
+    cuda_cnn_feed_forward_kernel<<<gridDim, block_dim, 0, get_stream()>>>(gpu_channels_buffer, gpu_filters_buffer, gpu_biases_buffer, gpu_results_buffer, gpu_scratchpad_buffer, channel_count_per_sample, sample_count, filter_count, mat_rows, mat_cols, kernel_rows, kernel_cols, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 
     // Free scratchpad memory
     unregister_matrix_group(scratchpad_matrix_group);
+    delete scratchpad_matrix_group;
 }
 
 void cuda_adam_optimizer_packed(Matrix* d_v, Matrix* d_s, Matrix* curr_gradients, Matrix* results, size_t num_matrices, float d_v_beta, float d_s_beta, float learning_rate) {

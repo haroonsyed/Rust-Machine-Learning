@@ -164,11 +164,11 @@ std::vector<Matrix*> get_device_kernel_args_pointers(size_t num_buffers) {
     std::vector<Matrix*> pointers;
     for (size_t i = 0; i < num_buffers; i++) {
         // Align to 256 bytes
-        size_t offset = (i * kernel_args_buffer_size / num_buffers);
+        size_t offset = i * (kernel_args_buffer_size / num_buffers);
         offset = ((offset + 255) / 256) * 256;
 
         void* pointer = (char*)kernel_args_buffer + offset;
-        pointers.emplace_back((Matrix*)pointer);
+        pointers.emplace_back(reinterpret_cast<Matrix*>(pointer));
     }
     return pointers;
 }

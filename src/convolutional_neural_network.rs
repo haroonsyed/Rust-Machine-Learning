@@ -1,7 +1,10 @@
 use std::time::Instant;
 
 use itertools::{izip, Itertools};
-use tensor_lib::*;
+use tensor_lib::{
+  cuda_bindings::{cuda_cnn_feed_forward, cuda_synchronize},
+  *,
+};
 
 use crate::{
   basic_neural_network::BasicNeuralNetworkRust,
@@ -298,88 +301,29 @@ impl CnnLayer for ConvolutionalLayerRust {
   }
 
   fn feed_forward(&mut self, input: BatchData) -> BatchData {
-    // Record time here
     let start = Instant::now();
 
     let sample_count = input.sample_count;
+    let filter_count = self.filters.len();
 
-    let vec_capacity = sample_count * self.filters.len() * self.filters[0].len();
-    let mut channels_to_correlate = Vec::with_capacity(vec_capacity);
-    let mut kernels_to_correlate = Vec::with_capacity(vec_capacity);
-    let mut filter_result_index_to_sum_filter_result_to = Vec::with_capacity(vec_capacity);
-    let mut filter_result_index_to_sum = Vec::with_capacity(vec_capacity);
-    let mut filter_result_index_to_sum_bias_to =
-      Vec::with_capacity(sample_count * self.filters.len());
-    let mut biases_to_sum = Vec::with_capacity(sample_count * self.filters.len());
+    let flattened_filters = self.filters.to_owned().into_iter().flatten().collect_vec();
 
-    let mut raw_filter_output_indices = Vec::with_capacity(sample_count * self.filters.len());
+    let mut raw_filter_outputs = Vec::with_capacity(sample_count * filter_count);
+    unsafe {
+      raw_filter_outputs.set_len(sample_count * filter_count);
 
-    // The below logic is used to setup the packed operation.
-    // It follows from doing the operations non-packed (commented out below)
-    // I understand the packed version is more complex, but it is much faster
-    // Sample
-    for sample in input.iter() {
-      // Filter
-      for (filter, bias) in izip!(self.filters.iter(), self.biases.iter()) {
-        channels_to_correlate.push(sample[0].clone());
-        kernels_to_correlate.push(filter[0].clone());
-        let index_to_sum_to = channels_to_correlate.len() - 1;
-
-        // Channel
-        for (channel, kernel) in izip!(sample[1..].iter(), filter[1..].iter()) {
-          channels_to_correlate.push(channel.clone());
-          kernels_to_correlate.push(kernel.clone());
-
-          filter_result_index_to_sum_filter_result_to.push(index_to_sum_to);
-          filter_result_index_to_sum.push(channels_to_correlate.len() - 1);
-        }
-
-        // Add the bias
-        filter_result_index_to_sum_bias_to.push(index_to_sum_to);
-        biases_to_sum.push(bias.clone());
-
-        raw_filter_output_indices.push(index_to_sum_to);
-      }
+      cuda_cnn_feed_forward(
+        input.data.as_ptr(),
+        flattened_filters.as_ptr(),
+        self.biases.as_ptr(),
+        input.channel_count,
+        sample_count,
+        filter_count,
+        raw_filter_outputs.as_mut_ptr(),
+      );
     }
 
-    let setup_overhead = start.elapsed();
-
-    // correlate
-    let correlated_channels = correlate_packed(
-      &channels_to_correlate,
-      &kernels_to_correlate,
-      PaddingType::VALID,
-    );
-
-    let correlation_time = start.elapsed() - setup_overhead;
-
-    // Sum
-    let sum_to = filter_result_index_to_sum_filter_result_to
-      .iter()
-      .chain(filter_result_index_to_sum_bias_to.iter())
-      .map(|index| correlated_channels[*index].clone())
-      .collect_vec();
-
-    let to_add = filter_result_index_to_sum
-      .iter()
-      .map(|index| correlated_channels[*index].clone())
-      .chain(biases_to_sum.into_iter())
-      .collect_vec();
-
-    let raw_filter_outputs = raw_filter_output_indices
-      .iter()
-      .map(|index| correlated_channels[*index].clone())
-      .collect_vec();
-
-    let pure_element_add_packed = Instant::now();
-    element_add_packed_inplace(&sum_to, &to_add);
-    let pure_element_packed_add_time = pure_element_add_packed.elapsed();
-    let sum_time = start.elapsed() - correlation_time - setup_overhead;
-
-    // ReLU
-    element_ReLU_packed_inplace(&raw_filter_outputs);
-
-    let relu_time = start.elapsed() - sum_time - correlation_time - setup_overhead;
+    let time_to_setup_call_ff_kernel = start.elapsed();
 
     self.prev_input = input;
     self.prev_output = BatchData {
@@ -388,21 +332,17 @@ impl CnnLayer for ConvolutionalLayerRust {
       channel_count: self.filters.len(),
     };
 
-    let total_time = start.elapsed();
-    // println!("Time to setup packed operations: {:?}", setup_overhead);
-    // println!("Time to correlate: {:?}", correlation_time);
+    // let total_time = start.elapsed();
     // println!(
-    //   "Pure element add packed: {:?}",
-    //   pure_element_packed_add_time
+    //   "Time to setup and call feed forward kernel: {:?}",
+    //   time_to_setup_call_ff_kernel
     // );
-    // println!("Time to sum: {:?}", sum_time);
-    // println!("Time to relu: {:?}", relu_time);
     // println!("Total feed forward time: {:?}", total_time);
 
     return BatchData {
       data: raw_filter_outputs,
       sample_count,
-      channel_count: self.filters.len(),
+      channel_count: filter_count,
     };
   }
 

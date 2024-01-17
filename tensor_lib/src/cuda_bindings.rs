@@ -258,6 +258,15 @@ extern "C" {
   pub fn cuda_one_hot_encode_vector(matrix: *const Matrix, num_classes: usize) -> Matrix;
 
   // NEURAL NETWORK FUNCTIONS
+  pub fn cuda_cnn_feed_forward(
+    channels: *const Matrix,
+    filters: *const Matrix,
+    biases: *const Matrix,
+    channel_count_per_sample: usize,
+    sample_count: usize,
+    filter_count: usize,
+    results: *mut Matrix,
+  );
   pub fn cuda_adam_optimizer_packed(
     d_v: *const Matrix,
     d_s: *const Matrix,
