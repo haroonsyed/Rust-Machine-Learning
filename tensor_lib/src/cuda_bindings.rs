@@ -267,6 +267,17 @@ extern "C" {
     filter_count: usize,
     results: *mut Matrix,
   );
+  pub fn cuda_cnn_back_propogate(
+    sample_output_errors: *const Matrix,
+    prev_inputs: *const Matrix,
+    filters: *const Matrix,
+    sample_count: usize,
+    filter_count: usize,
+    input_depth: usize,
+    delta_bias: *mut Matrix,
+    delta_filter: *mut Matrix,
+    delta_input: *mut Matrix,
+  );
   pub fn cuda_adam_optimizer_packed(
     d_v: *const Matrix,
     d_s: *const Matrix,

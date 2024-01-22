@@ -2,7 +2,7 @@ use rust_machine_learning::{
   convolutional_neural_network::ConvolutionalNeuralNetworkRust,
   image_util::ImageBatchLoaderRust,
   packed_optimizers::{
-    PackedMomentumOptimizer, PackedRMSPropOptimizer, PackedStochasticGradientDescentOptimizer,
+    PackedAdamOptimizer, PackedMomentumOptimizer, PackedStochasticGradientDescentOptimizer,
   },
 };
 
@@ -17,6 +17,7 @@ pub fn cnn_benchmark(criterion: &mut Criterion) {
   cnn.set_optimizer(Box::new(PackedStochasticGradientDescentOptimizer::new(
     1e-3,
   )));
+  // cnn.set_optimizer(Box::new(PackedAdamOptimizer::new(1e-3, 0.9, 0.999)));
 
   cnn.add_convolutional_layer(3, 3, 32);
   cnn.add_convolutional_layer(3, 3, 64);

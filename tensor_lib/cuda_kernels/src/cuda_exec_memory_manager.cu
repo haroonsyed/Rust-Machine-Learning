@@ -35,6 +35,13 @@ void* kernel_args_buffer;
 const size_t kernel_args_buffer_size = 1024 * 1024 * 128;  // 128 MB
 
 /////////////////////
+/// UTIL
+/////////////////////
+size_t align_requested_size(size_t requested_size, size_t alignment) {
+    return ((requested_size + alignment - 1) / alignment) * alignment;
+}
+
+/////////////////////
 /// INIT API
 /////////////////////
 void init_cublas_handle() {
@@ -130,8 +137,7 @@ void memory_manager_upload_to_allocation(void* address, void* data, size_t size)
 }
 void* memory_manager_get_pinned_allocation(size_t size) {
     // Align allocation to 256 bytes
-    size_t aligned_size = ((size + 255) / 256) * 256;
-    size = aligned_size;
+    size = align_requested_size(size, 256);
 
     if (pinned_buffer_offset + size > pinned_buffer_size) {
         // Adjust size to wait for space on wrap around
@@ -165,7 +171,7 @@ std::vector<Matrix*> get_device_kernel_args_pointers(size_t num_buffers) {
     for (size_t i = 0; i < num_buffers; i++) {
         // Align to 256 bytes
         size_t offset = i * (kernel_args_buffer_size / num_buffers);
-        offset = ((offset + 255) / 256) * 256;
+        offset = align_requested_size(offset, 256);
 
         void* pointer = (char*)kernel_args_buffer + offset;
         pointers.emplace_back(reinterpret_cast<Matrix*>(pointer));
@@ -252,8 +258,7 @@ Matrix register_matrix(size_t rows, size_t columns) {
 void register_matrix_group(size_t rows, size_t columns, size_t count, Matrix* matrices) {
     size_t requested_size = sizeof(float) * rows * columns;
 
-    size_t alignment = 256;
-    size_t aligned_requested_size = ((requested_size + alignment - 1) / alignment) * alignment;
+    const size_t aligned_requested_size = align_requested_size(requested_size, 256);
     size_t real_block_size = aligned_requested_size * count;
 
     // Allocate the memory
@@ -273,6 +278,17 @@ void register_matrix_group(size_t rows, size_t columns, size_t count, Matrix* ma
             .block_id = block_id,
         };
     }
+}
+void register_matrix_group_with_value(size_t rows, size_t columns, size_t count, Matrix* matrices, float value) {
+    register_matrix_group(rows, columns, count, matrices);
+
+    // Grab the address of the block
+    MemBlock* block = &mem_blocks[matrices[0].block_id];
+    void* device_address = reinterpret_cast<void*>(block->address);
+
+    // Set the value
+    size_t block_size = count * align_requested_size(sizeof(float) * rows * columns, 256);
+    cudaMemsetAsync(device_address, value, block_size, main_exec_stream);
 }
 void unregister_matrix_group(Matrix* matrix_group) {
     memory_manager_delete(matrix_group[0].block_id);

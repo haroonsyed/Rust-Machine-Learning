@@ -2027,7 +2027,7 @@ __global__ void element_ln_kernel(float* mat_buffer, int mat_rows, int mat_cols,
     }
 }
 
-__global__ void cuda_cnn_feed_forward_kernel(Matrix* channel_buffers, Matrix* filter_buffers, Matrix* bias_buffers, Matrix* result_buffers, Matrix* scratchpad_buffers, int channel_count_per_sample, int sample_count, int filter_count, int sample_rows, int sample_cols, int filter_rows, int filter_cols, int result_rows, int result_cols) {
+__global__ void cuda_cnn_feed_forward_packed_kernel(Matrix* channel_buffers, Matrix* filter_buffers, Matrix* bias_buffers, Matrix* result_buffers, Matrix* scratchpad_buffers, int channel_count_per_sample, int sample_count, int filter_count, int sample_rows, int sample_cols, int filter_rows, int filter_cols, int result_rows, int result_cols) {
     const int result_index = blockIdx.x;
     const int sample_index = result_index / filter_count;
     const int filter_index = result_index % filter_count;
@@ -2040,7 +2040,7 @@ __global__ void cuda_cnn_feed_forward_kernel(Matrix* channel_buffers, Matrix* fi
 
     // Go through each channel of the sample and filter
     for (int channel_index = 1; channel_index < channel_count_per_sample; channel_index++) {
-        // Correlate valid the sample channel with filter channel and sum to scratchpad
+        // Correlate valid the sample channel with filter channel and sum to result
         correlate_valid_packed_device(channel_buffers[sample_index * channel_count_per_sample + channel_index].address, sample_rows, sample_cols, filter_buffers[filter_index * channel_count_per_sample + channel_index].address, filter_rows, filter_cols, scratchpad_matrix_buffer, result_rows, result_cols);
         element_add_packed_device(scratchpad_matrix_buffer, result_matrix_buffer, result_matrix_buffer, result_rows, result_cols);
     }
@@ -2051,6 +2051,44 @@ __global__ void cuda_cnn_feed_forward_kernel(Matrix* channel_buffers, Matrix* fi
 
     // ReLU
     element_ReLU_packed_device(result_matrix_buffer, result_matrix_buffer, result_rows, result_cols);
+}
+
+__global__ void cuda_cnn_backpropogate_packed_kernel(const Matrix* __restrict__ sample_output_error_buffers, const Matrix* __restrict__ prev_input_buffers, const Matrix* __restrict__ filter_buffers, Matrix* delta_bias_buffers, Matrix* delta_filter_buffers, Matrix* delta_input_buffers, Matrix* scratchpad_buffers, int sample_count, int filter_count, int input_rows, int input_cols, int input_depth, int filter_rows, int filter_cols, int prev_output_rows, int prev_output_cols) {
+    // TODO
+    /*
+        1. Correlate/Convolution and atomic add into one operation (so we don't need scratchpad)
+        2. See if dividing by sample count will mess up later stages. It will be a big win if delta_input could be just one sample. (BATCH_SIZEx reduction...)
+        3. Remember to set output to 0 before running this kernel. Maybe find a workaround for this
+
+    */
+
+    const int result_index = blockIdx.x;
+    const int sample_index = result_index / filter_count;
+    const int filter_index = result_index % filter_count;
+
+    const float* __restrict__ sample_output_error_buffer = sample_output_error_buffers[result_index].address;
+    float* scratchpad_buffer = scratchpad_buffers[result_index].address;
+
+    // b' = b - de/dy * learning_rate
+    // So db = sum of de/dy over each sample
+    float* delta_bias_buffer = delta_bias_buffers[filter_index].address;
+    element_atomic_add_inplace_packed_device(delta_bias_buffer, sample_output_error_buffer, prev_output_rows, prev_output_cols);
+
+    for (int channel_index = 0; channel_index < input_depth; channel_index++) {
+        // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
+        // So dK = sum of Xm * conv_valid * de/dy over each sample
+        float* delta_filter_buffer = delta_filter_buffers[filter_index * input_depth + channel_index].address;
+        const float* __restrict__ prev_input_buffer = prev_input_buffers[sample_index * input_depth + channel_index].address;
+        correlate_valid_packed_device(prev_input_buffer, input_rows, input_cols, sample_output_error_buffer, prev_output_rows, prev_output_cols, scratchpad_buffer, filter_rows, filter_cols);
+        element_atomic_add_inplace_packed_device(delta_filter_buffer, scratchpad_buffer, filter_rows, filter_cols);
+
+        // deltaXm = sum(de/dy * conv_full * Knm)
+        // Where n is the filter and m is the input channel
+        float* delta_x_m = delta_input_buffers[sample_index * input_depth + channel_index].address;
+        const float* __restrict__ filter_channel_buffer = filter_buffers[filter_index * input_depth + channel_index].address;
+        convolve_full_packed_device(sample_output_error_buffer, prev_output_rows, prev_output_cols, filter_channel_buffer, filter_rows, filter_cols, scratchpad_buffer, input_rows, input_cols);
+        element_atomic_add_inplace_packed_device(delta_x_m, scratchpad_buffer, input_rows, input_cols);
+    }
 }
 
 __global__ void cuda_adam_optimizer_packed_kernel(Matrix* d_v_buffers, Matrix* d_s_buffers, Matrix* curr_gradients_buffers, Matrix* results_buffers, int matrix_rows, int matrix_cols, float d_v_beta, float d_s_beta, float learning_rate) {
@@ -3993,7 +4031,62 @@ void cuda_cnn_feed_forward(Matrix* channels, Matrix* filters, Matrix* biases, si
     dim3 gridDim(sample_count * filter_count, 1, 1);  // Each block handles one filter output (packed version)
 
     // Run the kernels
-    cuda_cnn_feed_forward_kernel<<<gridDim, block_dim, 0, get_stream()>>>(gpu_channels_buffer, gpu_filters_buffer, gpu_biases_buffer, gpu_results_buffer, gpu_scratchpad_buffer, channel_count_per_sample, sample_count, filter_count, mat_rows, mat_cols, kernel_rows, kernel_cols, out_rows, out_cols);
+    cuda_cnn_feed_forward_packed_kernel<<<gridDim, block_dim, 0, get_stream()>>>(gpu_channels_buffer, gpu_filters_buffer, gpu_biases_buffer, gpu_results_buffer, gpu_scratchpad_buffer, channel_count_per_sample, sample_count, filter_count, mat_rows, mat_cols, kernel_rows, kernel_cols, out_rows, out_cols);
+    gpuErrchk(cudaPeekAtLastError());
+
+    // Free scratchpad memory
+    unregister_matrix_group(scratchpad_matrix_group);
+    delete scratchpad_matrix_group;
+}
+
+void cuda_cnn_back_propogate(Matrix* sample_output_errors, Matrix* prev_inputs, Matrix* filters, size_t sample_count, size_t filter_count, size_t input_depth, Matrix* delta_bias, Matrix* delta_filter, Matrix* delta_input) {
+    // Get matrix dimensions
+    int out_rows = get_matrix_rows(&sample_output_errors[0]);
+    int out_cols = get_matrix_columns(&sample_output_errors[0]);
+    int input_rows = get_matrix_rows(&prev_inputs[0]);
+    int input_cols = get_matrix_columns(&prev_inputs[0]);
+    int filter_rows = get_matrix_rows(&filters[0]);
+    int filter_cols = get_matrix_columns(&filters[0]);
+
+    // Register the result matrix groups
+    register_matrix_group_with_value(out_rows, out_cols, filter_count, delta_bias, 0.0);
+    register_matrix_group_with_value(filter_rows, filter_cols, filter_count * input_depth, delta_filter, 0.0);
+    register_matrix_group_with_value(input_rows, input_cols, sample_count * input_depth, delta_input, 0.0);
+
+    // Scratchpad memory, must be larger of filter dimensions and input dimensions
+    int scratchpad_rows = std::max(filter_rows, input_rows);
+    int scratchpad_cols = std::max(filter_cols, input_cols);
+    Matrix* scratchpad_matrix_group = new Matrix[filter_count * sample_count];
+    register_matrix_group(scratchpad_rows, scratchpad_cols, filter_count * sample_count, scratchpad_matrix_group);
+
+    // Get the GPU buffers to operate on
+    std::vector<Matrix*> kernel_arg_device_pointers = get_device_kernel_args_pointers(7);
+    Matrix* gpu_sample_output_errors_buffer = kernel_arg_device_pointers[0];
+    Matrix* gpu_prev_inputs_buffer = kernel_arg_device_pointers[1];
+    Matrix* gpu_filters_buffer = kernel_arg_device_pointers[2];
+    Matrix* gpu_delta_bias_buffer = kernel_arg_device_pointers[3];
+    Matrix* gpu_delta_filter_buffer = kernel_arg_device_pointers[4];
+    Matrix* gpu_delta_input_buffer = kernel_arg_device_pointers[5];
+    Matrix* gpu_scratchpad_buffer = kernel_arg_device_pointers[6];
+
+    // Upload metadata to gpu buffers
+    upload_kernel_args_to_gpu_buffer(sample_output_errors, gpu_sample_output_errors_buffer, filter_count * sample_count);
+    upload_kernel_args_to_gpu_buffer(prev_inputs, gpu_prev_inputs_buffer, sample_count * input_depth);
+    upload_kernel_args_to_gpu_buffer(filters, gpu_filters_buffer, filter_count * input_depth);
+    upload_kernel_args_to_gpu_buffer(delta_bias, gpu_delta_bias_buffer, filter_count);
+    upload_kernel_args_to_gpu_buffer(delta_filter, gpu_delta_filter_buffer, filter_count * input_depth);
+    upload_kernel_args_to_gpu_buffer(delta_input, gpu_delta_input_buffer, sample_count * input_depth);
+    upload_kernel_args_to_gpu_buffer(scratchpad_matrix_group, gpu_scratchpad_buffer, filter_count * sample_count);
+
+    // Kernel Launch Parameters
+    // TODO: Based on input dimensions, determine if we do a packed version.
+    //         Right now we will just do packed version since train sets are small
+    const int THREADS_PER_BLOCK = 8;
+    dim3 block_dim(THREADS_PER_BLOCK, THREADS_PER_BLOCK, 1);
+    dim3 gridDim(sample_count * filter_count, 1, 1);  // Each block handles one filter output (packed version)
+
+    // Run the kernels
+    cuda_cnn_backpropogate_packed_kernel<<<gridDim, block_dim, 0, get_stream()>>>(gpu_sample_output_errors_buffer, gpu_prev_inputs_buffer, gpu_filters_buffer, gpu_delta_bias_buffer, gpu_delta_filter_buffer, gpu_delta_input_buffer, gpu_scratchpad_buffer, sample_count, filter_count, input_rows, input_cols, input_depth, filter_rows, filter_cols, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
 
     // Free scratchpad memory

@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use itertools::{izip, Itertools};
 use tensor_lib::{
-  cuda_bindings::{cuda_cnn_feed_forward, cuda_synchronize},
+  cuda_bindings::{cuda_cnn_back_propogate, cuda_cnn_feed_forward, cuda_synchronize},
   *,
 };
 
@@ -332,7 +332,7 @@ impl CnnLayer for ConvolutionalLayerRust {
       channel_count: self.filters.len(),
     };
 
-    // let total_time = start.elapsed();
+    let total_time = start.elapsed();
     // println!(
     //   "Time to setup and call feed forward kernel: {:?}",
     //   time_to_setup_call_ff_kernel
@@ -348,161 +348,66 @@ impl CnnLayer for ConvolutionalLayerRust {
 
   fn backpropogation(&mut self, sample_output_errors: BatchData) -> BatchData {
     let sample_count = sample_output_errors.sample_count;
-
-    // n is the filter
-    // m is the channel
-
-    // Apply relu prime
+    let filter_count = self.filters.len();
+    let input_depth = self.input_dimensions.2;
+    let normalization_factor = 1.0 / (sample_count as f32);
 
     let start = Instant::now();
 
+    // Apply relu prime
     element_ReLU_prime_packed_inplace(&self.prev_output.data);
     element_multiply_packed_inplace(&sample_output_errors.data, &self.prev_output.data);
 
     let relu_prime_time = start.elapsed();
 
-    let vec_capacity = sample_count * self.filters.len() * self.filters[0].len();
+    let flattened_filters = self.filters.to_owned().into_iter().flatten().collect_vec();
 
-    // Delta Input Packed
-    let mut delta_input_output_errors = Vec::with_capacity(vec_capacity);
-    let mut delta_input_filters = Vec::with_capacity(vec_capacity);
-    let mut delta_input_to_sum_to = Vec::with_capacity(vec_capacity);
-    let mut delta_input_to_sum = Vec::with_capacity(vec_capacity);
-
-    // Bias Update Packed
-    let bias_gradients = &sample_output_errors.data;
-
-    // Filter Update Packed
-    let mut delta_filter_prev_input = Vec::with_capacity(vec_capacity);
-    let mut delta_filter_output_error = Vec::with_capacity(vec_capacity);
-
-    // PER SAMPLE
-    let mut current_sample_index = 0;
-    for (sample_output_error, sample_prev_input) in
-      izip!(sample_output_errors.iter(), self.prev_input.iter())
-    {
-      // Calculate the input error
-      // PER FILTER
-      for (filter_error, filter) in izip!(sample_output_error.iter(), self.filters.iter()) {
-        // deltaXm = sum(de/dy * conv_full * Knm)
-        let sum_to_offset = current_sample_index * self.input_dimensions.2;
-
-        // PER CHANNEL
-        for (channel_index, channel) in filter.iter().enumerate() {
-          delta_input_output_errors.push(filter_error.clone());
-          delta_input_filters.push(channel.clone());
-          delta_input_to_sum_to.push(sum_to_offset + channel_index);
-          delta_input_to_sum.push(delta_input_output_errors.len() - 1);
-        }
-      }
-
-      // Update the filters
-      // PER FILTER
-      for (filter_output_error, filter) in izip!(sample_output_error, self.filters.iter()) {
-        // PER CHANNEL
-        for (prev_channel_input, channel) in izip!(sample_prev_input, filter) {
-          // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
-          delta_filter_prev_input.push(prev_channel_input.clone());
-          delta_filter_output_error.push(filter_output_error.clone());
-        }
-      }
-
-      current_sample_index += 1;
+    let mut delta_bias = Vec::with_capacity(filter_count);
+    let mut delta_filter = Vec::with_capacity(filter_count * input_depth);
+    let mut delta_input = Vec::with_capacity(sample_count * input_depth);
+    unsafe {
+      delta_bias.set_len(filter_count);
+      delta_filter.set_len(filter_count * input_depth);
+      delta_input.set_len(sample_count * input_depth);
+      cuda_cnn_back_propogate(
+        sample_output_errors.data.as_ptr(),
+        self.prev_input.data.as_ptr(),
+        flattened_filters.as_ptr(),
+        sample_count,
+        filter_count,
+        input_depth,
+        delta_bias.as_mut_ptr(),
+        delta_filter.as_mut_ptr(),
+        delta_input.as_mut_ptr(),
+      );
     }
 
-    let backprop_setup_time = start.elapsed();
+    let time_to_setup_call_bp_kernel = start.elapsed() - relu_prime_time;
 
-    ///////////////////
-    /// DELTA BIASES
-    ///////////////////
-    // b' = b - de/dy * learning_rate
-    let bias_steps = self
+    // Actually update weights, use optimizer (can remove sample count now or set to 1 for now)
+    let db = self
       .packed_bias_optimizer
-      .calculate_steps(bias_gradients, sample_count);
-
-    element_subtract_packed_inplace(&self.biases, &bias_steps);
-
-    let bias_update_time = start.elapsed() - backprop_setup_time;
-
-    ///////////////////
-    /// DELTA FILTERS
-    ///////////////////
-    // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
-    let channel_gradients = correlate_packed(
-      &delta_filter_prev_input,
-      &delta_filter_output_error,
-      PaddingType::VALID,
-    );
-    let correlation_time = start.elapsed() - bias_update_time - backprop_setup_time;
-
-    let filter_steps = self
+      .calculate_steps(&delta_bias, normalization_factor);
+    let dK = self
       .packed_filter_optimizer
-      .calculate_steps(&channel_gradients, sample_count);
+      .calculate_steps(&delta_filter, normalization_factor);
 
-    let filter_step_time =
-      start.elapsed() - correlation_time - bias_update_time - backprop_setup_time;
+    element_subtract_packed_inplace(&self.biases, &db);
+    element_subtract_packed_inplace(&flattened_filters, &dK);
 
-    let flattened_filters = self.filters.to_owned().into_iter().flatten().collect_vec();
-    let flattened_filter_time = start.elapsed()
-      - filter_step_time
-      - correlation_time
-      - bias_update_time
-      - backprop_setup_time;
-    element_subtract_packed_inplace(&flattened_filters, &filter_steps);
-    let filter_update_time = start.elapsed()
-      - flattened_filter_time
-      - filter_step_time
-      - correlation_time
-      - bias_update_time
-      - backprop_setup_time;
-
-    // Print out all the filter update times
-    // println!("correlation_time: {:?}", correlation_time);
-    // println!("filter_step_time: {:?}", filter_step_time);
-    // println!("flattened_filter_time: {:?}", flattened_filter_time);
-    // println!("filter_update_time: {:?}", filter_update_time);
-
-    let filter_update_time = start.elapsed() - bias_update_time - backprop_setup_time;
-
-    ///////////////////
-    /// DELTA INPUTS
-    ///////////////////
-    // deltaXm = sum(de/dy * conv_full * Knm)
-    let delta_input_convolutions = convolve_packed(
-      &delta_input_output_errors,
-      &delta_input_filters,
-      PaddingType::FULL,
-    );
-
-    let delta_input_sum_to = delta_input_to_sum_to
-      .iter()
-      .map(|&index| delta_input_convolutions[index].clone())
-      .collect_vec();
-    let delta_input_to_sum = delta_input_to_sum
-      .iter()
-      .map(|&index| delta_input_convolutions[index].clone())
-      .collect_vec();
-    element_add_packed_inplace(&delta_input_sum_to, &delta_input_to_sum);
-
-    let sample_input_errors = delta_input_to_sum_to
-      .into_iter()
-      .unique()
-      .map(|index| delta_input_convolutions[index].clone())
-      .collect_vec();
-
-    let delta_input_time =
-      start.elapsed() - filter_update_time - bias_update_time - backprop_setup_time;
+    let weight_update_time = start.elapsed() - time_to_setup_call_bp_kernel - relu_prime_time;
 
     let total_time = start.elapsed();
-    // println!("Time to setup packed operations: {:?}", backprop_setup_time);
     // println!("Time to relu prime: {:?}", relu_prime_time);
-    // println!("Time to bias update: {:?}", bias_update_time);
-    // println!("Time to filter update: {:?}", filter_update_time);
-    // println!("Time to delta input: {:?}", delta_input_time);
+    // println!(
+    //   "Time to setup and call backpropogation kernel: {:?}",
+    //   time_to_setup_call_bp_kernel
+    // );
+    // println!("Time to weight update: {:?}", weight_update_time);
     // println!("Total backprop time: {:?}", total_time);
 
     return BatchData {
-      data: sample_input_errors,
+      data: delta_input,
       sample_count,
       channel_count: self.input_dimensions.2,
     };
