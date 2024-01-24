@@ -251,8 +251,8 @@ Matrix register_matrix(size_t rows, size_t columns) {
 
     // Cast the address to a size_t
     return Matrix{
-        .address = reinterpret_cast<float*>(block->address),
-        .block_id = block_id,
+        reinterpret_cast<float*>(block->address),
+        block_id,
     };
 }
 void register_matrix_group(size_t rows, size_t columns, size_t count, Matrix* matrices) {
@@ -273,10 +273,8 @@ void register_matrix_group(size_t rows, size_t columns, size_t count, Matrix* ma
     for (size_t i = 0; i < count; i++) {
         const size_t block_offset = i * aligned_requested_size;
 
-        matrices[i] = Matrix{
-            .address = reinterpret_cast<float*>(block->address + block_offset),
-            .block_id = block_id,
-        };
+        matrices[i].address = reinterpret_cast<float*>(block->address + block_offset);
+        matrices[i].block_id = block_id;
     }
 }
 void register_matrix_group_with_value(size_t rows, size_t columns, size_t count, Matrix* matrices, float value) {
