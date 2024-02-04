@@ -2,7 +2,13 @@
 
 ## General Goal
 
-I wanted to learn rust and machine learning..so I thought why not do ML in rust. The notebooks, while in python, have rust bindings to the core ML/DL algorithms.
+I wanted to learn rust and machine learning..so I thought why not do ML in rust. The notebooks, while in python, have rust bindings to the core ML/DL algorithms. <br/>
+
+I have also written my own cuda matrix library, which I have painstakingly optimized to use batched operations, chunked memory management, asynchronous memory transfers, mempools/async mem management and more. <br/>
+Why not use cublas you ask?
+
+- It was a good learning exercise, I don't pretend it is faster than existing frameworks
+- CUBLAS is there, just commented out (I used it for performance comparison and I am usually within a factor of 2-3x)
 
 #### NO ML CODE WAS WRITTEN IN PYTHON! <br/>
 
@@ -10,8 +16,9 @@ I wanted to learn rust and machine learning..so I thought why not do ML in rust.
 
 That means all the ml algorithms are written using good old if/else, for loops etc. No significant help from libraries.<br/><br/>
 The following are the only libraries used for actual ML logic:
+
 - Rust's itertools for iterating over data more easily
-- Rust's statsrs and Python's numpy random number generation
+- Rust's statsrs and Python's numpy for random number generation
 - Rust's Image lib to decode thousands of images of varying formats into a raw float array efficiently
 
 ## Structure
@@ -53,6 +60,7 @@ Any data is located in the data folder.
 6. Open notebooks in jupyter notebook/jupyter lab/vscode etc..
 
 ## Running Tests
+
 Make sure to run tests using `cargo test -- --test-threads=1`.
 Running the tests in parallel may fail because the cuda matrix library is not thread safe (yet).
 
