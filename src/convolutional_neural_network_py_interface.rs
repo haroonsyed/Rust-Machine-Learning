@@ -94,9 +94,9 @@ impl ConvolutionalNeuralNetwork {
   }
 
   fn train_using_image_loader(&mut self, batch_size: usize, num_iterations: usize) {
-    if let Some(batch_loader) = self.batch_loader.as_ref() {
+    if let Some(batch_loader) = self.batch_loader.as_mut() {
       for _ in 0..num_iterations {
-        let (observations, labels) = batch_loader.batch_sample_as_matrix(batch_size);
+        let (observations, labels) = batch_loader.batch_sample_as_matrix(batch_size, false);
         self.network.train(observations, labels);
       }
       unsafe { cuda_synchronize() }

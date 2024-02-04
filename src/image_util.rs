@@ -23,8 +23,12 @@ impl ImageBatchLoader {
   }
 
   // Set batch size to zero to load all samples
-  fn batch_sample(&self, batch_size: usize) -> PyResult<(Vec<Vec<Vec<f32>>>, Vec<f32>)> {
-    return Ok(self.loader.batch_sample(batch_size));
+  fn batch_sample(
+    &mut self,
+    batch_size: usize,
+    with_replacement: bool,
+  ) -> PyResult<(Vec<Vec<Vec<f32>>>, Vec<f32>)> {
+    return Ok(self.loader.batch_sample(batch_size, with_replacement));
   }
 
   fn get_classifications_map(&self) -> PyResult<HashMap<String, f32>> {
@@ -35,6 +39,7 @@ impl ImageBatchLoader {
 pub struct ImageBatchLoaderRust {
   pub classifications_map: HashMap<String, f32>,
   pub paths: Vec<PathBuf>,
+  available_paths: Vec<PathBuf>,
   pub sample_width: usize,
   pub sample_height: usize,
 }
@@ -95,13 +100,50 @@ impl ImageBatchLoaderRust {
     return ImageBatchLoaderRust {
       classifications_map,
       paths,
+      available_paths: Vec::new(),
       sample_width,
       sample_height,
     };
   }
 
-  pub fn batch_sample_as_matrix(&self, batch_size: usize) -> (Vec<Vec<Matrix>>, Matrix) {
-    let total_sample_count = self.paths.len();
+  fn sample_with_replacement(&mut self, batch_size: usize) -> Vec<PathBuf> {
+    if self.available_paths.is_empty() {
+      self.available_paths = self.paths.clone();
+    }
+
+    let mut rng = rand::thread_rng(); // Create a random number generator
+    return (0..batch_size)
+      .map(|_| {
+        let img_index = rng.gen_range(0..self.available_paths.len());
+        return self.available_paths[img_index].clone();
+      })
+      .collect_vec();
+  }
+
+  fn sample_without_replacement(&mut self, batch_size: usize) -> Vec<PathBuf> {
+    if self.available_paths.len() < batch_size {
+      self.available_paths = self.paths.clone();
+    }
+
+    let mut rng = rand::thread_rng(); // Create a random number generator
+    return (0..batch_size)
+      .map(|_| {
+        let img_index = rng.gen_range(0..self.available_paths.len());
+        return self.available_paths.swap_remove(img_index);
+      })
+      .collect_vec();
+  }
+
+  pub fn batch_sample_as_matrix(
+    &mut self,
+    batch_size: usize,
+    with_replacement: bool,
+  ) -> (Vec<Vec<Matrix>>, Matrix) {
+    let batch_paths = if with_replacement {
+      self.sample_with_replacement(batch_size)
+    } else {
+      self.sample_without_replacement(batch_size)
+    };
 
     // Reserve pinned memory for the batch
     let pinned_buffers = (0..batch_size * 3)
@@ -125,14 +167,10 @@ impl ImageBatchLoaderRust {
       .map(|sample| sample.into_iter().collect_vec())
       .collect_vec();
 
-    let labels = grouped_pinned_buffers
+    let labels = (grouped_pinned_buffers, batch_paths)
       .par_iter()
-      // .iter()
-      .map(|pinned_channel_buffers| {
+      .map(|(pinned_channel_buffers, img_path)| {
         // Load the pixel data for that image
-        let mut rng = rand::thread_rng(); // Create a random number generator
-        let img_index = rng.gen_range(0..total_sample_count);
-        let img_path = &self.paths[img_index];
         let img_classification_string = img_path
           .parent()
           .unwrap()
@@ -189,19 +227,23 @@ impl ImageBatchLoaderRust {
   }
 
   // Set the batch_size to 0 to load all the images
-  pub fn batch_sample(&self, batch_size: usize) -> (Vec<Vec<Vec<f32>>>, Vec<f32>) {
-    let total_sample_count = self.paths.len();
+  pub fn batch_sample(
+    &mut self,
+    batch_size: usize,
+    with_replacement: bool,
+  ) -> (Vec<Vec<Vec<f32>>>, Vec<f32>) {
+    let batch_paths = if with_replacement {
+      self.sample_with_replacement(batch_size)
+    } else {
+      self.sample_without_replacement(batch_size)
+    };
 
     let start = Instant::now();
 
-    let batch_sample: (Vec<Vec<Vec<f32>>>, Vec<f32>) = (0..batch_size)
-      .collect_vec()
+    let batch_sample: (Vec<Vec<Vec<f32>>>, Vec<f32>) = ((0..batch_size).collect_vec(), batch_paths)
       .par_iter()
-      .filter_map(|_| {
+      .filter_map(|(_, img_path)| {
         // Load the pixel data for that image
-        let mut rng = rand::thread_rng(); // Create a random number generator
-        let img_index = rng.gen_range(0..total_sample_count);
-        let img_path = &self.paths[img_index];
         let img_classification_string = img_path
           .parent()
           .unwrap()
@@ -221,22 +263,7 @@ impl ImageBatchLoaderRust {
           let (width, height) = img.dimensions();
           let mut pixel_data = vec![Vec::with_capacity((width * height) as usize); 3];
 
-          // Check image will fit center crop
-          // let top_left_x_crop = (width as i32 / 2) - (self.sample_width as i32 / 2) - 1;
-          // let top_left_y_crop = (height as i32 / 2) - (self.sample_height as i32 / 2) - 1;
-          // if top_left_x_crop < 0 || top_left_y_crop < 0 {
-          //   return None;
-          // }
-
-          for (_, _, pixel) in img
-            // .crop_imm(
-            //   top_left_x_crop as u32,
-            //   top_left_y_crop as u32,
-            //   self.sample_width as u32,
-            //   self.sample_height as u32,
-            // )
-            .pixels()
-          {
+          for (_, _, pixel) in img.pixels() {
             // Write to each depth of the image data
             // SEPRATE OUT INTO R G B IMAGES
             pixel_data[0].push((pixel.0[0] as f32 / 255.0) - 0.5);

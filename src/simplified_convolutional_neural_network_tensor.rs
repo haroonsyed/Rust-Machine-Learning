@@ -53,9 +53,9 @@ impl SimplifiedConvolutionalNeuralNetworkTensor {
     batch_size: usize,
     num_iterations: usize,
   ) {
-    if let Some(batch_loader) = self.batch_loader.as_ref() {
+    if let Some(batch_loader) = self.batch_loader.as_mut() {
       for _ in 0..num_iterations {
-        let (observations, labels) = batch_loader.batch_sample(batch_size);
+        let (observations, labels) = batch_loader.batch_sample(batch_size, false);
         self.network.train(&observations, &labels, learning_rate);
       }
     }
