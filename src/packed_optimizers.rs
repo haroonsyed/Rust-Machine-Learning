@@ -299,8 +299,8 @@ impl PackedOptimizer for PackedAdamOptimizer {
     unsafe {
       result_gradients.set_len(matrix_count);
       cuda_adam_optimizer_packed(
-        self.d_v.as_ref().unwrap().as_ptr() as *const Matrix,
-        self.d_s.as_ref().unwrap().as_ptr() as *const Matrix,
+        self.d_v.as_mut().unwrap().as_ptr() as *mut Matrix,
+        self.d_s.as_mut().unwrap().as_ptr() as *mut Matrix,
         curr_gradients.as_ptr() as *const Matrix,
         result_gradients.as_ptr() as *mut Matrix,
         matrix_count,

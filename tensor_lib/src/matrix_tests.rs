@@ -962,6 +962,58 @@ mod tests {
   }
 
   #[test]
+  fn matrix_multiply_cpu_gpu_agreement() {
+    let mut rng = rand::thread_rng();
+    let range = Normal::new(0.0, 1.0).unwrap();
+
+    for M in 1..16 {
+      for N in 1..16 {
+        for K in 1..16 {
+          let data_1 = (0..M)
+            .map(|_| (0..K).map(|_| range.sample(&mut rng) as f32).collect_vec())
+            .collect_vec();
+          let data_2 = (0..K)
+            .map(|_| (0..N).map(|_| range.sample(&mut rng) as f32).collect_vec())
+            .collect_vec();
+
+          let mat_gpu_1 = Matrix::new_2d(&data_1);
+          let mat_gpu_2 = Matrix::new_2d(&data_2);
+          let mat_cpu_1 = MatrixCpu::new_2d(&data_1);
+          let mat_cpu_2 = MatrixCpu::new_2d(&data_2);
+
+          let result_gpu = mat_gpu_1.matrix_multiply(&mat_gpu_2);
+          let result_cpu = mat_cpu_1.matrix_multiply(&mat_cpu_2);
+
+          assert!(matrix_are_equal_gpu_cpu(&result_gpu, &result_cpu, 2));
+        }
+      }
+    }
+
+    for M in 54..64 {
+      for N in 54..64 {
+        for K in 1..64 {
+          let data_1 = (0..M)
+            .map(|_| (0..K).map(|_| range.sample(&mut rng) as f32).collect_vec())
+            .collect_vec();
+          let data_2 = (0..K)
+            .map(|_| (0..N).map(|_| range.sample(&mut rng) as f32).collect_vec())
+            .collect_vec();
+
+          let mat_gpu_1 = Matrix::new_2d(&data_1);
+          let mat_gpu_2 = Matrix::new_2d(&data_2);
+          let mat_cpu_1 = MatrixCpu::new_2d(&data_1);
+          let mat_cpu_2 = MatrixCpu::new_2d(&data_2);
+
+          let result_gpu = mat_gpu_1.matrix_multiply(&mat_gpu_2);
+          let result_cpu = mat_cpu_1.matrix_multiply(&mat_cpu_2);
+
+          assert!(matrix_are_equal_gpu_cpu(&result_gpu, &result_cpu, 2));
+        }
+      }
+    }
+  }
+
+  #[test]
   fn add_column_vector() {
     let matrix = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
 
@@ -2718,11 +2770,6 @@ mod tests {
   }
 
   fn matrix_are_equal_gpu_cpu(a: &Matrix, b: &MatrixCpu, precision: usize) -> bool {
-    if a.get_data_length() < 100 && b.get_rows() * b.get_columns() < 100 {
-      a.print();
-      b.print();
-    }
-
     if a.get_rows() != b.get_rows() || a.get_columns() != b.get_columns() {
       println!("Matrices do not even share dimensions");
       return false;
@@ -2732,6 +2779,8 @@ mod tests {
     for i in 0..a.get_rows() {
       for j in 0..a.get_columns() {
         if !approx_equal(a_data[i][j], b[i][j], precision) {
+          a.print();
+          b.print();
           println!(
             "Matrices not equal at index: {} {} with value: {} {}",
             i, j, a_data[i][j], b[i][j]

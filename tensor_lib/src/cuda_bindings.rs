@@ -279,8 +279,8 @@ extern "C" {
     delta_input: *mut Matrix,
   );
   pub fn cuda_adam_optimizer_packed(
-    d_v: *const Matrix,
-    d_s: *const Matrix,
+    d_v: *mut Matrix,
+    d_s: *mut Matrix,
     curr_gradients: *const Matrix,
     results: *mut Matrix,
     num_matrices: usize,
