@@ -29,11 +29,11 @@ pub fn cnn_benchmark(criterion: &mut Criterion) {
 
   //   Now setup the image feeder
   let parent_folder = String::from("./data/cifar-10/");
-  let batch_loader = ImageBatchLoaderRust::new(parent_folder, 32, 32);
+  let mut batch_loader = ImageBatchLoaderRust::new(parent_folder, 32, 32);
 
   //   Now train the network
   for _ in 0..500 {
-    let (observations, labels) = batch_loader.batch_sample_as_matrix(32);
+    let (observations, labels) = batch_loader.batch_sample_as_matrix(32, false);
     cnn.train(observations, labels);
   }
 

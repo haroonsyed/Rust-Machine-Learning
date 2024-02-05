@@ -575,9 +575,7 @@ __device__ void correlate_valid_packed_device(const float* mat_buffer, int mat_r
             const int kernel_top_left_row = tidY;
             const int kernel_top_left_col = tidX;
 
-#pragma unroll 3
             for (int m = 0; m < kernel_rows; m++) {
-#pragma unroll 3
                 for (int n = 0; n < kernel_cols; n++) {
                     const float mat1_val = mat_buffer[(kernel_top_left_row + m) * mat_cols + (kernel_top_left_col + n)];
                     const float kernel_val = kernel_buffer[m * kernel_cols + n];
@@ -587,6 +585,37 @@ __device__ void correlate_valid_packed_device(const float* mat_buffer, int mat_r
 
             const int out_index = tidY * out_cols + tidX;
             out_buffer[out_index] = result;
+            tidX += blockDim.x;
+        }
+
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
+__device__ void correlate_atomic_add_valid_packed_device(const float* mat_buffer, int mat_rows, int mat_cols, const float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    // The work will be split among the threads in the block
+    // Each thread will work until of tidX or tidY is out of bounds
+    while (tidY < out_rows) {
+        while (tidX < out_cols) {
+            // Now perform correlation at this location
+            float result = 0.0;
+            const int kernel_top_left_row = tidY;
+            const int kernel_top_left_col = tidX;
+
+            for (int m = 0; m < kernel_rows; m++) {
+                for (int n = 0; n < kernel_cols; n++) {
+                    const float mat1_val = mat_buffer[(kernel_top_left_row + m) * mat_cols + (kernel_top_left_col + n)];
+                    const float kernel_val = kernel_buffer[m * kernel_cols + n];
+                    result += mat1_val * kernel_val;
+                }
+            }
+
+            const int out_index = tidY * out_cols + tidX;
+            atomicAdd(&out_buffer[out_index], result);
             tidX += blockDim.x;
         }
 
@@ -644,7 +673,9 @@ __device__ void correlate_full_packed_device(const float* mat_buffer, int mat_ro
             float result = 0.0;
             const int input_start_row = (-kernel_rows + 1) + tidY;
             const int input_start_col = (-kernel_cols + 1) + tidX;
+#pragma unroll 3
             for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
                 for (int n = 0; n < kernel_cols; n++) {
                     int input_row = input_start_row + m;
                     int input_col = input_start_col + n;
@@ -844,7 +875,9 @@ __device__ void convolve_full_packed_device(const float* mat_buffer, int mat_row
             float result = 0.0;
             const int input_start_row = (-kernel_rows + 1) + tidY;
             const int input_start_col = (-kernel_cols + 1) + tidX;
+#pragma unroll 3
             for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
                 for (int n = 0; n < kernel_cols; n++) {
                     int input_row = input_start_row + m;
                     int input_col = input_start_col + n;
@@ -869,6 +902,46 @@ __device__ void convolve_full_packed_device(const float* mat_buffer, int mat_row
     }
 }
 
+__device__ void convolve_atomic_add_full_packed_device(const float* mat_buffer, int mat_rows, int mat_cols, const float* kernel_buffer, int kernel_rows, int kernel_cols, float* out_buffer, int out_rows, int out_cols) {
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+    const int kernel_length = kernel_rows * kernel_cols;
+
+    // The work will be split among the threads in the block
+    // Each thread will work until of tidX or tidY is out of bounds
+    while (tidY < out_rows) {
+        while (tidX < out_cols) {
+            // O[i][j] = weighted sum of kernel with input, where kernel is centered at i,j
+            float result = 0.0;
+            const int input_start_row = (-kernel_rows + 1) + tidY;
+            const int input_start_col = (-kernel_cols + 1) + tidX;
+#pragma unroll 3
+            for (int m = 0; m < kernel_rows; m++) {
+#pragma unroll 3
+                for (int n = 0; n < kernel_cols; n++) {
+                    int input_row = input_start_row + m;
+                    int input_col = input_start_col + n;
+                    bool input_row_in_bounds = input_row >= 0 && input_row < mat_rows;
+                    bool input_col_in_bounds = input_col >= 0 && input_col < mat_cols;
+
+                    if (input_row_in_bounds && input_col_in_bounds) {
+                        const int curr_mat1_index = input_row * mat_cols + input_col;
+                        const int rotated_kernel_position = kernel_length - (m * kernel_cols + n) - 1;  // Equivalent to reversing linearized kernel
+                        result += mat_buffer[curr_mat1_index] * kernel_buffer[rotated_kernel_position];
+                    }
+                }
+            }
+
+            int output_index = tidY * out_cols + tidX;
+            atomicAdd(&out_buffer[output_index], result);
+            tidX += blockDim.x;
+        }
+
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
 __device__ void element_set_value(float* mat_buffer, const float value, const int rows, const int cols) {
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
@@ -878,6 +951,22 @@ __device__ void element_set_value(float* mat_buffer, const float value, const in
         while (tidX < cols) {
             const int index = tidY * cols + tidX;
             mat_buffer[index] = value;
+            tidX += blockDim.x;
+        }
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+}
+
+__device__ void copy_packed(const float* mat1_buffer, float* out_buffer, int rows, int cols) {
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+
+    // The work will be split among threads in the block
+    while (tidY < rows) {
+        while (tidX < cols) {
+            const int index = tidY * cols + tidX;
+            out_buffer[index] = mat1_buffer[index];
             tidX += blockDim.x;
         }
         tidX = threadIdx.x;
@@ -1272,21 +1361,21 @@ __global__ void matrix_multiply_kernel_4(int M, int N, int K, float* mat1_buffer
 //          Then each thread can work on 8x8 pieces of the output 128x128 area (128x128/64 = 256)
 //          You might be wondering why not 512 threads like previously?
 //          Well that increases the mem requirements per block, reducing occupancy.
-template <const int block_M, const int block_N, const int block_K>
+template <const int block_M, const int block_N, const int block_K, const int TM, const int TN>
 __global__ void matrix_multiply_kernel_5(int M, int N, int K, const float* __restrict__ mat1_buffer, const float* __restrict__ mat2_buffer, float* __restrict__ out_buffer) {
     // 2D Block tiling with shared memory
     __shared__ float s_mat1[block_M * block_K];
     __shared__ float s_mat2[block_K * block_N];
 
-    float thread_results[block_K * block_K] = {0.0};
+    float thread_results[TM * TN] = {0.0};
 
     const int block_row = blockIdx.y;
     const int block_col = blockIdx.x;
 
     // Output within block details
     const int tid = threadIdx.y * blockDim.x + threadIdx.x;
-    const int out_block_row = tid / (block_M / block_K);
-    const int out_block_col = tid % (block_N / block_K);
+    const int out_block_row = tid / (block_M / TM);
+    const int out_block_col = tid % (block_N / TN);
 
     const int num_threads_per_block = blockDim.x * blockDim.y;
     const int num_elements_to_load = (block_M * block_K) / num_threads_per_block;
@@ -1337,15 +1426,15 @@ __global__ void matrix_multiply_kernel_5(int M, int N, int K, const float* __res
         __syncthreads();
 
         // Go through common dimensions of block (across row of mat1 and down col of mat2)
-#pragma unroll 8
+#pragma unroll block_K
         for (int block_common_index = 0; block_common_index < block_K; block_common_index++) {
             // Now this thread will accumulate the block_K x block_K results from shared memory
-#pragma unroll 8
-            for (int result_index_row = 0; result_index_row < block_K; result_index_row++) {
-#pragma unroll 8
-                for (int result_index_col = 0; result_index_col < block_K; result_index_col++) {
-                    thread_results[result_index_row * block_K + result_index_col] +=
-                        s_mat1[(out_block_row * block_K + result_index_row) * block_K + block_common_index] *
+#pragma unroll TM
+            for (int result_index_row = 0; result_index_row < TM; result_index_row++) {
+#pragma unroll TN
+                for (int result_index_col = 0; result_index_col < TN; result_index_col++) {
+                    thread_results[result_index_row * TN + result_index_col] +=
+                        s_mat1[(out_block_row * TN + result_index_row) * block_K + block_common_index] *
                         s_mat2[(block_common_index * block_N) + (out_block_col * block_K + result_index_col)];
                 }
             }
@@ -1357,10 +1446,10 @@ __global__ void matrix_multiply_kernel_5(int M, int N, int K, const float* __res
     const int out_index_row = block_row * block_M + out_block_row * block_K;
     const int out_index_col = block_col * block_N + out_block_col * block_K;
 
-#pragma unroll 8
-    for (int i = 0; i < block_K; i++) {
-#pragma unroll 8
-        for (int j = 0; j < block_K; j++) {
+#pragma unroll TM
+    for (int i = 0; i < TM; i++) {
+#pragma unroll TN
+        for (int j = 0; j < TN; j++) {
             if (out_index_row + i < M && out_index_col + j < N) {
                 out_buffer[(out_index_row + i) * N + out_index_col + j] = thread_results[i * block_K + j];
             }
@@ -2027,22 +2116,17 @@ __global__ void element_ln_kernel(float* mat_buffer, int mat_rows, int mat_cols,
     }
 }
 
-__global__ void cuda_cnn_feed_forward_packed_kernel(Matrix* channel_buffers, Matrix* filter_buffers, Matrix* bias_buffers, Matrix* result_buffers, Matrix* scratchpad_buffers, int channel_count_per_sample, int sample_count, int filter_count, int sample_rows, int sample_cols, int filter_rows, int filter_cols, int result_rows, int result_cols) {
+__global__ void cuda_cnn_feed_forward_packed_kernel(Matrix* channel_buffers, Matrix* filter_buffers, Matrix* bias_buffers, Matrix* result_buffers, int channel_count_per_sample, int sample_count, int filter_count, int sample_rows, int sample_cols, int filter_rows, int filter_cols, int result_rows, int result_cols) {
     const int result_index = blockIdx.x;
     const int sample_index = result_index / filter_count;
     const int filter_index = result_index % filter_count;
 
     float* result_matrix_buffer = result_buffers[result_index].address;
-    float* scratchpad_matrix_buffer = scratchpad_buffers[result_index].address;
-
-    // Set initial result value to first convolution result
-    correlate_valid_packed_device(channel_buffers[sample_index * channel_count_per_sample].address, sample_rows, sample_cols, filter_buffers[filter_index * channel_count_per_sample].address, filter_rows, filter_cols, result_matrix_buffer, result_rows, result_cols);
 
     // Go through each channel of the sample and filter
-    for (int channel_index = 1; channel_index < channel_count_per_sample; channel_index++) {
+    for (int channel_index = 0; channel_index < channel_count_per_sample; channel_index++) {
         // Correlate valid the sample channel with filter channel and sum to result
-        correlate_valid_packed_device(channel_buffers[sample_index * channel_count_per_sample + channel_index].address, sample_rows, sample_cols, filter_buffers[filter_index * channel_count_per_sample + channel_index].address, filter_rows, filter_cols, scratchpad_matrix_buffer, result_rows, result_cols);
-        element_add_packed_device(scratchpad_matrix_buffer, result_matrix_buffer, result_matrix_buffer, result_rows, result_cols);
+        correlate_atomic_add_valid_packed_device(channel_buffers[sample_index * channel_count_per_sample + channel_index].address, sample_rows, sample_cols, filter_buffers[filter_index * channel_count_per_sample + channel_index].address, filter_rows, filter_cols, result_matrix_buffer, result_rows, result_cols);
     }
 
     // Add bias
@@ -2053,41 +2137,60 @@ __global__ void cuda_cnn_feed_forward_packed_kernel(Matrix* channel_buffers, Mat
     element_ReLU_packed_device(result_matrix_buffer, result_matrix_buffer, result_rows, result_cols);
 }
 
-__global__ void cuda_cnn_backpropogate_packed_kernel(const Matrix* __restrict__ sample_output_error_buffers, const Matrix* __restrict__ prev_input_buffers, const Matrix* __restrict__ filter_buffers, Matrix* delta_bias_buffers, Matrix* delta_filter_buffers, Matrix* delta_input_buffers, Matrix* scratchpad_buffers, int sample_count, int filter_count, int input_rows, int input_cols, int input_depth, int filter_rows, int filter_cols, int prev_output_rows, int prev_output_cols) {
-    // TODO
-    /*
-        1. Correlate/Convolution and atomic add into one operation (so we don't need scratchpad)
-        2. See if dividing by sample count will mess up later stages. It will be a big win if delta_input could be just one sample. (BATCH_SIZEx reduction...)
-        3. Remember to set output to 0 before running this kernel. Maybe find a workaround for this
-
-    */
+__global__ void cuda_cnn_backpropogate_packed_kernel(const Matrix* __restrict__ sample_output_error_buffers, const Matrix* __restrict__ prev_input_buffers, const Matrix* __restrict__ filter_buffers, Matrix* delta_bias_buffers, Matrix* delta_filter_buffers, Matrix* delta_input_buffers, int sample_count, int filter_count, int input_rows, int input_cols, int input_depth, int filter_rows, int filter_cols, int prev_output_rows, int prev_output_cols) {
+    __shared__ float shared_buffer_misc[32 * 32];
+    __shared__ float shared_buffer_sample_output_error[32 * 32];
 
     const int result_index = blockIdx.x;
     const int sample_index = result_index / filter_count;
     const int filter_index = result_index % filter_count;
 
     const float* __restrict__ sample_output_error_buffer = sample_output_error_buffers[result_index].address;
-    float* scratchpad_buffer = scratchpad_buffers[result_index].address;
+
+    int tidX = threadIdx.x;
+    int tidY = threadIdx.y;
+    while (tidY < prev_output_rows) {
+        while (tidX < prev_output_cols) {
+            const int index = tidY * prev_output_cols + tidX;
+            shared_buffer_sample_output_error[index] = sample_output_error_buffer[index];
+            tidX += blockDim.x;
+        }
+        tidX = threadIdx.x;
+        tidY += blockDim.y;
+    }
+    tidX = threadIdx.x;
+    tidY = threadIdx.y;
+    __syncthreads();
 
     // b' = b - de/dy * learning_rate
     // So db = sum of de/dy over each sample
     float* delta_bias_buffer = delta_bias_buffers[filter_index].address;
-    element_atomic_add_inplace_packed_device(delta_bias_buffer, sample_output_error_buffer, prev_output_rows, prev_output_cols);
+    element_atomic_add_inplace_packed_device(delta_bias_buffer, shared_buffer_sample_output_error, prev_output_rows, prev_output_cols);
 
     for (int channel_index = 0; channel_index < input_depth; channel_index++) {
         // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
         // So dK = sum of Xm * conv_valid * de/dy over each sample
         float* delta_filter_buffer = delta_filter_buffers[filter_index * input_depth + channel_index].address;
         const float* __restrict__ prev_input_buffer = prev_input_buffers[sample_index * input_depth + channel_index].address;
-        correlate_valid_packed_device(prev_input_buffer, input_rows, input_cols, sample_output_error_buffer, prev_output_rows, prev_output_cols, scratchpad_buffer, filter_rows, filter_cols);
-        element_atomic_add_inplace_packed_device(delta_filter_buffer, scratchpad_buffer, filter_rows, filter_cols);
+        while (tidY < prev_output_rows) {
+            while (tidX < prev_output_cols) {
+                const int index = tidY * prev_output_cols + tidX;
+                shared_buffer_misc[index] = prev_input_buffer[index];
+                tidX += blockDim.x;
+            }
+            tidX = threadIdx.x;
+            tidY += blockDim.y;
+        }
+        tidX = threadIdx.x;
+        tidY = threadIdx.y;
+        __syncthreads();
+        correlate_atomic_add_valid_packed_device(shared_buffer_misc, input_rows, input_cols, shared_buffer_sample_output_error, prev_output_rows, prev_output_cols, delta_filter_buffer, filter_rows, filter_cols);
 
         // deltaXm = sum(de/dy * conv_full * Knm)
         // Where n is the filter and m is the input channel
-        float* delta_x_m = delta_input_buffers[sample_index * input_depth + channel_index].address;
+        float* delta_input_buffer = delta_input_buffers[sample_index * input_depth + channel_index].address;
         const float* __restrict__ filter_channel_buffer = filter_buffers[filter_index * input_depth + channel_index].address;
-        convolve_full_packed_device(sample_output_error_buffer, prev_output_rows, prev_output_cols, filter_channel_buffer, filter_rows, filter_cols, scratchpad_buffer, input_rows, input_cols);
-        element_atomic_add_inplace_packed_device(delta_x_m, scratchpad_buffer, input_rows, input_cols);
+        convolve_atomic_add_full_packed_device(shared_buffer_sample_output_error, prev_output_rows, prev_output_cols, filter_channel_buffer, filter_rows, filter_cols, delta_input_buffer, input_rows, input_cols);
     }
 }
 
@@ -2776,22 +2879,32 @@ Matrix cuda_matrix_multiply(Matrix* matrix_1, Matrix* matrix_2) {
     // // Run the kernels
     // matrix_multiply_kernel_3<<<grid_dim, block_di>>>(gpu_mat1_buffer, mat1_rows, mat1_cols, gpu_mat2_buffer, mat2_rows, mat2_cols, gpu_out_buffer, out_rows, out_cols);
 
-    // V4 launch
+    // V4/V5 launch
     const int M = mat1_rows;
     const int N = mat2_cols;
     const int K = mat1_cols;
 
-    const int THREADS_PER_BLOCK_X = 32;
-    const int THREADS_PER_BLOCK_Y = 8;
+    // if (K > M && K > N) {
+    //     // If K is big while M&N are small, we need to change approach, else we risk a single block doing the whole matmult
+    //     const int THREADS_PER_BLOCK_X = 32;
+    //     const int THREADS_PER_BLOCK_Y = 8;
 
-    dim3 block_dim(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
-    dim3 grid_dim((N + 128 - 1) / 128, (M + 128 - 1) / 128, 1);
-    matrix_multiply_kernel_5<128, 128, 8><<<grid_dim, block_dim, 0, get_stream()>>>(M, N, K, gpu_mat1_buffer, gpu_mat2_buffer, gpu_out_buffer);
+    //     dim3 block_dim(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
+    //     dim3 grid_dim((N + 128 - 1) / 128, (M + 128 - 1) / 128, 1);
+    //     matrix_multiply_kernel_5<128, 128, 8, 8, 8><<<grid_dim, block_dim, 0, get_stream()>>>(M, N, K, gpu_mat1_buffer, gpu_mat2_buffer, gpu_out_buffer);
+    // } else {
+    //     const int THREADS_PER_BLOCK_X = 32;
+    //     const int THREADS_PER_BLOCK_Y = 8;
+
+    //     dim3 block_dim(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
+    //     dim3 grid_dim((N + 128 - 1) / 128, (M + 128 - 1) / 128, 1);
+    //     matrix_multiply_kernel_5<128, 128, 8, 8, 8><<<grid_dim, block_dim, 0, get_stream()>>>(M, N, K, gpu_mat1_buffer, gpu_mat2_buffer, gpu_out_buffer);
+    // }
 
     // CUBLAS version (for comparison to mine)
-    // float alpha = 1.0;
-    // float beta = 0.0;
-    // cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, mat2_cols, mat1_rows, mat1_cols, &alpha, gpu_mat2_buffer, mat2_cols, gpu_mat1_buffer, mat1_cols, &beta, gpu_out_buffer, mat2_cols);
+    float alpha = 1.0;
+    float beta = 0.0;
+    cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, mat2_cols, mat1_rows, mat1_cols, &alpha, gpu_mat2_buffer, mat2_cols, gpu_mat1_buffer, mat1_cols, &beta, gpu_out_buffer, mat2_cols);
 
     gpuErrchk(cudaPeekAtLastError());
 
@@ -4002,26 +4115,20 @@ void cuda_cnn_feed_forward(Matrix* channels, Matrix* filters, Matrix* biases, si
     // We will use valid correlation for feed forward
     int out_rows = mat_rows - kernel_rows + 1;
     int out_cols = mat_cols - kernel_cols + 1;
-    register_matrix_group(out_rows, out_cols, sample_count * filter_count, results);
-
-    // Scratchpad memory for the convolution
-    Matrix* scratchpad_matrix_group = new Matrix[filter_count * sample_count];
-    register_matrix_group(out_rows, out_cols, sample_count * filter_count, scratchpad_matrix_group);
+    register_matrix_group_with_value(out_rows, out_cols, sample_count * filter_count, results, 0.0);
 
     // Get the GPU buffers to operate on
-    std::vector<Matrix*> kernel_arg_device_pointers = get_device_kernel_args_pointers(5);
+    std::vector<Matrix*> kernel_arg_device_pointers = get_device_kernel_args_pointers(4);
     Matrix* gpu_channels_buffer = kernel_arg_device_pointers[0];
     Matrix* gpu_filters_buffer = kernel_arg_device_pointers[1];
     Matrix* gpu_biases_buffer = kernel_arg_device_pointers[2];
     Matrix* gpu_results_buffer = kernel_arg_device_pointers[3];
-    Matrix* gpu_scratchpad_buffer = kernel_arg_device_pointers[4];
 
     // Upload data to gpu buffers
     upload_kernel_args_to_gpu_buffer(channels, gpu_channels_buffer, channel_count_per_sample * sample_count);
     upload_kernel_args_to_gpu_buffer(filters, gpu_filters_buffer, channel_count_per_sample * filter_count);
     upload_kernel_args_to_gpu_buffer(biases, gpu_biases_buffer, filter_count);
     upload_kernel_args_to_gpu_buffer(results, gpu_results_buffer, filter_count * sample_count);
-    upload_kernel_args_to_gpu_buffer(scratchpad_matrix_group, gpu_scratchpad_buffer, filter_count * sample_count);
 
     // Kernel Launch Parameters
     // TODO: Based on input dimensions, determine if we do a packed version.
@@ -4031,12 +4138,8 @@ void cuda_cnn_feed_forward(Matrix* channels, Matrix* filters, Matrix* biases, si
     dim3 gridDim(sample_count * filter_count, 1, 1);  // Each block handles one filter output (packed version)
 
     // Run the kernels
-    cuda_cnn_feed_forward_packed_kernel<<<gridDim, block_dim, 0, get_stream()>>>(gpu_channels_buffer, gpu_filters_buffer, gpu_biases_buffer, gpu_results_buffer, gpu_scratchpad_buffer, channel_count_per_sample, sample_count, filter_count, mat_rows, mat_cols, kernel_rows, kernel_cols, out_rows, out_cols);
+    cuda_cnn_feed_forward_packed_kernel<<<gridDim, block_dim, 0, get_stream()>>>(gpu_channels_buffer, gpu_filters_buffer, gpu_biases_buffer, gpu_results_buffer, channel_count_per_sample, sample_count, filter_count, mat_rows, mat_cols, kernel_rows, kernel_cols, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
-
-    // Free scratchpad memory
-    unregister_matrix_group(scratchpad_matrix_group);
-    delete scratchpad_matrix_group;
 }
 
 void cuda_cnn_back_propogate(Matrix* sample_output_errors, Matrix* prev_inputs, Matrix* filters, size_t sample_count, size_t filter_count, size_t input_depth, Matrix* delta_bias, Matrix* delta_filter, Matrix* delta_input) {
@@ -4053,21 +4156,14 @@ void cuda_cnn_back_propogate(Matrix* sample_output_errors, Matrix* prev_inputs, 
     register_matrix_group_with_value(filter_rows, filter_cols, filter_count * input_depth, delta_filter, 0.0);
     register_matrix_group_with_value(input_rows, input_cols, sample_count * input_depth, delta_input, 0.0);
 
-    // Scratchpad memory, must be larger of filter dimensions and input dimensions
-    int scratchpad_rows = std::max(filter_rows, input_rows);
-    int scratchpad_cols = std::max(filter_cols, input_cols);
-    Matrix* scratchpad_matrix_group = new Matrix[filter_count * sample_count];
-    register_matrix_group(scratchpad_rows, scratchpad_cols, filter_count * sample_count, scratchpad_matrix_group);
-
     // Get the GPU buffers to operate on
-    std::vector<Matrix*> kernel_arg_device_pointers = get_device_kernel_args_pointers(7);
+    std::vector<Matrix*> kernel_arg_device_pointers = get_device_kernel_args_pointers(6);
     Matrix* gpu_sample_output_errors_buffer = kernel_arg_device_pointers[0];
     Matrix* gpu_prev_inputs_buffer = kernel_arg_device_pointers[1];
     Matrix* gpu_filters_buffer = kernel_arg_device_pointers[2];
     Matrix* gpu_delta_bias_buffer = kernel_arg_device_pointers[3];
     Matrix* gpu_delta_filter_buffer = kernel_arg_device_pointers[4];
     Matrix* gpu_delta_input_buffer = kernel_arg_device_pointers[5];
-    Matrix* gpu_scratchpad_buffer = kernel_arg_device_pointers[6];
 
     // Upload metadata to gpu buffers
     upload_kernel_args_to_gpu_buffer(sample_output_errors, gpu_sample_output_errors_buffer, filter_count * sample_count);
@@ -4076,7 +4172,6 @@ void cuda_cnn_back_propogate(Matrix* sample_output_errors, Matrix* prev_inputs, 
     upload_kernel_args_to_gpu_buffer(delta_bias, gpu_delta_bias_buffer, filter_count);
     upload_kernel_args_to_gpu_buffer(delta_filter, gpu_delta_filter_buffer, filter_count * input_depth);
     upload_kernel_args_to_gpu_buffer(delta_input, gpu_delta_input_buffer, sample_count * input_depth);
-    upload_kernel_args_to_gpu_buffer(scratchpad_matrix_group, gpu_scratchpad_buffer, filter_count * sample_count);
 
     // Kernel Launch Parameters
     // TODO: Based on input dimensions, determine if we do a packed version.
@@ -4086,12 +4181,8 @@ void cuda_cnn_back_propogate(Matrix* sample_output_errors, Matrix* prev_inputs, 
     dim3 gridDim(sample_count * filter_count, 1, 1);  // Each block handles one filter output (packed version)
 
     // Run the kernels
-    cuda_cnn_backpropogate_packed_kernel<<<gridDim, block_dim, 0, get_stream()>>>(gpu_sample_output_errors_buffer, gpu_prev_inputs_buffer, gpu_filters_buffer, gpu_delta_bias_buffer, gpu_delta_filter_buffer, gpu_delta_input_buffer, gpu_scratchpad_buffer, sample_count, filter_count, input_rows, input_cols, input_depth, filter_rows, filter_cols, out_rows, out_cols);
+    cuda_cnn_backpropogate_packed_kernel<<<gridDim, block_dim, 0, get_stream()>>>(gpu_sample_output_errors_buffer, gpu_prev_inputs_buffer, gpu_filters_buffer, gpu_delta_bias_buffer, gpu_delta_filter_buffer, gpu_delta_input_buffer, sample_count, filter_count, input_rows, input_cols, input_depth, filter_rows, filter_cols, out_rows, out_cols);
     gpuErrchk(cudaPeekAtLastError());
-
-    // Free scratchpad memory
-    unregister_matrix_group(scratchpad_matrix_group);
-    delete scratchpad_matrix_group;
 }
 
 void cuda_adam_optimizer_packed(Matrix* d_v, Matrix* d_s, Matrix* curr_gradients, Matrix* results, size_t num_matrices, float d_v_beta, float d_s_beta, float learning_rate) {

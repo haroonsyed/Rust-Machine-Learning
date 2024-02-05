@@ -57,7 +57,7 @@ void init_min_pool_size() {
 }
 void init_library() {
     // Init cublas
-    // init_cublas_handle();
+    init_cublas_handle();
 
     // Init pool
     init_min_pool_size();
