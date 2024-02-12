@@ -2138,7 +2138,6 @@ __global__ void cuda_cnn_feed_forward_packed_kernel(Matrix* channel_buffers, Mat
 }
 
 __global__ void cuda_cnn_backpropogate_packed_kernel(const Matrix* __restrict__ sample_output_error_buffers, const Matrix* __restrict__ prev_input_buffers, const Matrix* __restrict__ filter_buffers, Matrix* delta_bias_buffers, Matrix* delta_filter_buffers, Matrix* delta_input_buffers, int sample_count, int filter_count, int input_rows, int input_cols, int input_depth, int filter_rows, int filter_cols, int prev_output_rows, int prev_output_cols) {
-    __shared__ float shared_buffer_misc[32 * 32];
     __shared__ float shared_buffer_sample_output_error[32 * 32];
 
     const int result_index = blockIdx.x;
@@ -2149,17 +2148,7 @@ __global__ void cuda_cnn_backpropogate_packed_kernel(const Matrix* __restrict__ 
 
     int tidX = threadIdx.x;
     int tidY = threadIdx.y;
-    while (tidY < prev_output_rows) {
-        while (tidX < prev_output_cols) {
-            const int index = tidY * prev_output_cols + tidX;
-            shared_buffer_sample_output_error[index] = sample_output_error_buffer[index];
-            tidX += blockDim.x;
-        }
-        tidX = threadIdx.x;
-        tidY += blockDim.y;
-    }
-    tidX = threadIdx.x;
-    tidY = threadIdx.y;
+    copy_packed(sample_output_error_buffer, shared_buffer_sample_output_error, prev_output_rows, prev_output_cols);
     __syncthreads();
 
     // b' = b - de/dy * learning_rate
@@ -2169,22 +2158,11 @@ __global__ void cuda_cnn_backpropogate_packed_kernel(const Matrix* __restrict__ 
 
     for (int channel_index = 0; channel_index < input_depth; channel_index++) {
         // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
-        // So dK = sum of Xm * conv_valid * de/dy over each sample
+        // So dKnm = Xm * conv_valid * de/dy over each sample
+        // Where n is the filter and m is the input channel
         float* delta_filter_buffer = delta_filter_buffers[filter_index * input_depth + channel_index].address;
         const float* __restrict__ prev_input_buffer = prev_input_buffers[sample_index * input_depth + channel_index].address;
-        while (tidY < prev_output_rows) {
-            while (tidX < prev_output_cols) {
-                const int index = tidY * prev_output_cols + tidX;
-                shared_buffer_misc[index] = prev_input_buffer[index];
-                tidX += blockDim.x;
-            }
-            tidX = threadIdx.x;
-            tidY += blockDim.y;
-        }
-        tidX = threadIdx.x;
-        tidY = threadIdx.y;
-        __syncthreads();
-        correlate_atomic_add_valid_packed_device(shared_buffer_misc, input_rows, input_cols, shared_buffer_sample_output_error, prev_output_rows, prev_output_cols, delta_filter_buffer, filter_rows, filter_cols);
+        correlate_atomic_add_valid_packed_device(prev_input_buffer, input_rows, input_cols, shared_buffer_sample_output_error, prev_output_rows, prev_output_cols, delta_filter_buffer, filter_rows, filter_cols);
 
         // deltaXm = sum(de/dy * conv_full * Knm)
         // Where n is the filter and m is the input channel
@@ -2196,7 +2174,7 @@ __global__ void cuda_cnn_backpropogate_packed_kernel(const Matrix* __restrict__ 
 
 __global__ void cuda_adam_optimizer_packed_kernel(Matrix* d_v_buffers, Matrix* d_s_buffers, Matrix* curr_gradients_buffers, Matrix* results_buffers, int matrix_rows, int matrix_cols, float d_v_beta, float d_s_beta, float learning_rate) {
     // Each block handles updating a pair of d_s and d_v
-    int block_tid = blockDim.x;
+    int block_tid = blockIdx.x;
 
     const float* curr_gradient = curr_gradients_buffers[block_tid].address;
     float* d_v_buffer = d_v_buffers[block_tid].address;
@@ -2221,9 +2199,9 @@ __global__ void cuda_adam_optimizer_packed_kernel(Matrix* d_v_buffers, Matrix* d
             float d_s_previous = d_s_buffer[mat_index];
             float d_s_new = d_s_beta * d_s_previous + (1 - d_s_beta) * curr_gradient_val * curr_gradient_val;
 
-            // Scale momentum dv and rms prop dss to be similar scale
-            // d_v_new /= (1.0 - self.beta1.powf(timestep))
-            // d_s_new /= (1.0 - self.beta2.powf(timestep))
+            //         // Scale momentum dv and rms prop dss to be similar scale
+            //         // d_v_new /= (1.0 - self.beta1.powf(timestep))
+            //         // d_s_new /= (1.0 - self.beta2.powf(timestep))
 
             // Calculate final delta_gradient = learning_rate * dv / sqrt(ds) + epsilon
             float delta_gradient = learning_rate * d_v_new / (sqrtf(d_s_new) + epsilon);
@@ -4187,8 +4165,8 @@ void cuda_cnn_back_propogate(Matrix* sample_output_errors, Matrix* prev_inputs, 
 
 void cuda_adam_optimizer_packed(Matrix* d_v, Matrix* d_s, Matrix* curr_gradients, Matrix* results, size_t num_matrices, float d_v_beta, float d_s_beta, float learning_rate) {
     // Get matrix dimensions
-    int mat_rows = get_matrix_rows(&d_v[0]);
-    int mat_cols = get_matrix_columns(&d_v[0]);
+    int mat_rows = get_matrix_rows(&curr_gradients[0]);
+    int mat_cols = get_matrix_columns(&curr_gradients[0]);
 
     // Register output matrix group
     register_matrix_group(mat_rows, mat_cols, num_matrices, results);

@@ -30,6 +30,10 @@ harness = false
 name = "cnn_bench"
 harness = false
 
+[[bench]]
+name = "nn_bench"
+harness = false
+
 [profile.release-with-debug]
 inherits = "release"
 debug = true

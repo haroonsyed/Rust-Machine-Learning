@@ -106,8 +106,7 @@ impl ConvolutionalNeuralNetwork {
   fn train_raw_data(&mut self, observations: Vec<Vec<Vec<f32>>>, labels: Vec<f32>) {
     let num_classifications = self.network.num_classifications;
     let observations_matrices = self.convert_features_to_matrices(&observations);
-    let encoded_labels = Self::convert_labels_one_hot_encoded(&labels, num_classifications);
-    self.network.train(observations_matrices, encoded_labels);
+    self.network.train(observations_matrices, labels);
     unsafe { cuda_synchronize() }
   }
 

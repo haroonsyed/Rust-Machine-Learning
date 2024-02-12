@@ -12,7 +12,9 @@ use tensor_lib::cuda_bindings::cuda_synchronize;
 // Define the benchmark function
 pub fn cnn_benchmark(criterion: &mut Criterion) {
   // Setup the CNN
-  let mut cnn = ConvolutionalNeuralNetworkRust::new(10, 32, 32, 3);
+  let input_height = 32;
+  let input_width = 32;
+  let mut cnn = ConvolutionalNeuralNetworkRust::new(10, input_height, input_width, 3);
 
   cnn.set_optimizer(Box::new(PackedStochasticGradientDescentOptimizer::new(
     1e-3,
@@ -29,7 +31,7 @@ pub fn cnn_benchmark(criterion: &mut Criterion) {
 
   //   Now setup the image feeder
   let parent_folder = String::from("./data/cifar-10/");
-  let mut batch_loader = ImageBatchLoaderRust::new(parent_folder, 32, 32);
+  let mut batch_loader = ImageBatchLoaderRust::new(parent_folder, input_width, input_height);
 
   //   Now train the network
   for _ in 0..500 {

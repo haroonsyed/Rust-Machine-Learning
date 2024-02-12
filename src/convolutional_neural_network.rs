@@ -127,7 +127,7 @@ impl ConvolutionalNeuralNetworkRust {
       .classify(filter_outputs);
   }
 
-  pub fn train(&mut self, observations_matrices: Vec<Vec<Matrix>>, encoded_labels: Matrix) {
+  pub fn train(&mut self, observations_matrices: Vec<Vec<Matrix>>, labels: Vec<f32>) {
     if observations_matrices.len() == 0 {
       return;
     }
@@ -148,7 +148,7 @@ impl ConvolutionalNeuralNetworkRust {
       .fully_connected_layer
       .as_mut()
       .unwrap()
-      .train(filter_outputs, &encoded_labels);
+      .train(filter_outputs, &labels);
 
     // Backpropogate
     self.backpropogation(fc_error);
@@ -425,7 +425,7 @@ impl MaxPoolLayerRust {
     let input_dimensions = (input_height, input_width, input_depth);
     let output_dimensions = (
       input_height / 2 + input_height % 2,
-      input_width / 2 + input_height % 2,
+      input_width / 2 + input_width % 2,
       input_depth,
     );
 
@@ -523,12 +523,12 @@ impl FullyConnectedLayer {
     return self.fully_connected_layer.classify_matrix(&flattened_input);
   }
 
-  fn train(&mut self, input: BatchData, encoded_labels: &Matrix) -> BatchData {
+  fn train(&mut self, input: BatchData, labels: &Vec<f32>) -> BatchData {
     let start = Instant::now();
     let flattened_input = self.flatten(input);
     let fc_error = self
       .fully_connected_layer
-      .train_classification_observation_matrix(&flattened_input, encoded_labels);
+      .train_classification_observation_matrix(&flattened_input, labels);
     let error = self.unflatten(fc_error);
 
     let total_time = start.elapsed();
@@ -552,14 +552,8 @@ impl FullyConnectedLayer {
   }
 
   fn unflatten(&mut self, fc_error: Matrix) -> BatchData {
-    // The fc_error is with respect to classification neurons, not input neurons to fc layer
-    // So we will quickly do that here (adding it to Basic Neural Network was clunky)
-    let mut fc_error = self.fully_connected_layer.weights[0]
-      .transpose()
-      .matrix_multiply(&fc_error);
-
     // Now let's take the transpose of that to make observations the rows
-    fc_error = fc_error.transpose();
+    let fc_error = fc_error.transpose();
 
     // Now unflatten the output error row by row back to input shape
     // Because I decided not to treat each sample separately to FC I need to double unflatten (sample -> depth)

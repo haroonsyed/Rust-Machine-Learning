@@ -138,7 +138,7 @@ impl ImageBatchLoaderRust {
     &mut self,
     batch_size: usize,
     with_replacement: bool,
-  ) -> (Vec<Vec<Matrix>>, Matrix) {
+  ) -> (Vec<Vec<Matrix>>, Vec<f32>) {
     let batch_paths = if with_replacement {
       self.sample_with_replacement(batch_size)
     } else {
@@ -205,7 +205,7 @@ impl ImageBatchLoaderRust {
       .collect();
 
     // Convert data in pinned buffer to matrix
-    let matrices = create_matrix_group(self.sample_width, self.sample_width, batch_size * 3);
+    let matrices = create_matrix_group(self.sample_height, self.sample_width, batch_size * 3);
 
     // Upload the data to the GPU
     izip!(matrices.iter(), pinned_buffers).for_each(|(matrix, pinned_buffer)| {
@@ -220,10 +220,7 @@ impl ImageBatchLoaderRust {
       .map(|sample| sample.into_iter().collect_vec())
       .collect_vec();
 
-    let encoded_labels =
-      Matrix::new_one_hot_encoded(&labels, self.classifications_map.len()).transpose();
-
-    return (grouped_matrices, encoded_labels);
+    return (grouped_matrices, labels);
   }
 
   // Set the batch_size to 0 to load all the images

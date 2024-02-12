@@ -119,7 +119,7 @@ pub struct BasicNeuralNetworkRust {
   pub weight_optimizers: Vec<Box<dyn Optimizer>>,
   pub bias_optimizers: Vec<Box<dyn Optimizer>>,
   pub neuron_outputs: Vec<Matrix>,
-  curr_performance_info: (Matrix, Matrix), // (num_correct, loss)
+  pub curr_performance_info: (Matrix, Matrix), // (num_correct, loss)
   pub performance_info: Vec<(f32, f32, usize, usize)>, // (accuracy, loss, sample_count, iterations)
   pub collect_performance_info: bool,
 }
@@ -199,6 +199,11 @@ impl BasicNeuralNetworkRust {
 
   pub fn set_collect_performance_info(&mut self, collect_performance_info: bool) {
     self.collect_performance_info = collect_performance_info;
+  }
+
+  pub fn get_encoded_labels(&self, labels: &Vec<f32>) -> Matrix {
+    let num_classifications = *self.non_input_layer_sizes.last().unwrap_or(&1);
+    return Matrix::new_one_hot_encoded(labels, num_classifications).transpose();
   }
 
   pub fn train(
@@ -448,8 +453,7 @@ impl BasicNeuralNetworkRust {
       } else {
         &batch_data.1
       };
-      let batch_labels_encoded =
-        Matrix::new_one_hot_encoded(batch_labels, num_classifications).transpose();
+      let batch_labels_encoded = self.get_encoded_labels(batch_labels);
 
       // Feed forward
       self.feed_forward(batch);
@@ -475,8 +479,9 @@ impl BasicNeuralNetworkRust {
   pub fn train_classification_observation_matrix(
     &mut self,
     observations: &Matrix, // Expects each sample is in a column (so like a transposed pd datatable)
-    encoded_labels: &Matrix,
+    labels: &Vec<f32>,
   ) -> Matrix {
+    let encoded_labels = self.get_encoded_labels(labels);
     let num_observations = observations.get_columns();
     let num_classes = *self.non_input_layer_sizes.last().unwrap_or(&1);
     self.neuron_outputs = self
@@ -497,10 +502,7 @@ impl BasicNeuralNetworkRust {
       &encoded_labels,
     );
 
-    if self.weights.len() == 1 {
-      // Backpropogation no hidden layer
-      return output_error;
-    } else {
+    if self.weights.len() > 1 {
       // Backpropogate hidden
       return self.backpropogation_hidden_layer(
         &observations,
@@ -508,6 +510,9 @@ impl BasicNeuralNetworkRust {
         self.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
       );
     }
+    let wout = &self.weights[0];
+    let next_layer_error = &output_error;
+    return wout.transpose().matrix_multiply(next_layer_error); // Return gradient through input
   }
 
   pub fn feed_forward(&mut self, observations: &Matrix) {
