@@ -51,13 +51,15 @@ Any data is located in the data folder.
 
 1. Install python3
 2. Install Rust
-3. Activate python virtual environment (platform dependent)<br/>
+3. Install nvidia cuda toolkit
+4. Create .venv folder `python -m venv .venv`
+5. Activate python virtual environment (platform dependent)<br/>
    Windows: `.\.venv\Scripts\activate.bat`<br/>
    Mac/Linux: `source ./.venv/bin/activate`
-4. Install dependencies from requirements.txt<br/>
+6. Install dependencies from requirements.txt<br/>
    `pip install -r requirements_{platform}.txt`
-5. Compile Rust Code using `maturin develop` or `maturin develop --release`
-6. Open notebooks in jupyter notebook/jupyter lab/vscode etc..
+7. Compile Rust Code using `maturin develop` or `maturin develop --release`
+8. Open notebooks in jupyter notebook/jupyter lab/vscode etc..
 
 ## Running Tests
 
