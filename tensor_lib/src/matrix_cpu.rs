@@ -36,6 +36,14 @@ impl MatrixCpu {
     };
   }
 
+  pub fn get_rows(&self) -> usize {
+    return self.rows;
+  }
+
+  pub fn get_columns(&self) -> usize {
+    return self.columns;
+  }
+
   pub fn get_data(&self) -> Vec<Vec<f32>> {
     return self.iter().map(|x| x.to_vec()).collect_vec();
   }
@@ -288,7 +296,7 @@ impl MatrixCpu {
     return result;
   }
 
-  pub fn convolution(&self, kernel: &MatrixCpu) -> Self {
+  pub fn correlate(&self, kernel: &MatrixCpu) -> Self {
     let result_rows = self.rows;
     let result_cols = self.columns;
     let mut result = Self::zeros(result_rows, result_cols);

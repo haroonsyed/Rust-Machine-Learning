@@ -53,9 +53,9 @@ impl SimplifiedConvolutionalNeuralNetwork {
     batch_size: usize,
     num_iterations: usize,
   ) {
-    if let Some(batch_loader) = self.batch_loader.as_ref() {
+    if let Some(batch_loader) = self.batch_loader.as_mut() {
       for _ in 0..num_iterations {
-        let (observations, labels) = batch_loader.batch_sample(batch_size);
+        let (observations, labels) = batch_loader.batch_sample(batch_size, false);
         self.network.train(&observations, &labels, learning_rate);
       }
     }
@@ -114,7 +114,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
         filter_output_dimensions_per_layer[layer_index - 1]
       };
 
-      // This output_dimension = (input - filter + 1) assuming valid convolutions
+      // This output_dimension = (input - filter + 1) assuming valid correlates
       let output_dimension_width = prev_out_dimensions.0 - filter_dimension + 1;
       let output_dimension_height = prev_out_dimensions.1 - filter_dimension + 1;
 
@@ -184,7 +184,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
         let mut flattened = flatten_matrix_array(sample_output.last().unwrap());
 
         // Take the transpose for fully connected layer
-        flattened.reshape(flattened.columns, flattened.rows);
+        flattened.reshape(flattened.get_columns(), flattened.get_rows());
         return flattened;
       })
       .collect_vec();
@@ -224,7 +224,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
         let mut flattened = flatten_matrix_array(sample_output.last().unwrap());
 
         // Take the transpose for fully connected layer
-        flattened.reshape(flattened.columns, flattened.rows);
+        flattened.reshape(flattened.get_columns(), flattened.get_rows());
         return flattened;
       })
       .collect_vec();
@@ -234,7 +234,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
       .map(|(flattened_output, label)| {
         let fully_connected_error = self
           .fully_connected_layer
-          .train_classification_observation_matrix(flattened_output, &vec![*label]);
+          .train_classification_observation_matrix(flattened_output, labels);
 
         let output_error = self.fully_connected_layer.weights[0]
           .transpose()
@@ -281,7 +281,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
 
           // Channel
           for (channel, kernel) in izip!(current_layer_input, filter) {
-            let channel_output = channel.convolution(kernel, ConvolutionType::VALID);
+            let channel_output = channel.correlate(kernel, PaddingType::VALID);
             filter_output.element_add_inplace(&channel_output);
           }
 
@@ -328,12 +328,11 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
         // Xm' = Xm - sum(de/dy * conv_full * Knm)
 
         // PER DEPTH
-        let delta_xm = next_error.convolution(&filter[0].rotate_180(), ConvolutionType::FULL);
+        let delta_xm = next_error.correlate(&filter[0].rotate_180(), PaddingType::FULL);
         filter.iter().enumerate().for_each(|(index, channel)| {
           if index > 0 {
-            delta_xm.element_add_inplace(
-              &next_error.convolution(&channel.rotate_180(), ConvolutionType::FULL),
-            );
+            delta_xm
+              .element_add_inplace(&next_error.correlate(&channel.rotate_180(), PaddingType::FULL));
           }
         });
         return delta_xm;
@@ -351,7 +350,7 @@ impl SimplifiedConvolutionalNeuralNetworkRust {
         // PER DEPTH
         for (channel, prev_channel_output) in izip!(filter.iter(), prev_layer_outputs.iter()) {
           // Knm' = Knm - learning_rate * Xm * conv_valid * de/dy
-          let delta_channel = prev_channel_output.convolution(error, ConvolutionType::VALID);
+          let delta_channel = prev_channel_output.correlate(error, PaddingType::VALID);
           channel.element_subtract_inplace(&delta_channel.scalar_multiply(learning_rate));
         }
       }

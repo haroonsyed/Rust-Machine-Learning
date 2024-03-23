@@ -6,6 +6,3 @@ pub mod tensor;
 
 pub use matrix::*;
 pub use tensor::*;
-
-#[macro_use]
-extern crate lazy_static;

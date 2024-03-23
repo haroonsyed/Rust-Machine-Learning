@@ -1,240 +1,291 @@
 use std::ffi::c_float;
-use std::ffi::c_ulonglong;
 
-use crate::ConvolutionType;
-
-#[repr(C)] // Used to return a tuple from C
-pub struct Tuple {
-  pub a: usize,
-  pub b: usize,
-}
+use crate::Matrix;
+use crate::PaddingType;
 
 extern "C" {
+  // TESTING
   pub fn test();
   pub fn test_array_fill(out: *mut c_float, length: usize);
+
+  // PURE CUDA PASSTHROUGH
   pub fn cuda_synchronize();
-  pub fn register_matrix(data: *const c_float, rows: usize, cols: usize) -> usize;
-  pub fn unregister_matrix(mat_id: usize) -> usize;
-  pub fn get_matrix_data(mat_id: usize, rows: usize, cols: usize, data_buffer: *mut c_float);
-  pub fn cuda_element_add(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    mat2_buffer: usize,
-    mat2_rows: usize,
-    mat2_cols: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_element_subtract(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    mat2_buffer: usize,
-    mat2_rows: usize,
-    mat2_cols: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_element_multiply(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    mat2_buffer: usize,
-    mat2_rows: usize,
-    mat2_cols: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_element_divide(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    mat2_buffer: usize,
-    mat2_rows: usize,
-    mat2_cols: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_scalar_multiply(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    scalar: c_float,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_scalar_divide(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    scalar: c_float,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_scalar_add(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    scalar: c_float,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_scalar_subtract(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    scalar: c_float,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_scalar_multiply_matrix(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    scalar: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_scalar_divide_matrix(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    scalar: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_scalar_add_matrix(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    scalar: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_scalar_subtract_matrix(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    scalar: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_matrix_multiply(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    mat2_buffer: usize,
-    mat2_rows: usize,
-    mat2_cols: usize,
-  ) -> usize;
-  pub fn cuda_add_vector(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    mat2_buffer: usize,
-    mat2_rows: usize,
-    mat2_cols: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_divide_by_vector(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    mat2_buffer: usize,
-    mat2_rows: usize,
-    mat2_cols: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_element_sqrt(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_element_exp(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_element_ReLU(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_element_ReLU_prime(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    inplace: bool,
-  ) -> usize;
-  pub fn cuda_sum_rows(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
-  pub fn cuda_sum_columns(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
-  pub fn cuda_transpose(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
-  pub fn cuda_max_pool(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> Tuple;
-  pub fn cuda_nearest_neighbor_2x_upsample(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat2_rows: usize,
-    odd_upsample: bool,
-  ) -> usize;
-  pub fn cuda_rotate_180(mat1_id: usize, mat1_rows: usize, mat1_cols: usize) -> usize;
-  pub fn cuda_convolution(
-    mat1_id: usize,
-    mat1_rows: usize,
-    mat1_cols: usize,
-    kernel_id: usize,
-    kernel_rows: usize,
-    kernel_cols: usize,
-    conv_type: ConvolutionType,
-  ) -> usize;
-  pub fn cuda_convolution_packed(
-    mat_ids: *const c_ulonglong,
+
+  // HOST MEMORY OPERATIONS
+  pub fn memory_manager_get_pinned_allocation(size: usize) -> *mut c_float;
+
+  // MATRIX MANAGEMENT
+  pub fn register_matrix(rows: usize, cols: usize) -> Matrix;
+  pub fn register_matrix_group(rows: usize, cols: usize, count: usize, matrices: *mut Matrix);
+  pub fn register_matrix_with_data(data: *const c_float, rows: usize, cols: usize) -> Matrix;
+  pub fn cuda_one_hot_encode(data: *const c_float, data_size: usize, num_classes: usize) -> Matrix;
+  pub fn upload_matrix_data(matrix: *const Matrix, data: *const c_float);
+  pub fn upload_matrix_data_async(matrix: *const Matrix, data: *const c_float);
+  pub fn unregister_matrix(matrix: *const Matrix);
+
+  pub fn increase_matrix_ref_count(matrix: *const Matrix);
+  pub fn decrease_matrix_ref_count(matrix: *const Matrix);
+
+  // MATRIX META DATA
+  pub fn get_matrix_rows(matrix: *const Matrix) -> usize;
+  pub fn get_matrix_columns(matrix: *const Matrix) -> usize;
+  pub fn get_matrix_length(matrix: *const Matrix) -> usize;
+  pub fn get_matrix_data(matrix: *const Matrix, data_buffer: *mut c_float);
+  pub fn reshape_matrix(matrix: *const Matrix, rows: usize, columns: usize);
+
+  // MATRIX OPERATIONS
+  pub fn cuda_element_add(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
+  pub fn cuda_element_add_inplace(matrix_1: *const Matrix, matrix_2: *const Matrix);
+  pub fn cuda_element_add_packed(
+    mat_1s: *const Matrix,
+    mat_2s: *const Matrix,
+    out_matrices: *mut Matrix,
     num_matrices: usize,
-    mat_rows: usize,
-    mat_cols: usize,
-    kernel_ids: *const c_ulonglong,
-    kernel_rows: usize,
-    kernel_cols: usize,
-    out_ids: *mut c_ulonglong,
-    conv_type: ConvolutionType,
+  );
+  pub fn cuda_element_add_packed_inplace(
+    mat_1s: *const Matrix,
+    mat_2s: *const Matrix,
+    num_matrices: usize,
+  );
+  pub fn cuda_element_subtract(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
+  pub fn cuda_element_subtract_inplace(matrix_1: *const Matrix, matrix_2: *const Matrix);
+  pub fn cuda_element_subtract_packed(
+    mat_1s: *const Matrix,
+    mat_2s: *const Matrix,
+    out_matrices: *mut Matrix,
+    num_matrices: usize,
+  );
+  pub fn cuda_element_subtract_packed_inplace(
+    mat_1s: *const Matrix,
+    mat_2s: *const Matrix,
+    num_matrices: usize,
+  );
+  pub fn cuda_element_multiply(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
+  pub fn cuda_element_multiply_inplace(matrix_1: *const Matrix, matrix_2: *const Matrix);
+  pub fn cuda_element_multiply_packed(
+    mat_1s: *const Matrix,
+    mat_2s: *const Matrix,
+    out_matrices: *mut Matrix,
+    num_matrices: usize,
+  );
+  pub fn cuda_element_multiply_packed_inplace(
+    mat_1s: *const Matrix,
+    mat_2s: *const Matrix,
+    num_matrices: usize,
+  );
+  pub fn cuda_element_divide(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
+  pub fn cuda_element_divide_inplace(matrix_1: *const Matrix, matrix_2: *const Matrix);
+  pub fn cuda_element_divide_packed(
+    mat_1s: *const Matrix,
+    mat_2s: *const Matrix,
+    out_matrices: *mut Matrix,
+    num_matrices: usize,
+  );
+  pub fn cuda_element_divide_packed_inplace(
+    mat_1s: *const Matrix,
+    mat_2s: *const Matrix,
+    num_matrices: usize,
+  );
+  pub fn cuda_scalar_multiply(matrix: *const Matrix, scalar: c_float) -> Matrix;
+  pub fn cuda_scalar_multiply_inplace(matrix: *const Matrix, scalar: c_float);
+  pub fn cuda_scalar_multiply_packed(
+    matrices: *const Matrix,
+    out_matrices: *mut Matrix,
+    num_matrices: usize,
+    scalar: f32,
+  );
+  pub fn cuda_scalar_multiply_packed_inplace(
+    matrices: *const Matrix,
+    num_matrices: usize,
+    scalar: f32,
+  );
+  pub fn cuda_scalar_divide(matrix: *const Matrix, scalar: c_float) -> Matrix;
+  pub fn cuda_scalar_divide_inplace(matrix: *const Matrix, scalar: c_float);
+  pub fn cuda_scalar_divide_packed(
+    matrices: *const Matrix,
+    out_matrices: *mut Matrix,
+    num_matrices: usize,
+    scalar: f32,
+  );
+  pub fn cuda_scalar_divide_packed_inplace(
+    matrices: *const Matrix,
+    num_matrices: usize,
+    scalar: f32,
+  );
+  pub fn cuda_scalar_add(matrix: *const Matrix, scalar: c_float) -> Matrix;
+  pub fn cuda_scalar_add_inplace(matrix: *const Matrix, scalar: c_float);
+  pub fn cuda_scalar_add_packed(
+    matrices: *const Matrix,
+    out_matrices: *mut Matrix,
+    num_matrices: usize,
+    scalar: f32,
+  );
+  pub fn cuda_scalar_add_packed_inplace(matrices: *const Matrix, num_matrices: usize, scalar: f32);
+  pub fn cuda_scalar_subtract(matrix: *const Matrix, scalar: c_float) -> Matrix;
+  pub fn cuda_scalar_subtract_inplace(matrix: *const Matrix, scalar: c_float);
+  pub fn cuda_scalar_subtract_packed(
+    matrices: *const Matrix,
+    out_matrices: *mut Matrix,
+    num_matrices: usize,
+    scalar: f32,
+  );
+  pub fn cuda_scalar_subtract_packed_inplace(
+    matrices: *const Matrix,
+    num_matrices: usize,
+    scalar: f32,
+  );
+  pub fn cuda_matrix_multiply(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
+  pub fn cuda_add_vector(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
+  pub fn cuda_add_vector_inplace(matrix_1: *const Matrix, matrix_2: *const Matrix);
+  pub fn cuda_divide_by_vector(matrix_1: *const Matrix, matrix_2: *const Matrix) -> Matrix;
+  pub fn cuda_divide_by_vector_inplace(matrix_1: *const Matrix, matrix_2: *const Matrix);
+  pub fn cuda_element_sqrt(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_element_sqrt_inplace(matrix: *const Matrix);
+  pub fn cuda_element_sqrt_packed(
+    matrices: *const Matrix,
+    out_matrices: *mut Matrix,
+    num_matrices: usize,
+  );
+  pub fn cuda_element_sqrt_packed_inplace(matrices: *const Matrix, num_matrices: usize);
+  pub fn cuda_element_exp(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_element_exp_inplace(matrix: *const Matrix);
+  pub fn cuda_element_exp_packed(
+    matrices: *const Matrix,
+    out_matrices: *mut Matrix,
+    num_matrices: usize,
+  );
+  pub fn cuda_element_exp_packed_inplace(matrices: *const Matrix, num_matrices: usize);
+  pub fn cuda_element_ReLU(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_element_ReLU_inplace(matrix: *const Matrix);
+  pub fn cuda_element_ReLU_packed(
+    matrices: *const Matrix,
+    out_matrices: *mut Matrix,
+    num_matrices: usize,
+  );
+  pub fn cuda_element_ReLU_packed_inplace(matrices: *const Matrix, num_matrices: usize);
+  pub fn cuda_element_ReLU_prime(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_element_ReLU_prime_inplace(matrix: *const Matrix);
+  pub fn cuda_element_ReLU_prime_packed(
+    matrices: *const Matrix,
+    out_matrices: *mut Matrix,
+    num_matrices: usize,
+  );
+  pub fn cuda_element_ReLU_prime_packed_inplace(matrices: *const Matrix, num_matrices: usize);
+  pub fn cuda_sum_rows(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_sum_columns(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_transpose(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_max_pool(matrix: *const Matrix, out_pooled: *mut Matrix, out_bitmask: *mut Matrix);
+  pub fn cuda_max_pool_packed(
+    matrices: *const Matrix,
+    out_pooled: *mut Matrix,
+    out_bitmask: *mut Matrix,
+    num_matrices: usize,
+  );
+  pub fn cuda_nearest_neighbor_2x_upsample(matrix: *const Matrix, odd_upsample: bool) -> Matrix;
+  pub fn cuda_nearest_neighbor_2x_upsample_packed(
+    matrices: *const Matrix,
+    out_matrices: *mut Matrix,
+    num_matrices: usize,
+    odd_upsample: bool,
+  );
+  pub fn cuda_rotate_180(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_rotate_180_packed(
+    matrices: *const Matrix,
+    out_matrices: *mut Matrix,
+    num_matrices: usize,
+  );
+  pub fn cuda_correlate(
+    matrix: *const Matrix,
+    kernel: *const Matrix,
+    conv_type: PaddingType,
+  ) -> Matrix;
+  pub fn cuda_correlate_packed(
+    matrices: *const Matrix,
+    num_matrices: usize,
+    kernels: *const Matrix,
+    out_matrices: *mut Matrix,
+    conv_type: PaddingType,
+  );
+  pub fn cuda_convolve(
+    matrix: *const Matrix,
+    kernel: *const Matrix,
+    conv_type: PaddingType,
+  ) -> Matrix;
+  pub fn cuda_convolve_packed(
+    matrices: *const Matrix,
+    num_matrices: usize,
+    kernels: *const Matrix,
+    out_matrices: *mut Matrix,
+    conv_type: PaddingType,
   );
   pub fn cuda_img2col(
-    mat_ids: *const c_ulonglong,
+    matrices: *const Matrix,
     num_matrices: usize,
-    mat_rows: usize,
-    mat_cols: usize,
     kernel_rows: usize,
     kernel_cols: usize,
-    conv_type: ConvolutionType,
-  ) -> usize;
-  pub fn cuda_flatten_array(
-    mat_ids: *const c_ulonglong,
-    arr_size: usize,
-    mat_rows: usize,
-    mat_cols: usize,
-  ) -> usize;
+    conv_type: PaddingType,
+  ) -> Matrix;
+  pub fn cuda_flatten_array(matrices: *const Matrix, num_matrices: usize) -> Matrix;
   pub fn cuda_unflatten_array(
-    array_id: usize,
-    arr_size: usize,
-    mat_rows: usize,
-    mat_cols: usize,
-    mat_ids: *mut c_ulonglong,
+    array: *const Matrix,
+    out_rows: usize,
+    out_cols: usize,
+    out_matrices: *mut Matrix,
   );
   pub fn cuda_unflatten_array_strided(
-    array_id: usize,
-    arr_size: usize,
-    mat_rows: usize,
-    mat_cols: usize,
-    mat_ids: *mut c_ulonglong,
+    array: *const Matrix,
+    out_rows: usize,
+    out_cols: usize,
+    out_matrices: *mut Matrix,
   );
-  pub fn cuda_center_pad(
-    mat_id: usize,
-    mat_rows: usize,
-    mat_cols: usize,
-    pad_rows: usize,
-    pad_cols: usize,
-  ) -> usize;
-  pub fn cuda_softmax(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
+  pub fn cuda_center_pad(matrix: *const Matrix, pad_rows: usize, pad_cols: usize) -> Matrix;
+  pub fn cuda_softmax(matrix: *const Matrix) -> Matrix;
   pub fn cuda_crop(
-    mat_id: usize,
-    mat_rows: usize,
-    mat_cols: usize,
+    matrix: *const Matrix,
     crop_row_offset: usize,
     crop_col_offset: usize,
     crop_rows: usize,
     crop_cols: usize,
-  ) -> usize;
-  pub fn cuda_copy(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
-  pub fn cuda_sum_all_matrix_elements(mat_id: usize, mat_rows: usize, mat_cols: usize) -> usize;
+  ) -> Matrix;
+  pub fn cuda_copy(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_sum_all_matrix_elements(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_max_by_column(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_max_by_row(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_argmax_by_column(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_argmax_by_row(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_element_ln(matrix: *const Matrix) -> Matrix;
+  pub fn cuda_element_ln_inplace(matrix: *const Matrix);
+  pub fn cuda_one_hot_encode_vector(matrix: *const Matrix, num_classes: usize) -> Matrix;
+
+  // NEURAL NETWORK FUNCTIONS
+  pub fn cuda_cnn_feed_forward(
+    channels: *const Matrix,
+    filters: *const Matrix,
+    biases: *const Matrix,
+    channel_count_per_sample: usize,
+    sample_count: usize,
+    filter_count: usize,
+    results: *mut Matrix,
+  );
+  pub fn cuda_cnn_back_propogate(
+    sample_output_errors: *const Matrix,
+    prev_inputs: *const Matrix,
+    filters: *const Matrix,
+    sample_count: usize,
+    filter_count: usize,
+    input_depth: usize,
+    delta_bias: *mut Matrix,
+    delta_filter: *mut Matrix,
+    delta_input: *mut Matrix,
+  );
+  pub fn cuda_adam_optimizer_packed(
+    d_v: *mut Matrix,
+    d_s: *mut Matrix,
+    curr_gradients: *const Matrix,
+    results: *mut Matrix,
+    num_matrices: usize,
+    d_v_beta: f32,
+    d_s_beta: f32,
+    learning_rate: f32,
+  );
 }

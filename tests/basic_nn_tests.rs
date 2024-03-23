@@ -7,6 +7,7 @@ mod basic_nn_tests {
   use rust_machine_learning::cpu_basic_neural_network::{
     ActivationFunction, BasicNeuralNetworkCPURust, Relu,
   };
+  use rust_machine_learning::optimizers::{Optimizer, StochasticGradientDescentOptimizer};
   use statrs::distribution::Normal;
   use tensor_lib::matrix_cpu::MatrixCpu;
   use tensor_lib::Matrix;
@@ -30,6 +31,7 @@ mod basic_nn_tests {
         vec![0.4, 0.5, 0.6],
       ]),
     ];
+    let num_layers = weights.len();
 
     let biases = vec![
       Matrix::new_2d(&vec![
@@ -57,11 +59,19 @@ mod basic_nn_tests {
     ];
 
     let mut network = BasicNeuralNetworkRust {
-      neuron_outputs,
       non_input_layer_sizes,
       weights,
       biases,
-      performance_info: Vec::new(),
+      weight_optimizers: (0..num_layers)
+        .map(|_| Box::new(StochasticGradientDescentOptimizer::new(0.1)) as Box<dyn Optimizer>)
+        .collect_vec(),
+      bias_optimizers: (0..num_layers)
+        .map(|_| Box::new(StochasticGradientDescentOptimizer::new(0.1)) as Box<dyn Optimizer>)
+        .collect_vec(),
+      neuron_outputs,
+      curr_performance_info: (Matrix::zeros(1, 1), Matrix::zeros(1, 1)),
+      performance_info: vec![(0.0, 0.0, 0, 0)],
+      collect_performance_info: false,
     };
 
     network.feed_forward(&observations);
@@ -134,6 +144,7 @@ mod basic_nn_tests {
         vec![0.4, 0.5, 0.6],
       ]),
     ];
+    let num_layers = weights.len();
 
     let biases = vec![
       Matrix::new_2d(&vec![
@@ -164,26 +175,37 @@ mod basic_nn_tests {
         vec![vec![0.374, 0.424, 0.474], vec![0.825, 0.938, 1.051]]),
     ];
 
+    let learning_rate = 0.1;
     let mut network = BasicNeuralNetworkRust {
-      neuron_outputs,
       non_input_layer_sizes,
       weights,
       biases,
-      performance_info: Vec::new(),
+      weight_optimizers: (0..num_layers)
+        .map(|_| {
+          Box::new(StochasticGradientDescentOptimizer::new(learning_rate)) as Box<dyn Optimizer>
+        })
+        .collect_vec(),
+      bias_optimizers: (0..num_layers)
+        .map(|_| {
+          Box::new(StochasticGradientDescentOptimizer::new(learning_rate)) as Box<dyn Optimizer>
+        })
+        .collect_vec(),
+      neuron_outputs,
+      curr_performance_info: (Matrix::zeros(1, 1), Matrix::zeros(1, 1)),
+      performance_info: vec![(0.0, 0.0, 0, 0)],
+      collect_performance_info: false,
     };
 
     let predicted_probabilities = Matrix::new_2d(&vec![
       vec![0.3872, 0.3742, 0.3596],
       vec![0.6079, 0.6257, 0.6403],
     ]);
-    let learning_rate = 0.1;
 
     // Backprop output layer
     network.backpropogation_output_layer_classification(
       &Matrix::zeros(1, 1), // Won't be used
       &predicted_probabilities,
-      &labels,
-      learning_rate,
+      &Matrix::new_one_hot_encoded(&labels, 2).transpose(),
     );
 
     let expected_weights = vec![
@@ -260,6 +282,7 @@ mod basic_nn_tests {
         vec![0.40089233333333335, 0.5018579333333333, 0.6028235333333333],
       ]),
     ];
+    let num_layers = weights.len();
 
     let biases = vec![
       Matrix::new_2d(&vec![
@@ -290,15 +313,26 @@ mod basic_nn_tests {
         vec![vec![0.374, 0.424, 0.474], vec![0.825, 0.938, 1.051]]),
     ];
 
+    let learning_rate = 0.1;
     let mut network = BasicNeuralNetworkRust {
-      neuron_outputs,
       non_input_layer_sizes,
       weights,
       biases,
-      performance_info: Vec::new(),
+      weight_optimizers: (0..num_layers)
+        .map(|_| {
+          Box::new(StochasticGradientDescentOptimizer::new(learning_rate)) as Box<dyn Optimizer>
+        })
+        .collect_vec(),
+      bias_optimizers: (0..num_layers)
+        .map(|_| {
+          Box::new(StochasticGradientDescentOptimizer::new(learning_rate)) as Box<dyn Optimizer>
+        })
+        .collect_vec(),
+      neuron_outputs,
+      curr_performance_info: (Matrix::zeros(1, 1), Matrix::zeros(1, 1)),
+      performance_info: vec![(0.0, 0.0, 0, 0)],
+      collect_performance_info: false,
     };
-
-    let learning_rate = 0.1;
 
     let output_error = Matrix::new_2d(&vec![
       vec![0.3872, -0.6258, 0.3596],
@@ -309,8 +343,7 @@ mod basic_nn_tests {
     network.backpropogation_hidden_layer(
       &observations,
       &output_error,
-      learning_rate,
-      network.weights.len() - 2, // Start at final-1 layer, recursion will do the rest
+      num_layers - 2, // Start at final-1 layer, recursion will do the rest
     );
 
     let expected_weights = vec![
@@ -382,6 +415,7 @@ mod basic_nn_tests {
         vec![0.4, 0.5, 0.6],
       ]),
     ];
+    let num_layers = weights.len();
 
     let biases = vec![
       Matrix::new_2d(&vec![
@@ -406,15 +440,27 @@ mod basic_nn_tests {
         vec![vec![0.0; 3]; 2]),
     ];
 
+    let learning_rate = 0.1;
     let mut network = BasicNeuralNetworkRust {
-      neuron_outputs,
       non_input_layer_sizes,
       weights,
       biases,
-      performance_info: Vec::new(),
+      weight_optimizers: (0..num_layers)
+        .map(|_| {
+          Box::new(StochasticGradientDescentOptimizer::new(learning_rate)) as Box<dyn Optimizer>
+        })
+        .collect_vec(),
+      bias_optimizers: (0..num_layers)
+        .map(|_| {
+          Box::new(StochasticGradientDescentOptimizer::new(learning_rate)) as Box<dyn Optimizer>
+        })
+        .collect_vec(),
+      neuron_outputs,
+      curr_performance_info: (Matrix::zeros(1, 1), Matrix::zeros(1, 1)),
+      performance_info: vec![(0.0, 0.0, 0, 0)],
+      collect_performance_info: false,
     };
-    let learning_rate = 0.1;
-    network.train_classification(observations, labels, learning_rate, 1, 0);
+    network.train_classification(observations, labels, 2, 1, 3);
 
     let expected_weights = vec![
       Matrix::new_2d(&vec![
@@ -447,7 +493,6 @@ mod basic_nn_tests {
         vec![0.20420333333333335],
       ]),
     ];
-
     for (a, b) in izip!(network.weights, expected_weights) {
       assert!(matrix_are_equal(&a, &b, 3));
     }
@@ -481,6 +526,7 @@ mod basic_nn_tests {
         vec![0.4, 0.5, 0.6],
       ]),
     ];
+    let num_layers = weights_gpu.len();
 
     let biases_gpu = vec![
       Matrix::new_2d(&vec![
@@ -542,19 +588,30 @@ mod basic_nn_tests {
         vec![vec![0.0; 3]; 2]),
     ];
 
-    // Create the networks
+    let learning_rate = 0.1;
     let mut gpu_network = BasicNeuralNetworkRust {
-      neuron_outputs: neuron_outputs_gpu,
       non_input_layer_sizes,
       weights: weights_gpu,
       biases: biases_gpu,
-      performance_info: Vec::new(),
+      weight_optimizers: (0..num_layers)
+        .map(|_| {
+          Box::new(StochasticGradientDescentOptimizer::new(learning_rate)) as Box<dyn Optimizer>
+        })
+        .collect_vec(),
+      bias_optimizers: (0..num_layers)
+        .map(|_| {
+          Box::new(StochasticGradientDescentOptimizer::new(learning_rate)) as Box<dyn Optimizer>
+        })
+        .collect_vec(),
+      neuron_outputs: neuron_outputs_gpu,
+      curr_performance_info: (Matrix::zeros(1, 1), Matrix::zeros(1, 1)),
+      performance_info: vec![(0.0, 0.0, 0, 0)],
+      collect_performance_info: false,
     };
     let mut cpu_network = BasicNeuralNetworkCPURust {
       weights: weights_cpu,
       biases: biases_cpu,
     };
-    let learning_rate = 0.1;
 
     let activation_func: Box<dyn ActivationFunction> = Box::new(Relu {});
 
@@ -585,8 +642,7 @@ mod basic_nn_tests {
       let next_layer_error_gpu = gpu_network.backpropogation_output_layer_classification(
         &observations_gpu,
         &predicted_gpu,
-        &labels,
-        learning_rate,
+        &Matrix::new_one_hot_encoded(&labels, 2).transpose(),
       );
       let next_layer_error_cpu = cpu_network.backpropogation_output_layer_classification(
         &predicted_cpu,
@@ -607,7 +663,6 @@ mod basic_nn_tests {
       gpu_network.backpropogation_hidden_layer(
         &observations_gpu,
         &next_layer_error_gpu,
-        learning_rate,
         gpu_network.weights.len() - 2,
       );
       cpu_network.backpropogation_hidden_layer(
@@ -655,7 +710,7 @@ mod basic_nn_tests {
   }
 
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
-    if a.rows != b.rows || a.columns != b.columns {
+    if a.get_rows() != b.get_rows() || a.get_columns() != b.get_columns() {
       return false;
     }
 
@@ -664,8 +719,8 @@ mod basic_nn_tests {
 
     let a_data = a.get_data();
     let b_data = b.get_data();
-    for i in 0..a.rows {
-      for j in 0..a.columns {
+    for i in 0..a.get_rows() {
+      for j in 0..a.get_columns() {
         if !approx_equal(a_data[i][j], b_data[i][j], precision) {
           return false;
         }
@@ -679,14 +734,14 @@ mod basic_nn_tests {
     a.print();
     b.print();
 
-    if a.rows != b.rows || a.columns != b.columns {
+    if a.get_rows() != b.rows || a.get_columns() != b.columns {
       println!("Matrices do not even share dimensions");
       return false;
     }
 
     let a_data = a.get_data();
-    for i in 0..a.rows {
-      for j in 0..a.columns {
+    for i in 0..a.get_rows() {
+      for j in 0..a.get_columns() {
         if !approx_equal(a_data[i][j], b[i][j], precision) {
           println!("Matrices not equal at {} {}", a_data[i][j], b[i][j]);
           return false;

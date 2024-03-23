@@ -9,21 +9,29 @@ name = "rust_machine_learning"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-pyo3 = { version = "0.17.3", features = ["extension-module"] }
+pyo3 = { version = "0.20.2", features = ["extension-module"] }
 rand = "0.8.5"
-itertools = "0.10.5"
-ordered-float = "3.4.0"
-num = "0.4.0" 
+itertools = "0.12.1"
+ordered-float = "4.2.0"
+num = "0.4.1" 
 statrs = "0.16.0"
 tensor_lib = { path = "./tensor_lib" }
-image = "0.24.7"
-rayon = "1.8.0"
+image = "0.24.8"
+rayon = "1.8.1"
 
 [dev-dependencies]
-criterion = "0.4.0"
+criterion = "0.5.1"
 
 [[bench]]
 name = "matrix_bench"
+harness = false
+
+[[bench]]
+name = "cnn_bench"
+harness = false
+
+[[bench]]
+name = "nn_bench"
 harness = false
 
 [profile.release-with-debug]

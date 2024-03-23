@@ -1,13 +1,32 @@
 #[cfg(test)]
 mod tests {
   use crate::{
-    convolution_packed, cuda_bindings::*, flatten_matrix_array, img2col, matrix::*,
-    matrix_cpu::MatrixCpu, unflatten_array_strided_to_matrices, unflatten_array_to_matrices,
-    ConvolutionType,
+    correlate_packed, cuda_bindings::*, element_add_packed, flatten_matrix_array, img2col,
+    matrix::*, matrix_cpu::MatrixCpu, unflatten_array_to_matrices, PaddingType,
   };
   use itertools::{izip, Itertools};
   use rand::prelude::Distribution;
   use statrs::distribution::Normal;
+
+  #[test]
+  fn one_hot_encode() {
+    let test_labels = vec![0.0, 1.0, 2.0, 3.0, 2.0, 1.0, 1.0, 0.0];
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![1.0, 0.0, 0.0, 0.0],
+      vec![0.0, 1.0, 0.0, 0.0],
+      vec![0.0, 0.0, 1.0, 0.0],
+      vec![0.0, 0.0, 0.0, 1.0],
+      vec![0.0, 0.0, 1.0, 0.0],
+      vec![0.0, 1.0, 0.0, 0.0],
+      vec![0.0, 1.0, 0.0, 0.0],
+      vec![1.0, 0.0, 0.0, 0.0],
+    ]);
+
+    let encoded_matrix = Matrix::new_one_hot_encoded(&test_labels, 4);
+
+    assert!(matrix_are_equal(&encoded_matrix, &expected_result, 8));
+  }
 
   #[test]
   fn element_add() {
@@ -20,6 +39,133 @@ mod tests {
     let observed_result = test_data.element_add(&test_data_2);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn element_add_packed_1() {
+    let mat_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_2 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_3 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.5],
+    ]);
+
+    let mut expected_result = vec![
+      Matrix::new_2d(&vec![
+        vec![2.0, 4.0, 6.0],
+        vec![8.0, 10.0, 12.0],
+        vec![14.0, 16.0, 18.0],
+      ],);
+      16
+    ];
+    expected_result.extend(vec![
+      Matrix::new_2d(&vec![
+        vec![3.0, 4.0, 6.0],
+        vec![8.0, 10.0, 12.0],
+        vec![14.0, 16.0, 18.5],
+      ],);
+      16
+    ]);
+
+    let mat_1s = (0..32).map(|_| mat_1.clone()).collect_vec();
+    let mut observed_result = element_add_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    observed_result.extend(element_add_packed(
+      &mat_1s[16..32].to_vec(),
+      &vec![mat_3; 16],
+    ));
+
+    izip!(observed_result, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
+  }
+
+  #[test]
+  fn element_add_packed_inplace_test() {
+    let mat_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_2 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_3 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.5],
+    ]);
+
+    let mut expected_result = vec![
+      Matrix::new_2d(&vec![
+        vec![2.0, 4.0, 6.0],
+        vec![8.0, 10.0, 12.0],
+        vec![14.0, 16.0, 18.0],
+      ],);
+      16
+    ];
+    expected_result.extend(vec![
+      Matrix::new_2d(&vec![
+        vec![3.0, 4.0, 6.0],
+        vec![8.0, 10.0, 12.0],
+        vec![14.0, 16.0, 18.5],
+      ],);
+      16
+    ]);
+
+    let mat_1s = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
+    element_add_packed_inplace(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    element_add_packed_inplace(&mat_1s[16..32].to_vec(), &vec![mat_3; 16]);
+
+    izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
+  }
+
+  #[test]
+  fn element_add_packed_inplace_repeated_origin() {
+    let mat_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_2 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_3 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.5],
+    ]);
+
+    let expected_result = vec![
+      mat_1.element_add(
+        &mat_2
+          .scalar_multiply(16.0)
+          .element_add(&mat_3.scalar_multiply(16.0))
+      );
+      32
+    ];
+
+    let mat_1s = (0..32).map(|_| mat_1.clone()).collect_vec();
+    element_add_packed_inplace(&mat_1s[0..16], &vec![mat_2; 16]);
+    element_add_packed_inplace(&mat_1s[16..32], &vec![mat_3; 16]);
+
+    izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
   }
 
   #[test]
@@ -36,6 +182,133 @@ mod tests {
   }
 
   #[test]
+  fn element_subtract_packed_1() {
+    let mat_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_2 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_3 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.5],
+    ]);
+
+    let mut expected_result = vec![
+      Matrix::new_2d(&vec![
+        vec![0.0, 0.0, 0.0],
+        vec![0.0, 0.0, 0.0],
+        vec![0.0, 0.0, 0.0],
+      ],);
+      16
+    ];
+    expected_result.extend(vec![
+      Matrix::new_2d(&vec![
+        vec![-1.0, 0.0, 0.0],
+        vec![0.0, 0.0, 0.0],
+        vec![0.0, 0.0, -0.5],
+      ],);
+      16
+    ]);
+
+    let mat_1s = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
+    let mut observed_result = element_subtract_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    observed_result.extend(element_subtract_packed(
+      &mat_1s[16..32].to_vec(),
+      &vec![mat_3; 16],
+    ));
+
+    izip!(observed_result, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
+  }
+
+  #[test]
+  fn element_subtract_packed_inplace_test() {
+    let mat_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_2 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_3 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.5],
+    ]);
+
+    let mut expected_result = vec![
+      Matrix::new_2d(&vec![
+        vec![0.0, 0.0, 0.0],
+        vec![0.0, 0.0, 0.0],
+        vec![0.0, 0.0, 0.0],
+      ],);
+      16
+    ];
+    expected_result.extend(vec![
+      Matrix::new_2d(&vec![
+        vec![-1.0, 0.0, 0.0],
+        vec![0.0, 0.0, 0.0],
+        vec![0.0, 0.0, -0.5],
+      ],);
+      16
+    ]);
+
+    let mat_1s = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
+    element_subtract_packed_inplace(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    element_subtract_packed_inplace(&mat_1s[16..32].to_vec(), &vec![mat_3; 16]);
+
+    izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
+  }
+
+  #[test]
+  fn element_subtract_packed_inplace_repeated_origin() {
+    let mat_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_2 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_3 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.5],
+    ]);
+
+    let expected_result = vec![
+      mat_1.element_subtract(
+        &mat_2
+          .scalar_multiply(16.0)
+          .element_add(&mat_3.scalar_multiply(16.0))
+      );
+      32
+    ];
+
+    let mat_1s = (0..32).map(|_| mat_1.clone()).collect_vec();
+    element_subtract_packed_inplace(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    element_subtract_packed_inplace(&mat_1s[16..32].to_vec(), &vec![mat_3; 16]);
+
+    izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
+  }
+
+  #[test]
   fn element_multiply() {
     let test_data = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
 
@@ -46,6 +319,134 @@ mod tests {
     let observed_result = test_data.element_multiply(&test_data_2);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn element_multiply_packed_1() {
+    let mat_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_2 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_3 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.5],
+    ]);
+
+    let mut expected_result = vec![
+      Matrix::new_2d(&vec![
+        vec![1.0, 4.0, 9.0],
+        vec![16.0, 25.0, 36.0],
+        vec![49.0, 64.0, 81.0],
+      ],);
+      16
+    ];
+    expected_result.extend(vec![
+      Matrix::new_2d(&vec![
+        vec![2.0, 4.0, 9.0],
+        vec![16.0, 25.0, 36.0],
+        vec![49.0, 64.0, 85.5],
+      ],);
+      16
+    ]);
+
+    let mat_1s: Vec<Matrix> = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
+    let mut observed_result = element_multiply_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    observed_result.extend(element_multiply_packed(
+      &mat_1s[16..32].to_vec(),
+      &vec![mat_3; 16],
+    ));
+
+    izip!(observed_result, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
+  }
+
+  #[test]
+  fn element_multiply_packed_inplace_test() {
+    let mat_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_2 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_3 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.5],
+    ]);
+
+    let mut expected_result = vec![
+      Matrix::new_2d(&vec![
+        vec![1.0, 4.0, 9.0],
+        vec![16.0, 25.0, 36.0],
+        vec![49.0, 64.0, 81.0],
+      ],);
+      16
+    ];
+    expected_result.extend(vec![
+      Matrix::new_2d(&vec![
+        vec![2.0, 4.0, 9.0],
+        vec![16.0, 25.0, 36.0],
+        vec![49.0, 64.0, 85.5],
+      ],);
+      16
+    ]);
+
+    let mat_1s = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
+    element_multiply_packed_inplace(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    element_multiply_packed_inplace(&mat_1s[16..32].to_vec(), &vec![mat_3; 16]);
+
+    izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
+  }
+
+  #[test]
+  fn element_multiply_packed_inplace_repeated_origin() {
+    let mat_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_2 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_3 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.5],
+    ]);
+
+    let expected_result_single = mat_1.deep_copy();
+    for _ in 0..16 {
+      expected_result_single.element_multiply_inplace(&mat_2);
+    }
+    for _ in 16..32 {
+      expected_result_single.element_multiply_inplace(&mat_3);
+    }
+
+    let expected_result = vec![expected_result_single; 32];
+
+    let mat_1s = (0..32).map(|_| mat_1.clone()).collect_vec();
+    element_multiply_packed_inplace(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    element_multiply_packed_inplace(&mat_1s[16..32].to_vec(), &vec![mat_3; 16]);
+
+    izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
   }
 
   #[test]
@@ -62,6 +463,134 @@ mod tests {
     let observed_result = test_data.element_divide(&test_data_2);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn element_divide_packed_1() {
+    let mat_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_2 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_3 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.5],
+    ]);
+
+    let mut expected_result = vec![
+      Matrix::new_2d(&vec![
+        vec![1.0, 1.0, 1.0],
+        vec![1.0, 1.0, 1.0],
+        vec![1.0, 1.0, 1.0],
+      ],);
+      16
+    ];
+    expected_result.extend(vec![
+      Matrix::new_2d(&vec![
+        vec![0.5, 1.0, 1.0],
+        vec![1.0, 1.0, 1.0],
+        vec![1.0, 1.0, 0.947368421],
+      ],);
+      16
+    ]);
+
+    let mat_1s = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
+    let mut observed_result = element_divide_packed(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    observed_result.extend(element_divide_packed(
+      &mat_1s[16..32].to_vec(),
+      &vec![mat_3; 16],
+    ));
+
+    izip!(observed_result, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
+  }
+
+  #[test]
+  fn element_divide_packed_inplace_test() {
+    let mat_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_2 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_3 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.5],
+    ]);
+
+    let mut expected_result = vec![
+      Matrix::new_2d(&vec![
+        vec![1.0, 1.0, 1.0],
+        vec![1.0, 1.0, 1.0],
+        vec![1.0, 1.0, 1.0],
+      ],);
+      16
+    ];
+    expected_result.extend(vec![
+      Matrix::new_2d(&vec![
+        vec![0.5, 1.0, 1.0],
+        vec![1.0, 1.0, 1.0],
+        vec![1.0, 1.0, 0.947368421],
+      ],);
+      16
+    ]);
+
+    let mat_1s: Vec<Matrix> = (0..32).map(|_| mat_1.deep_copy()).collect_vec();
+    element_divide_packed_inplace(&mat_1s[0..16].to_vec(), &vec![mat_2; 16]);
+    element_divide_packed_inplace(&mat_1s[16..32].to_vec(), &vec![mat_3; 16]);
+
+    izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
+  }
+
+  #[test]
+  fn element_divide_packed_inplace_repeated_origin() {
+    let mat_1 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_2 = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.0],
+    ]);
+    let mat_3 = Matrix::new_2d(&vec![
+      vec![2.0, 2.0, 3.0],
+      vec![4.0, 5.0, 6.0],
+      vec![7.0, 8.0, 9.5],
+    ]);
+
+    let expected_result_single = mat_1.deep_copy();
+    for _ in 0..2 {
+      expected_result_single.element_divide_inplace(&mat_2);
+    }
+    for _ in 2..4 {
+      expected_result_single.element_divide_inplace(&mat_3);
+    }
+
+    let expected_result = vec![expected_result_single; 10];
+
+    let mat_1s = (0..10).map(|_| mat_1.clone()).collect_vec();
+    element_divide_packed_inplace(&mat_1s[0..2].to_vec(), &vec![mat_2; 2]);
+    element_divide_packed_inplace(&mat_1s[2..4].to_vec(), &vec![mat_3; 2]);
+
+    izip!(mat_1s, expected_result).for_each(|(observed, expected)| {
+      assert!(matrix_are_equal(&observed, &expected, 8));
+    });
   }
 
   #[test]
@@ -90,6 +619,61 @@ mod tests {
   }
 
   #[test]
+  fn scalar_multiply_packed_out_of_place() {
+    let random_matrices = (0..10)
+      .map(|_| Matrix::new_random(0.0, 10.0, 256, 256))
+      .collect_vec();
+
+    let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
+
+    let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
+      .map(|(mat, &scalar)| mat.scalar_multiply(random_scalars[0]))
+      .collect_vec();
+
+    let observed_result = scalar_multiply_packed(&random_matrices, random_scalars[0]);
+
+    izip!(observed_result, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+  }
+
+  #[test]
+  fn scalar_multiply_packed_inplace_test() {
+    let random_matrices = (0..10)
+      .map(|_| Matrix::new_random(0.0, 10.0, 256, 256))
+      .collect_vec();
+
+    let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
+
+    let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
+      .map(|(mat, &scalar)| mat.scalar_multiply(random_scalars[0]))
+      .collect_vec();
+
+    scalar_multiply_packed_inplace(&random_matrices, random_scalars[0]);
+
+    izip!(random_matrices, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+  }
+
+  // #[test]
+  // fn scalar_multiply_packed_inplace_to_origin() {
+  //   let random_matrix = Matrix::new_random(0.0, 10.0, 3, 3);
+
+  //   let random_scalars = &Matrix::new_random(0.0, 10.0, 1, 5).get_data()[0];
+
+  //   let expected_result = random_matrix.scalar_multiply(random_scalars[0]);
+  //   random_scalars.iter().skip(1).for_each(|&scalar| {
+  //     expected_result.scalar_multiply_inplace(random_scalars[0]);
+  //   });
+
+  //   scalar_multiply_packed_inplace(
+  //     &vec![random_matrix.clone(); random_scalars.len()],
+  //     random_scalars[0],
+  //   );
+
+  //   assert!(matrix_are_equal(&random_matrix, &expected_result, 1));
+  // }
+
+  #[test]
   fn scalar_divide() {
     let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
     let scalar = 5.0;
@@ -113,6 +697,61 @@ mod tests {
     assert_eq!(test_data.get_id(), observed_result.get_id());
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
+
+  #[test]
+  fn scalar_divide_packed_out_of_place() {
+    let random_matrices = (0..10)
+      .map(|_| Matrix::new_random(0.0, 10.0, 256, 256))
+      .collect_vec();
+
+    let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
+
+    let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
+      .map(|(mat, &scalar)| mat.scalar_divide(random_scalars[0]))
+      .collect_vec();
+
+    let observed_result = scalar_divide_packed(&random_matrices, random_scalars[0]);
+
+    izip!(observed_result, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+  }
+
+  #[test]
+  fn scalar_divide_packed_inplace_test() {
+    let random_matrices = (0..10)
+      .map(|_| Matrix::new_random(0.0, 10.0, 256, 256))
+      .collect_vec();
+
+    let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
+
+    let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
+      .map(|(mat, &scalar)| mat.scalar_divide(random_scalars[0]))
+      .collect_vec();
+
+    scalar_divide_packed_inplace(&random_matrices, random_scalars[0]);
+
+    izip!(random_matrices, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+  }
+
+  // #[test]
+  // fn scalar_divide_packed_inplace_to_origin() {
+  //   let random_matrix = Matrix::new_random(0.0, 10.0, 256, 256);
+
+  //   let random_scalars = &Matrix::new_random(0.0, 10.0, 1, 5).get_data()[0];
+
+  //   let expected_result = random_matrix.scalar_divide(random_scalars[0]);
+  //   random_scalars.iter().skip(1).for_each(|&scalar| {
+  //     expected_result.scalar_divide_inplace(random_scalars[0]);
+  //   });
+
+  //   scalar_divide_packed_inplace(
+  //     &vec![random_matrix.clone(); random_scalars.len()],
+  //     random_scalars[0],
+  //   );
+
+  //   assert!(matrix_are_equal(&random_matrix, &expected_result, 3));
+  // }
 
   #[test]
   fn scalar_add() {
@@ -140,6 +779,62 @@ mod tests {
   }
 
   #[test]
+  fn scalar_add_packed_out_of_place() {
+    let random_matrices = (0..10)
+      .map(|_| Matrix::new_random(0.0, 10.0, 256, 256))
+      .collect_vec();
+
+    let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
+
+    let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
+      .map(|(mat, &scalar)| mat.scalar_add(random_scalars[0]))
+      .collect_vec();
+
+    let observed_result = scalar_add_packed(&random_matrices, random_scalars[0]);
+
+    izip!(observed_result, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+  }
+
+  #[test]
+  fn scalar_add_packed_inplace_test() {
+    let random_matrices = (0..10)
+      .map(|_| Matrix::new_random(0.0, 10.0, 256, 256))
+      .collect_vec();
+
+    let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
+
+    let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
+      .map(|(mat, &scalar)| mat.scalar_add(random_scalars[0]))
+      .collect_vec();
+
+    scalar_add_packed_inplace(&random_matrices, random_scalars[0]);
+
+    izip!(random_matrices, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+  }
+
+  // #[test]
+  // fn scalar_add_packed_inplace_to_origin() {
+  //   let random_matrix = Matrix::new_random(0.0, 10.0, 256, 256);
+
+  //   let random_scalars = &Matrix::new_random(0.0, 10.0, 1, 5).get_data()[0];
+
+  //   let expected_result = random_matrix.scalar_add(random_scalars[0]);
+
+  //   random_scalars.iter().skip(1).for_each(|&scalar| {
+  //     expected_result.scalar_add_inplace(random_scalars[0]);
+  //   });
+
+  //   scalar_add_packed_inplace(
+  //     &vec![random_matrix.clone(); random_scalars.len()],
+  //     random_scalars[0],
+  //   );
+
+  //   assert!(matrix_are_equal(&random_matrix, &expected_result, 3));
+  // }
+
+  #[test]
   fn scalar_subtract() {
     let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
     let scalar = 5.0;
@@ -165,104 +860,59 @@ mod tests {
   }
 
   #[test]
-  fn scalar_multiply_matrix() {
-    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
-    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
+  fn scalar_subtract_packed_out_of_place() {
+    let random_matrices = (0..10)
+      .map(|_| Matrix::new_random(0.0, 10.0, 256, 256))
+      .collect_vec();
 
-    let expected_result = Matrix::new_2d(&vec![vec![10.0, 20.0], vec![5.0, 15.0]]);
+    let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
 
-    let observed_result = test_data.scalar_multiply_matrix(&scalar);
+    let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
+      .map(|(mat, &scalar)| mat.scalar_subtract(random_scalars[0]))
+      .collect_vec();
 
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+    let observed_result = scalar_subtract_packed(&random_matrices, random_scalars[0]);
+
+    izip!(observed_result, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
   }
 
   #[test]
-  fn scalar_multiply_matrix_inplace() {
-    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
-    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
+  fn scalar_subtract_packed_inplace_test() {
+    let random_matrices = (0..10)
+      .map(|_| Matrix::new_random(0.0, 10.0, 256, 256))
+      .collect_vec();
 
-    let expected_result = Matrix::new_2d(&vec![vec![10.0, 20.0], vec![5.0, 15.0]]);
+    let random_scalars = &Matrix::new_random(0.0, 10.0, 1, random_matrices.len()).get_data()[0];
 
-    let observed_result = test_data.scalar_multiply_matrix_inplace(&scalar);
+    let expected_results = izip!(random_matrices.iter(), random_scalars.iter())
+      .map(|(mat, &scalar)| mat.scalar_subtract(random_scalars[0]))
+      .collect_vec();
 
-    assert_eq!(test_data.get_id(), observed_result.get_id());
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+    scalar_subtract_packed_inplace(&random_matrices, random_scalars[0]);
+
+    izip!(random_matrices, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
   }
 
-  #[test]
-  fn scalar_divide_matrix() {
-    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
-    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
+  // #[test]
+  // fn scalar_subtract_packed_inplace_to_origin() {
+  //   let random_matrix = Matrix::new_random(0.0, 10.0, 256, 256);
 
-    let expected_result = Matrix::new_2d(&vec![vec![0.4, 0.8], vec![0.2, 0.6]]);
+  //   let random_scalars = &Matrix::new_random(0.0, 10.0, 1, 5).get_data()[0];
 
-    let observed_result = test_data.scalar_divide_matrix(&scalar);
+  //   let expected_result = random_matrix.scalar_subtract(random_scalars[0]);
+  //   random_scalars.iter().skip(1).for_each(|&scalar| {
+  //     expected_result.scalar_subtract_inplace(random_scalars[0]);
+  //   });
 
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
-  }
+  //   scalar_subtract_packed_inplace(
+  //     &vec![random_matrix.clone(); random_scalars.len()],
+  //     random_scalars[0],
+  //   );
 
-  #[test]
-  fn scalar_divide_matrix_inplace() {
-    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
-    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
-
-    let expected_result = Matrix::new_2d(&vec![vec![0.4, 0.8], vec![0.2, 0.6]]);
-
-    let observed_result = test_data.scalar_divide_matrix_inplace(&scalar);
-
-    assert_eq!(test_data.get_id(), observed_result.get_id());
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
-  }
-
-  #[test]
-  fn scalar_add_matrix() {
-    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
-    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
-
-    let expected_result = Matrix::new_2d(&vec![vec![7.0, 9.0], vec![6.0, 8.0]]);
-
-    let observed_result = test_data.scalar_add_matrix(&scalar);
-
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
-  }
-
-  #[test]
-  fn scalar_add_matrix_inplace() {
-    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
-    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
-
-    let expected_result = Matrix::new_2d(&vec![vec![7.0, 9.0], vec![6.0, 8.0]]);
-
-    let observed_result = test_data.scalar_add_matrix_inplace(&scalar);
-
-    assert_eq!(test_data.get_id(), observed_result.get_id());
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
-  }
-
-  #[test]
-  fn scalar_subtract_matrix() {
-    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
-    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
-
-    let expected_result = Matrix::new_2d(&vec![vec![-3.0, -1.0], vec![-4.0, -2.0]]);
-
-    let observed_result = test_data.scalar_subtract_matrix(&scalar);
-
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
-  }
-
-  #[test]
-  fn scalar_subtract_matrix_inplace() {
-    let test_data = Matrix::new_2d(&vec![vec![2.0, 4.0], vec![1.0, 3.0]]);
-    let scalar = Matrix::new_1d(&vec![5.0], 1, 1);
-
-    let expected_result = Matrix::new_2d(&vec![vec![-3.0, -1.0], vec![-4.0, -2.0]]);
-
-    let observed_result = test_data.scalar_subtract_matrix_inplace(&scalar);
-
-    assert_eq!(test_data.get_id(), observed_result.get_id());
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
-  }
+  //   assert!(matrix_are_equal(&random_matrix, &expected_result, 3));
+  // }
 
   #[test]
   fn matrix_multiply_gpu() {
@@ -308,6 +958,58 @@ mod tests {
       let result_cpu = mat_cpu_1.matrix_multiply(&mat_cpu_2);
 
       assert!(matrix_are_equal_gpu_cpu(&result_gpu, &result_cpu, 2));
+    }
+  }
+
+  #[test]
+  fn matrix_multiply_cpu_gpu_agreement() {
+    let mut rng = rand::thread_rng();
+    let range = Normal::new(0.0, 1.0).unwrap();
+
+    for M in 1..16 {
+      for N in 1..16 {
+        for K in 1..16 {
+          let data_1 = (0..M)
+            .map(|_| (0..K).map(|_| range.sample(&mut rng) as f32).collect_vec())
+            .collect_vec();
+          let data_2 = (0..K)
+            .map(|_| (0..N).map(|_| range.sample(&mut rng) as f32).collect_vec())
+            .collect_vec();
+
+          let mat_gpu_1 = Matrix::new_2d(&data_1);
+          let mat_gpu_2 = Matrix::new_2d(&data_2);
+          let mat_cpu_1 = MatrixCpu::new_2d(&data_1);
+          let mat_cpu_2 = MatrixCpu::new_2d(&data_2);
+
+          let result_gpu = mat_gpu_1.matrix_multiply(&mat_gpu_2);
+          let result_cpu = mat_cpu_1.matrix_multiply(&mat_cpu_2);
+
+          assert!(matrix_are_equal_gpu_cpu(&result_gpu, &result_cpu, 2));
+        }
+      }
+    }
+
+    for M in 54..64 {
+      for N in 54..64 {
+        for K in 1..64 {
+          let data_1 = (0..M)
+            .map(|_| (0..K).map(|_| range.sample(&mut rng) as f32).collect_vec())
+            .collect_vec();
+          let data_2 = (0..K)
+            .map(|_| (0..N).map(|_| range.sample(&mut rng) as f32).collect_vec())
+            .collect_vec();
+
+          let mat_gpu_1 = Matrix::new_2d(&data_1);
+          let mat_gpu_2 = Matrix::new_2d(&data_2);
+          let mat_cpu_1 = MatrixCpu::new_2d(&data_1);
+          let mat_cpu_2 = MatrixCpu::new_2d(&data_2);
+
+          let result_gpu = mat_gpu_1.matrix_multiply(&mat_gpu_2);
+          let result_cpu = mat_cpu_1.matrix_multiply(&mat_cpu_2);
+
+          assert!(matrix_are_equal_gpu_cpu(&result_gpu, &result_cpu, 2));
+        }
+      }
     }
   }
 
@@ -387,8 +1089,46 @@ mod tests {
   }
 
   #[test]
-  fn element_exp() {
+  fn element_sqrt_packed_out_of_place() {
     let test_data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+    let test_data_matrix = Matrix::new_2d(&test_data);
+
+    let expected_result = test_data
+      .iter()
+      .map(|row| row.iter().map(|val| val.sqrt()).collect_vec())
+      .collect_vec();
+
+    let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
+    let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
+
+    let observed_result = element_sqrt_packed(&test_data_packed);
+
+    izip!(observed_result, expected_result_matrix)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 6)));
+  }
+
+  #[test]
+  fn element_sqrt_packed_in_place() {
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+    let test_data_matrix = Matrix::new_2d(&test_data);
+
+    let expected_result = test_data
+      .iter()
+      .map(|row| row.iter().map(|val| val.sqrt()).collect_vec())
+      .collect_vec();
+
+    let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
+    let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
+
+    element_sqrt_packed_inplace(&test_data_packed);
+
+    izip!(test_data_packed, expected_result_matrix)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 6)));
+  }
+
+  #[test]
+  fn element_exp() {
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![-4.0, 5.0, 6.0]];
     let test_data_matrix = Matrix::new_2d(&test_data);
 
     let expected_result = test_data
@@ -408,8 +1148,88 @@ mod tests {
   }
 
   #[test]
+  fn element_ln() {
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![0.274256, 5.0, 6.0]];
+    let test_data_matrix = Matrix::new_2d(&test_data);
+
+    let expected_result = test_data
+      .iter()
+      .map(|row| row.iter().map(|val| val.ln()).collect_vec())
+      .collect_vec();
+
+    let expected_result_matrix = Matrix::new_2d(&expected_result);
+
+    let observed_result = test_data_matrix.element_ln();
+
+    assert!(matrix_are_equal(
+      &observed_result,
+      &expected_result_matrix,
+      6
+    ));
+  }
+
+  #[test]
+  fn element_ln_inplace() {
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![0.274256, 5.0, 6.0]];
+    let test_data_matrix = Matrix::new_2d(&test_data);
+
+    let expected_result = test_data
+      .iter()
+      .map(|row| row.iter().map(|val| val.ln()).collect_vec())
+      .collect_vec();
+
+    let expected_result_matrix = Matrix::new_2d(&expected_result);
+
+    let _ = test_data_matrix.element_ln_inplace();
+
+    assert!(matrix_are_equal(
+      &test_data_matrix,
+      &expected_result_matrix,
+      6
+    ));
+  }
+
+  #[test]
+  fn element_exp_packed_out_of_place() {
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![-4.0, 5.0, 6.0]];
+    let test_data_matrix = Matrix::new_2d(&test_data);
+
+    let expected_result = test_data
+      .iter()
+      .map(|row| row.iter().map(|val| val.exp()).collect_vec())
+      .collect_vec();
+
+    let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
+    let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
+
+    let observed_result = element_exp_packed(&test_data_packed);
+
+    izip!(observed_result, expected_result_matrix)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 4)));
+  }
+
+  #[test]
+  fn element_exp_packed_in_place() {
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![-4.0, 5.0, 6.0]];
+    let test_data_matrix = Matrix::new_2d(&test_data);
+
+    let expected_result = test_data
+      .iter()
+      .map(|row| row.iter().map(|val| val.exp()).collect_vec())
+      .collect_vec();
+
+    let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
+    let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
+
+    element_exp_packed_inplace(&test_data_packed);
+
+    izip!(test_data_packed, expected_result_matrix)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 4)));
+  }
+
+  #[test]
   fn element_relu() {
-    let test_data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![-4.0, 5.0, 6.0]];
     let test_data_matrix = Matrix::new_2d(&test_data);
 
     let expected_result = test_data
@@ -434,8 +1254,56 @@ mod tests {
   }
 
   #[test]
+  fn element_relu_packed_out_of_place() {
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![-4.0, 5.0, 6.0]];
+    let test_data_matrix = Matrix::new_2d(&test_data);
+
+    let expected_result = test_data
+      .iter()
+      .map(|row| {
+        row
+          .iter()
+          .map(|&val| if val > 0.0 { val } else { 0.0 })
+          .collect_vec()
+      })
+      .collect_vec();
+
+    let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
+    let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
+
+    let observed_result = element_ReLU_packed(&test_data_packed);
+
+    izip!(observed_result, expected_result_matrix)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 6)));
+  }
+
+  #[test]
+  fn element_relu_packed_in_place() {
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![-4.0, 5.0, 6.0]];
+    let test_data_matrix = Matrix::new_2d(&test_data);
+
+    let expected_result = test_data
+      .iter()
+      .map(|row| {
+        row
+          .iter()
+          .map(|&val| if val > 0.0 { val } else { 0.0 })
+          .collect_vec()
+      })
+      .collect_vec();
+
+    let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
+    let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
+
+    element_ReLU_packed_inplace(&test_data_packed);
+
+    izip!(test_data_packed, expected_result_matrix)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 6)));
+  }
+
+  #[test]
   fn element_relu_prime() {
-    let test_data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![-4.0, 5.0, 6.0]];
     let test_data_matrix = Matrix::new_2d(&test_data);
 
     let expected_result = test_data
@@ -457,6 +1325,54 @@ mod tests {
       &expected_result_matrix,
       8
     ));
+  }
+
+  #[test]
+  fn element_relu_prime_packed_out_of_place() {
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![-4.0, 5.0, 6.0]];
+    let test_data_matrix = Matrix::new_2d(&test_data);
+
+    let expected_result = test_data
+      .iter()
+      .map(|row| {
+        row
+          .iter()
+          .map(|&val| if val > 0.0 { 1.0 } else { 0.0 })
+          .collect_vec()
+      })
+      .collect_vec();
+
+    let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
+    let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
+
+    let observed_result = element_ReLU_prime_packed(&test_data_packed);
+
+    izip!(observed_result, expected_result_matrix)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 6)));
+  }
+
+  #[test]
+  fn element_relu_prime_packed_in_place() {
+    let test_data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+    let test_data_matrix = Matrix::new_2d(&test_data);
+
+    let expected_result = test_data
+      .iter()
+      .map(|row| {
+        row
+          .iter()
+          .map(|&val| if val > 0.0 { 1.0 } else { 0.0 })
+          .collect_vec()
+      })
+      .collect_vec();
+
+    let test_data_packed = (0..32).map(|_| test_data_matrix.deep_copy()).collect_vec();
+    let expected_result_matrix = vec![Matrix::new_2d(&expected_result); 32];
+
+    element_ReLU_prime_packed_inplace(&test_data_packed);
+
+    izip!(test_data_packed, expected_result_matrix)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 6)));
   }
 
   #[test]
@@ -516,24 +1432,28 @@ mod tests {
 
   #[test]
   fn max_pool_gpu_v1() {
-    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0], vec![4.0, 5.0]]);
+    for _ in 0..100 {
+      let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0], vec![4.0, 5.0]]);
 
-    let expected_result = Matrix::new_2d(&vec![vec![5.0]]);
+      let expected_result = Matrix::new_2d(&vec![vec![5.0]]);
 
-    let (observed_result, _) = test_data.max_pool();
+      let (observed_result, _) = test_data.max_pool();
 
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+    }
   }
 
   #[test]
   fn max_pool_gpu_v2() {
-    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0, -100.0], vec![4.0, 5.0, 23.0]]);
+    for _ in 0..100 {
+      let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0, -100.0], vec![4.0, 5.0, 23.0]]);
 
-    let expected_result = Matrix::new_2d(&vec![vec![5.0, 23.0]]);
+      let expected_result = Matrix::new_2d(&vec![vec![5.0, 23.0]]);
 
-    let (observed_result, _) = test_data.max_pool();
+      let (observed_result, _) = test_data.max_pool();
 
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+    }
   }
 
   #[test]
@@ -559,24 +1479,74 @@ mod tests {
 
   #[test]
   fn max_pool_bitmask_gpu() {
-    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0, -100.0], vec![4.0, 5.0, 23.0]]);
+    for _ in 0..100 {
+      let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0, -100.0], vec![4.0, 5.0, 23.0]]);
 
-    let expected_result = Matrix::new_2d(&vec![vec![0.0, 0.0, 0.0], vec![0.0, 1.0, 1.0]]);
+      let expected_result = Matrix::new_2d(&vec![vec![0.0, 0.0, 0.0], vec![0.0, 1.0, 1.0]]);
 
-    let (_, observed_result) = test_data.max_pool();
+      let (_, observed_result) = test_data.max_pool();
 
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+    }
   }
 
   #[test]
   fn max_pool_bitmask_gpu_2() {
-    let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0], vec![4.0, 5.0]]);
+    for _ in 0..100 {
+      let test_data = Matrix::new_2d(&vec![vec![-5.0, 2.0], vec![4.0, 5.0]]);
 
-    let expected_result = Matrix::new_2d(&vec![vec![0.0, 0.0], vec![0.0, 1.0]]);
+      let expected_result = Matrix::new_2d(&vec![vec![0.0, 0.0], vec![0.0, 1.0]]);
 
-    let (_, observed_result) = test_data.max_pool();
+      let (_, observed_result) = test_data.max_pool();
 
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+    }
+  }
+
+  #[test]
+  fn max_pool_packed_1() {
+    let random_matrices = (0..100)
+      .map(|_| Matrix::new_random(0.0, 100.0, 256, 256))
+      .collect_vec();
+
+    let expected_results = random_matrices
+      .iter()
+      .map(|mat| mat.max_pool())
+      .collect_vec();
+
+    let expected_results_pooled = expected_results.iter().map(|(mat, _)| mat).collect_vec();
+    let expected_results_bitmask = expected_results.iter().map(|(_, mat)| mat).collect_vec();
+
+    let (observed_results_pooled, observed_results_bitmask) = max_pool_packed(&random_matrices);
+
+    izip!(observed_results_pooled, expected_results_pooled)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+
+    izip!(observed_results_bitmask, expected_results_bitmask)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+  }
+
+  #[test]
+  fn max_pool_packed_2() {
+    let random_matrices = (0..100)
+      .map(|_| Matrix::new_random(0.0, 100.0, 255, 255))
+      .collect_vec();
+
+    let expected_results = random_matrices
+      .iter()
+      .map(|mat| mat.max_pool())
+      .collect_vec();
+
+    let expected_results_pooled = expected_results.iter().map(|(mat, _)| mat).collect_vec();
+    let expected_results_bitmask = expected_results.iter().map(|(_, mat)| mat).collect_vec();
+
+    let (observed_results_pooled, observed_results_bitmask) = max_pool_packed(&random_matrices);
+
+    izip!(observed_results_pooled, expected_results_pooled)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+
+    izip!(observed_results_bitmask, expected_results_bitmask)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
   }
 
   #[test]
@@ -607,6 +1577,40 @@ mod tests {
     let observed_result = test_data.rotate_180();
 
     assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn rotate_180_packed_1() {
+    let random_matrices = (0..100)
+      .map(|_| Matrix::new_random(0.0, 100.0, 3, 3))
+      .collect_vec();
+
+    let expected_results = random_matrices
+      .iter()
+      .map(|mat| mat.rotate_180())
+      .collect_vec();
+
+    let observed_results = rotate_180_packed(&random_matrices);
+
+    izip!(observed_results, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+  }
+
+  #[test]
+  fn rotate_180_packed_2() {
+    let random_matrices = (0..100)
+      .map(|_| Matrix::new_random(0.0, 100.0, 2, 3))
+      .collect_vec();
+
+    let expected_results = random_matrices
+      .iter()
+      .map(|mat| mat.rotate_180())
+      .collect_vec();
+
+    let observed_results = rotate_180_packed(&random_matrices);
+
+    izip!(observed_results, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
   }
 
   #[test]
@@ -661,7 +1665,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution() {
+  fn correlation() {
     let test_data = MatrixCpu::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -680,13 +1684,13 @@ mod tests {
       vec![106.0, 154.0, 94.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel);
+    let observed_result = test_data.correlate(&kernel);
 
     assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
   }
 
   #[test]
-  fn convolution_2() {
+  fn correlation_2() {
     let test_data = MatrixCpu::new_2d(&vec![
       vec![1.0, 2.0, 3.0, 4.0],
       vec![5.0, 6.0, 7.0, 8.0],
@@ -705,13 +1709,13 @@ mod tests {
       vec![133.0, 190.0, 211.0, 127.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel);
+    let observed_result = test_data.correlate(&kernel);
 
     assert!(matrix_are_equal_cpu(&observed_result, &expected_result, 8));
   }
 
   #[test]
-  fn convolution_gpu_same() {
+  fn correlation_gpu_same() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -730,13 +1734,13 @@ mod tests {
       vec![106.0, 154.0, 94.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::SAME);
+    let observed_result = test_data.correlate(&kernel, PaddingType::SAME);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   #[test]
-  fn convolution_gpu_same_2() {
+  fn correlation_gpu_same_2() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0, 4.0],
       vec![5.0, 6.0, 7.0, 8.0],
@@ -755,13 +1759,13 @@ mod tests {
       vec![133.0, 190.0, 211.0, 127.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::SAME);
+    let observed_result = test_data.correlate(&kernel, PaddingType::SAME);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   #[test]
-  fn packed_convolution_same_1() {
+  fn packed_correlation_same_1() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -796,15 +1800,15 @@ mod tests {
       16
     ]);
 
-    let mut observed_result = convolution_packed(
-      &vec![&test_data; 16],
-      &vec![&kernel; 16],
-      ConvolutionType::SAME,
+    let mut observed_result = correlate_packed(
+      &vec![test_data.clone(); 16],
+      &vec![kernel; 16],
+      PaddingType::SAME,
     );
-    observed_result.extend(convolution_packed(
-      &vec![&test_data; 16],
-      &vec![&kernel_2; 16],
-      ConvolutionType::SAME,
+    observed_result.extend(correlate_packed(
+      &vec![test_data; 16],
+      &vec![kernel_2; 16],
+      PaddingType::SAME,
     ));
 
     izip!(observed_result, expected_result).for_each(|(observed, expected)| {
@@ -813,7 +1817,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_gpu_valid_1() {
+  fn correlation_gpu_valid_1() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -824,13 +1828,13 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![37.0, 47.0], vec![67.0, 77.0]]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::VALID);
+    let observed_result = test_data.correlate(&kernel, PaddingType::VALID);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   #[test]
-  fn convolution_gpu_valid_2() {
+  fn correlation_gpu_valid_2() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0, 4.0],
       vec![5.0, 6.0, 7.0, 8.0],
@@ -841,13 +1845,13 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![106.0, 127.0], vec![190.0, 211.0]]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::VALID);
+    let observed_result = test_data.correlate(&kernel, PaddingType::VALID);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   #[test]
-  fn convolution_gpu_valid_3() {
+  fn correlation_gpu_valid_3() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0, 4.0],
       vec![5.0, 6.0, 7.0, 8.0],
@@ -858,13 +1862,13 @@ mod tests {
 
     let expected_result = Matrix::new_2d(&vec![vec![44.0, 54.0, 64.0], vec![84.0, 94.0, 104.0]]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::VALID);
+    let observed_result = test_data.correlate(&kernel, PaddingType::VALID);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   #[test]
-  fn packed_convolution_valid_1() {
+  fn packed_correlation_valid_1() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -883,15 +1887,15 @@ mod tests {
       16
     ]);
 
-    let mut observed_result = convolution_packed(
-      &vec![&test_data; 16],
-      &vec![&kernel; 16],
-      ConvolutionType::VALID,
+    let mut observed_result = correlate_packed(
+      &vec![test_data.clone(); 16],
+      &vec![kernel; 16],
+      PaddingType::VALID,
     );
-    observed_result.extend(convolution_packed(
-      &vec![&test_data; 16],
-      &vec![&kernel_2; 16],
-      ConvolutionType::VALID,
+    observed_result.extend(correlate_packed(
+      &vec![test_data; 16],
+      &vec![kernel_2; 16],
+      PaddingType::VALID,
     ));
 
     izip!(observed_result, expected_result).for_each(|(observed, expected)| {
@@ -900,7 +1904,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_gpu_full_1() {
+  fn correlation_gpu_full_1() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -916,13 +1920,13 @@ mod tests {
       vec![14.0, 23.0, 26.0, 9.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::FULL);
+    let observed_result = test_data.correlate(&kernel, PaddingType::FULL);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   #[test]
-  fn convolution_gpu_full_2() {
+  fn correlation_gpu_full_2() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -943,13 +1947,13 @@ mod tests {
       vec![21.0, 38.0, 50.0, 26.0, 9.0],
     ]);
 
-    let observed_result = test_data.convolution(&kernel, ConvolutionType::FULL);
+    let observed_result = test_data.correlate(&kernel, PaddingType::FULL);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
   }
 
   #[test]
-  fn packed_convolution_full_1() {
+  fn packed_correlation_full_1() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0],
       vec![4.0, 5.0, 6.0],
@@ -988,15 +1992,15 @@ mod tests {
       16
     ]);
 
-    let mut observed_result = convolution_packed(
-      &vec![&test_data; 16],
-      &vec![&kernel; 16],
-      ConvolutionType::FULL,
+    let mut observed_result = correlate_packed(
+      &vec![test_data.clone(); 16],
+      &vec![kernel; 16],
+      PaddingType::FULL,
     );
-    observed_result.extend(convolution_packed(
-      &vec![&test_data; 16],
-      &vec![&kernel_2; 16],
-      ConvolutionType::FULL,
+    observed_result.extend(correlate_packed(
+      &vec![test_data; 16],
+      &vec![kernel_2; 16],
+      PaddingType::FULL,
     ));
 
     izip!(observed_result, expected_result).for_each(|(observed, expected)| {
@@ -1005,7 +2009,7 @@ mod tests {
   }
 
   #[test]
-  fn convolution_cpu_gpu_agreement() {
+  fn correlation_cpu_gpu_agreement() {
     let mut rng = rand::thread_rng();
     let range = Normal::new(0.0, 1e2).unwrap();
 
@@ -1025,10 +2029,143 @@ mod tests {
       vec![7.0, 8.0, 9.0],
     ];
 
-    let mat_gpu = Matrix::new_2d(&data).convolution(&Matrix::new_2d(kernel), ConvolutionType::SAME);
-    let mat_cpu = MatrixCpu::new_2d(&data).convolution(&MatrixCpu::new_2d(kernel));
+    let mat_gpu = Matrix::new_2d(&data).correlate(&Matrix::new_2d(kernel), PaddingType::SAME);
+    let mat_cpu = MatrixCpu::new_2d(&data).correlate(&MatrixCpu::new_2d(kernel));
 
     assert!(matrix_are_equal_gpu_cpu(&mat_gpu, &mat_cpu, 2));
+  }
+
+  #[test]
+  fn convolution_gpu_same() {
+    // Generate random data of different sizes
+    for i in 1..25 {
+      for j in 1..25 {
+        let random_input = Matrix::new_random(0.0, 100.0, i, j);
+
+        // Grab closes odd number to j
+        let kernel_size = j + 1 - (j % 2);
+
+        let random_kernel = Matrix::new_random(0.0, 100.0, kernel_size, kernel_size);
+
+        let expected_result =
+          random_input.correlate(&random_kernel.rotate_180(), PaddingType::SAME);
+        let observed_result = random_input.convolve(&random_kernel, PaddingType::SAME);
+
+        assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      }
+    }
+  }
+
+  #[test]
+  fn packed_convolution_gpu_same() {
+    // Generate random data of different sizes
+    for i in 2..25 {
+      for j in 2..25 {
+        let random_inputs = (0..i * j)
+          .map(|_| Matrix::new_random(0.0, 100.0, i, j))
+          .collect_vec();
+
+        let kernel_size = j + 1 - (j % 2);
+        let random_kernels = (0..i * j)
+          .map(|_| Matrix::new_random(0.0, 100.0, kernel_size, kernel_size))
+          .collect_vec();
+
+        let rotated_kernels = rotate_180_packed(&random_kernels);
+        let expected_results =
+          correlate_packed(&random_inputs, &rotated_kernels, PaddingType::SAME);
+        let observed_results = convolve_packed(&random_inputs, &random_kernels, PaddingType::SAME);
+
+        izip!(observed_results, expected_results).for_each(|(observed, expected)| {
+          assert!(matrix_are_equal(&observed, &expected, 8));
+        });
+      }
+    }
+  }
+
+  #[test]
+  fn convolution_gpu_valid() {
+    // Generate random data of different sizes
+    for i in 2..25 {
+      for j in 2..25 {
+        let random_input = Matrix::new_random(0.0, 100.0, i, j);
+
+        let random_kernel = Matrix::new_random(0.0, 100.0, i / 2, j / 2);
+
+        let expected_result =
+          random_input.correlate(&random_kernel.rotate_180(), PaddingType::VALID);
+        let observed_result = random_input.convolve(&random_kernel, PaddingType::VALID);
+
+        assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      }
+    }
+  }
+
+  #[test]
+  fn packed_convolution_gpu_valid() {
+    // Generate random data of different sizes
+    for i in 2..25 {
+      for j in 2..25 {
+        let random_inputs = (0..i * j)
+          .map(|_| Matrix::new_random(0.0, 100.0, i, j))
+          .collect_vec();
+
+        let random_kernels = (0..i * j)
+          .map(|_| Matrix::new_random(0.0, 100.0, i / 2, j / 2))
+          .collect_vec();
+
+        let rotated_kernels = rotate_180_packed(&random_kernels);
+        let expected_results =
+          correlate_packed(&random_inputs, &rotated_kernels, PaddingType::VALID);
+        let observed_results = convolve_packed(&random_inputs, &random_kernels, PaddingType::VALID);
+
+        izip!(observed_results, expected_results).for_each(|(observed, expected)| {
+          assert!(matrix_are_equal(&observed, &expected, 8));
+        });
+      }
+    }
+  }
+
+  #[test]
+  fn convolution_gpu_full() {
+    // Generate random data of different sizes
+    for i in 2..25 {
+      for j in 2..25 {
+        let random_input = Matrix::new_random(0.0, 100.0, i, j);
+
+        let random_kernel = Matrix::new_random(0.0, 100.0, i / 2, j / 2);
+
+        let expected_result =
+          random_input.correlate(&random_kernel.rotate_180(), PaddingType::FULL);
+        let observed_result = random_input.convolve(&random_kernel, PaddingType::FULL);
+
+        assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+      }
+    }
+  }
+
+  #[test]
+  fn packed_convolution_gpu_full() {
+    // Generate random data of different sizes
+    for i in 2..25 {
+      for j in 2..25 {
+        let random_inputs = (0..i * j)
+          .map(|_| Matrix::new_random(0.0, 100.0, i, j))
+          .collect_vec();
+
+        let random_kernels = (0..i * j)
+          .map(|_| Matrix::new_random(0.0, 100.0, i / 2, j / 2))
+          .collect_vec();
+
+        let rotated_kernels = rotate_180_packed(&random_kernels);
+        let expected_results =
+          correlate_packed(&random_inputs, &rotated_kernels, PaddingType::FULL);
+        let observed_results = convolve_packed(&random_inputs, &random_kernels, PaddingType::FULL);
+
+        izip!(observed_results, expected_results).for_each(|(observed, expected)| {
+          assert!(matrix_are_equal(&observed, &expected, 8));
+        });
+      }
+    }
   }
 
   #[test]
@@ -1191,71 +2328,6 @@ mod tests {
   }
 
   #[test]
-  fn convolution_v2_gpu_valid_1() {
-    let test_data = Matrix::new_2d(&vec![
-      vec![1.0, 2.0, 3.0],
-      vec![4.0, 5.0, 6.0],
-      vec![7.0, 8.0, 9.0],
-    ]);
-
-    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
-
-    let expected_result = Matrix::new_2d(&vec![vec![37.0, 47.0], vec![67.0, 77.0]]);
-
-    let observed_result = test_data.convolution_v2(&kernel, ConvolutionType::VALID);
-
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
-  }
-
-  #[test]
-  fn convolution_v2_gpu_valid_2() {
-    let test_data = Matrix::new_2d(&vec![
-      vec![1.0, 2.0, 3.0, 4.0],
-      vec![5.0, 6.0, 7.0, 8.0],
-      vec![9.0, 10.0, 11.0, 12.0],
-    ]);
-
-    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
-
-    let expected_result = Matrix::new_2d(&vec![vec![106.0, 127.0], vec![190.0, 211.0]]);
-
-    let observed_result = test_data.convolution_v2(&kernel, ConvolutionType::VALID);
-
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
-  }
-
-  #[test]
-  fn convolution_v2_gpu_valid_3() {
-    let test_data = Matrix::new_2d(&vec![
-      vec![1.0, 2.0, 3.0, 4.0],
-      vec![5.0, 6.0, 7.0, 8.0],
-      vec![9.0, 10.0, 11.0, 12.0],
-    ]);
-
-    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
-
-    let expected_result = Matrix::new_2d(&vec![vec![44.0, 54.0, 64.0], vec![84.0, 94.0, 104.0]]);
-
-    let observed_result = test_data.convolution_v2(&kernel, ConvolutionType::VALID);
-
-    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
-  }
-
-  #[test]
-  fn convolution_v2_gpu_valid_4() {
-    let test_data = vec![1.0; 64 * 64];
-    let test_data = Matrix::new_1d(&test_data, 64, 64);
-
-    let kernel = Matrix::new_2d(&vec![vec![1.0, 2.0, 3.0]; 3]);
-
-    let observed_result = test_data.convolution_v2(&kernel, ConvolutionType::VALID);
-
-    unsafe { cuda_synchronize() }
-
-    assert!(1 == 1);
-  }
-
-  #[test]
   fn nearest_neighbor_gpu_2x_upsample_1() {
     let test_data = Matrix::new_2d(&vec![
       vec![1.0, 2.0, 3.0, 4.0],
@@ -1302,6 +2374,40 @@ mod tests {
     let observed_result = test_data.nearest_neighbor_2x_upsample(true);
 
     assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn nearest_neighbor_2x_upsample_packed_1() {
+    let random_matrices = (0..100)
+      .map(|_| Matrix::new_random(0.0, 100.0, 256, 256))
+      .collect_vec();
+
+    let expected_results = random_matrices
+      .iter()
+      .map(|mat| mat.nearest_neighbor_2x_upsample(false))
+      .collect_vec();
+
+    let observed_results = nearest_neighbor_2x_upsample_packed(&random_matrices, false);
+
+    izip!(observed_results, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
+  }
+
+  #[test]
+  fn nearest_neighbor_2x_upsample_packed_2() {
+    let random_matrices = (0..100)
+      .map(|_| Matrix::new_random(0.0, 100.0, 256, 256))
+      .collect_vec();
+
+    let expected_results = random_matrices
+      .iter()
+      .map(|mat| mat.nearest_neighbor_2x_upsample(true))
+      .collect_vec();
+
+    let observed_results = nearest_neighbor_2x_upsample_packed(&random_matrices, true);
+
+    izip!(observed_results, expected_results)
+      .for_each(|(observed, expected)| assert!(matrix_are_equal(&observed, &expected, 8)));
   }
 
   #[test]
@@ -1547,15 +2653,15 @@ mod tests {
   }
 
   fn matrix_are_equal(a: &Matrix, b: &Matrix, precision: usize) -> bool {
-    if a.rows != b.rows || a.columns != b.columns {
+    if a.get_rows() != b.get_rows() || a.get_columns() != b.get_columns() {
       println!("Matrices not the same shape!");
       return false;
     }
 
     let a_data = a.get_data();
     let b_data = b.get_data();
-    for i in 0..a.rows {
-      for j in 0..a.columns {
+    for i in 0..a.get_rows() {
+      for j in 0..a.get_columns() {
         if !approx_equal(a_data[i][j], b_data[i][j], precision) {
           a.print();
           b.print();
@@ -1567,16 +2673,91 @@ mod tests {
     return true;
   }
 
+  #[test]
+  fn max_by_column() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0, 50.0],
+      vec![6.0, 7.0, 8.0, 9.0, 10.0],
+      vec![11.0, -12.0, 130.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0, 19.0, 20.0],
+      vec![-21.0, 22.0, 23.0, 24.0, 25.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![16.0, 22.0, 130.0, 24.0, 50.0]]);
+
+    let observed_result = test_data.max_by_column();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn max_by_row() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0, 50.0],
+      vec![6.0, 7.0, 8.0, 9.0, 10.0],
+      vec![11.0, -12.0, 130.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0, 19.0, 20.0],
+      vec![-21.0, 22.0, 23.0, 24.0, 25.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![
+      vec![50.0],
+      vec![10.0],
+      vec![130.0],
+      vec![20.0],
+      vec![25.0],
+    ]);
+
+    let observed_result = test_data.max_by_row();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn argmax_by_column() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0, 50.0],
+      vec![6.0, 7.0, 8.0, 9.0, 10.0],
+      vec![11.0, -12.0, 130.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0, 19.0, 20.0],
+      vec![-21.0, 22.0, 23.0, 24.0, 25.0],
+    ]);
+
+    let expected_result = Matrix::new_2d(&vec![vec![3.0, 4.0, 2.0, 4.0, 0.0]]);
+
+    let observed_result = test_data.argmax_by_column();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
+  #[test]
+  fn argmax_by_row() {
+    let test_data = Matrix::new_2d(&vec![
+      vec![1.0, 2.0, 3.0, 4.0, 50.0],
+      vec![6.0, 7.0, 8.0, 9.0, 10.0],
+      vec![11.0, -12.0, 130.0, 14.0, 15.0],
+      vec![16.0, 17.0, 18.0, 19.0, 20.0],
+      vec![-21.0, 22.0, 23.0, 24.0, 25.0],
+    ]);
+
+    let expected_result =
+      Matrix::new_2d(&vec![vec![4.0], vec![4.0], vec![2.0], vec![4.0], vec![4.0]]);
+
+    let observed_result = test_data.argmax_by_row();
+
+    assert!(matrix_are_equal(&observed_result, &expected_result, 8));
+  }
+
   fn matrix_are_equal_cpu(a: &MatrixCpu, b: &MatrixCpu, precision: usize) -> bool {
-    if a.rows != b.rows || a.columns != b.columns {
+    if a.get_rows() != b.get_rows() || a.get_columns() != b.get_columns() {
       println!("Matrices not the same shape!");
       return false;
     }
 
     let a_data = a.get_data();
     let b_data = b.get_data();
-    for i in 0..a.rows {
-      for j in 0..a.columns {
+    for i in 0..a.get_rows() {
+      for j in 0..a.get_columns() {
         if !approx_equal(a_data[i][j], b_data[i][j], precision) {
           a.print();
           b.print();
@@ -1589,20 +2770,17 @@ mod tests {
   }
 
   fn matrix_are_equal_gpu_cpu(a: &Matrix, b: &MatrixCpu, precision: usize) -> bool {
-    if a.get_data_length() < 100 && b.rows * b.columns < 100 {
-      a.print();
-      b.print();
-    }
-
-    if a.rows != b.rows || a.columns != b.columns {
+    if a.get_rows() != b.get_rows() || a.get_columns() != b.get_columns() {
       println!("Matrices do not even share dimensions");
       return false;
     }
 
     let a_data = a.get_data();
-    for i in 0..a.rows {
-      for j in 0..a.columns {
+    for i in 0..a.get_rows() {
+      for j in 0..a.get_columns() {
         if !approx_equal(a_data[i][j], b[i][j], precision) {
+          a.print();
+          b.print();
           println!(
             "Matrices not equal at index: {} {} with value: {} {}",
             i, j, a_data[i][j], b[i][j]

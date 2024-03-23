@@ -1,90 +1,102 @@
-#include <cublas_v2.h>
-#include <cuda.h>
-#include <stdio.h>
+#pragma once
+#include "./cuda_exec_memory_manager.cuh"
 
-// Experiment to make access to map thread safe.
-// For now only use one thread with this library.
-
-// std::shared_mutex mat_map_mutex;
-// Function to perform thread-safe write operation on mat_map
-// void writeToMatMap(size_t key, float* value) {
-//     std::unique_lock<std::shared_mutex> lock(mat_map_mutex);
-//     mat_map[key] = value;
-// }
-// // Function to perform thread-safe read operation on mat_map
-// float* readFromMatMap(size_t key) {
-//     std::shared_lock<std::shared_mutex> lock(mat_map_mutex);
-//     return mat_map[key];
-// }
-// Function to perform thread-safe remove operation on mat_map
-// void removeFromMatMap(size_t key) {
-//     std::unique_lock<std::shared_mutex> lock(mat_map_mutex);
-//     mat_map.erase(key);
-// }
-
-// Make enum for convolution types
-enum ConvolutionType {
-    VALID,
-    SAME,
-    FULL
-};
-
-// Make sure bindings are not mangled for rust
 extern "C" {
+
+// Test Functions
 void test();
 void test_array_fill(float* buffer, size_t length);
 
 // Misc
 void cuda_synchronize();
-struct Tuple {  // Used to return tuple with interop to rust
-    size_t a;
-    size_t b;
-};
 
-// Matrix Setup API (reduces overhead of keeping matrices in ram)
-size_t register_matrix(float* data, size_t rows, size_t cols);
-void unregister_matrix(size_t mat_id);
-void get_matrix_data(size_t mat_id, int rows, int cols, float* data_buffer);
+// Matrix operation API
+Matrix cuda_element_add(Matrix* matrix_1, Matrix* matrix_2);
+void cuda_element_add_inplace(Matrix* matrix_1, Matrix* matrix_2);
+void cuda_element_add_packed(Matrix* matrix_1s, Matrix* matrix_2s, Matrix* out_matrices, size_t num_matrices);
+void cuda_element_add_packed_inplace(Matrix* matrix_1s, Matrix* matrix_2s, size_t num_matrices);
+Matrix cuda_element_subtract(Matrix* matrix_1, Matrix* matrix_2);
+void cuda_element_subtract_inplace(Matrix* matrix_1, Matrix* matrix_2);
+void cuda_element_subtract_packed(Matrix* matrix_1s, Matrix* matrix_2s, Matrix* out_matrices, size_t num_matrices);
+void cuda_element_subtract_packed_inplace(Matrix* matrix_1s, Matrix* matrix_2s, size_t num_matrices);
+Matrix cuda_element_multiply(Matrix* matrix_1, Matrix* matrix_2);
+void cuda_element_multiply_inplace(Matrix* matrix_1, Matrix* matrix_2);
+void cuda_element_multiply_packed(Matrix* matrix_1s, Matrix* matrix_2s, Matrix* out_matrices, size_t num_matrices);
+void cuda_element_multiply_packed_inplace(Matrix* matrix_1s, Matrix* matrix_2s, size_t num_matrices);
+Matrix cuda_element_divide(Matrix* matrix_1, Matrix* matrix_2);
+void cuda_element_divide_inplace(Matrix* matrix_1, Matrix* matrix_2);
+void cuda_element_divide_packed(Matrix* matrix_1s, Matrix* matrix_2s, Matrix* out_matrices, size_t num_matrices);
+void cuda_element_divide_packed_inplace(Matrix* matrix_1s, Matrix* matrix_2s, size_t num_matrices);
+Matrix cuda_scalar_add(Matrix* matrix, float scalar);
+void cuda_scalar_add_inplace(Matrix* matrix, float scalar);
+void cuda_scalar_add_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices, float scalar);
+void cuda_scalar_add_packed_inplace(Matrix* matrices, size_t num_matrices, float scalar);  // No longer safe to repeat matrix in matrices (i.e double multiply a matrix) (removed atomic operation)
+Matrix cuda_scalar_subtract(Matrix* matrix, float scalar);
+void cuda_scalar_subtract_inplace(Matrix* matrix, float scalar);
+void cuda_scalar_subtract_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices, float scalar);
+void cuda_scalar_subtract_packed_inplace(Matrix* matrices, size_t num_matrices, float scalar);  // No longer safe to repeat matrix in matrices (i.e double multiply a matrix) (removed atomic operation)
+Matrix cuda_scalar_multiply(Matrix* matrix, float scalar);
+void cuda_scalar_multiply_inplace(Matrix* matrix, float scalar);
+void cuda_scalar_multiply_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices, float scalar);
+void cuda_scalar_multiply_packed_inplace(Matrix* matrices, size_t num_matrices, float scalar);  // No longer safe to repeat matrix in matrices (i.e double multiply a matrix) (removed atomic operation)
+Matrix cuda_scalar_divide(Matrix* matrix, float scalar);
+void cuda_scalar_divide_inplace(Matrix* matrix, float scalar);
+void cuda_scalar_divide_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices, float scalar);
+void cuda_scalar_divide_packed_inplace(Matrix* matrices, size_t num_matrices, float scalar);  // No longer safe to repeat matrix in matrices (i.e double multiply a matrix) (removed atomic operation)
+Matrix cuda_matrix_multiply(Matrix* matrix_1, Matrix* matrix_2);
+Matrix cuda_add_vector(Matrix* matrix_1, Matrix* matrix_2);
+void cuda_add_vector_inplace(Matrix* matrix_1, Matrix* matrix_2);
+Matrix cuda_divide_by_vector(Matrix* matrix_1, Matrix* matrix_2);
+void cuda_divide_by_vector_inplace(Matrix* matrix_1, Matrix* matrix_2);
+Matrix cuda_element_sqrt(Matrix* matrix);
+void cuda_element_sqrt_inplace(Matrix* matrix);
+void cuda_element_sqrt_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices);
+void cuda_element_sqrt_packed_inplace(Matrix* matrices, size_t num_matrices);
+Matrix cuda_element_exp(Matrix* matrix);
+void cuda_element_exp_inplace(Matrix* matrix);
+void cuda_element_exp_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices);
+void cuda_element_exp_packed_inplace(Matrix* matrices, size_t num_matrices);
+Matrix cuda_element_ReLU(Matrix* matrix);
+void cuda_element_ReLU_inplace(Matrix* matrix);
+void cuda_element_ReLU_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices);
+void cuda_element_ReLU_packed_inplace(Matrix* matrices, size_t num_matrices);
+Matrix cuda_element_ReLU_prime(Matrix* matrix);
+void cuda_element_ReLU_prime_inplace(Matrix* matrix);
+void cuda_element_ReLU_prime_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices);
+void cuda_element_ReLU_prime_packed_inplace(Matrix* matrices, size_t num_matrices);
+Matrix cuda_element_ln(Matrix* matrix);
+void cuda_element_ln_inplace(Matrix* matrix);
+Matrix cuda_sum_rows(Matrix* matrix);
+Matrix cuda_sum_columns(Matrix* matrix);
+Matrix cuda_transpose(Matrix* matrix);
+void cuda_max_pool(Matrix* matrix, Matrix* out_pooled, Matrix* out_bitmask);
+void cuda_max_pool_packed(Matrix* matrices, Matrix* out_pooled, Matrix* out_bitmasks, size_t num_matrices);
+Matrix cuda_nearest_neighbor_2x_upsample(Matrix* matrix, bool odd_upsample);
+void cuda_nearest_neighbor_2x_upsample_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices, bool odd_upsample);
+Matrix cuda_rotate_180(Matrix* matrix);
+void cuda_rotate_180_packed(Matrix* matrices, Matrix* out_matrices, size_t num_matrices);
+Matrix cuda_correlate(Matrix* matrix, Matrix* kernel, PaddingType padding_type);
+void cuda_correlate_packed(Matrix* matrices, size_t num_matrices, Matrix* kernels, Matrix* out_matrices, PaddingType padding_type);
+Matrix cuda_convolve(Matrix* matrix, Matrix* kernel, PaddingType padding_type);
+void cuda_convolve_packed(Matrix* matrices, size_t num_matrices, Matrix* kernels, Matrix* out_matrices, PaddingType padding_type);
+Matrix cuda_img2col(Matrix* matrices, size_t num_matrices, size_t kernel_rows, size_t kernel_cols, PaddingType padding_type);  // Take an image and convert it to a matrix of columns based on patches (with specified padding) the filter makes of image
+Matrix cuda_flatten_array(Matrix* matrices, size_t num_matrices);                                                              // Take n same_dimension matrices and flatten them into an array
+void cuda_unflatten_array(Matrix* array, size_t out_rows, size_t out_cols, Matrix* out_matrices);                              // Take an array and unflatten it into n same_dimension matrices
+void cuda_unflatten_array_strided(Matrix* array, size_t out_rows, size_t out_cols, Matrix* out_matrices);                      // Take an array and unflatten it into n same_dimension matrices. Each array's first n elements are the first elements in memory. [arr1_elem1, arr2_elem1, arr3_elem1, arr1_elem2, arr2_elem2, arr3_elem2, ...]
+Matrix cuda_center_pad(Matrix* matrix, size_t pad_rows, size_t pad_cols);
+Matrix cuda_softmax(Matrix* matrix);
+Matrix cuda_crop(Matrix* matrix, size_t crop_offset_rows, size_t crop_offset_cols, size_t crop_rows, size_t crop_cols);
+Matrix cuda_copy(Matrix* matrix);
+Matrix cuda_sum_all_matrix_elements(Matrix* matrix);
+Matrix cuda_max_by_column(Matrix* matrix);
+Matrix cuda_max_by_row(Matrix* matrix);
+Matrix cuda_argmax_by_column(Matrix* matrix);
+Matrix cuda_argmax_by_row(Matrix* matrix);
+Matrix cuda_one_hot_encode(float* data, size_t data_size, size_t num_classes);
+Matrix cuda_one_hot_encode_vector(Matrix* matrix, size_t num_classes);
 
-// Execution Type
-void enable_parallel_stream_execution();
-void disable_parallel_stream_execution();
-
-// Matrix operation API, Returns id of new matrix. Consumer should not release
-size_t cuda_element_add(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
-size_t cuda_element_subtract(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
-size_t cuda_element_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
-size_t cuda_element_divide(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
-size_t cuda_scalar_multiply(size_t mat_id, size_t mat_rows, size_t mat_cols, float scalar, bool inplace);
-size_t cuda_scalar_divide(size_t mat_id, size_t mat_rows, size_t mat_cols, float scalar, bool inplace);
-size_t cuda_scalar_add(size_t mat_id, size_t mat_rows, size_t mat_cols, float scalar, bool inplace);
-size_t cuda_scalar_subtract(size_t mat_id, size_t mat_rows, size_t mat_cols, float scalar, bool inplace);
-size_t cuda_scalar_multiply_matrix(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t scalar_mat_id, bool inplace);
-size_t cuda_scalar_divide_matrix(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t scalar_mat_id, bool inplace);
-size_t cuda_scalar_add_matrix(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t scalar_mat_id, bool inplace);
-size_t cuda_scalar_subtract_matrix(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t scalar_mat_id, bool inplace);
-size_t cuda_matrix_multiply(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols);
-size_t cuda_add_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
-size_t cuda_divide_by_vector(size_t mat1_id, size_t mat1_rows, size_t mat1_cols, size_t mat2_id, size_t mat2_rows, size_t mat2_cols, bool inplace);
-size_t cuda_element_sqrt(size_t mat_id, size_t mat_rows, size_t mat_cols, bool inplace);
-size_t cuda_element_exp(size_t mat_id, size_t mat_rows, size_t mat_cols, bool inplace);
-size_t cuda_element_ReLU(size_t mat_id, size_t mat_rows, size_t mat_col, bool inplace);
-size_t cuda_element_ReLU_prime(size_t mat_id, size_t mat_rows, size_t mat_cols, bool inplace);
-size_t cuda_sum_rows(size_t mat_id, size_t mat_rows, size_t mat_cols);
-size_t cuda_sum_columns(size_t mat_id, size_t mat_rows, size_t mat_cols);
-size_t cuda_transpose(size_t mat_id, size_t mat_rows, size_t mat_cols);
-Tuple cuda_max_pool(size_t mat_id, size_t mat_rows, size_t mat_cols);
-size_t cuda_nearest_neighbor_2x_upsample(size_t mat_id, size_t mat_rows, size_t mat_cols, bool odd_upsample);
-size_t cuda_rotate_180(size_t mat_id, size_t mat_rows, size_t mat_cols);
-size_t cuda_convolution(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t kernel_id, size_t kernel_rows, size_t kernel_cols, ConvolutionType conv_type);
-void cuda_convolution_packed(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t* kernel_ids, size_t kernel_rows, size_t kernel_cols, size_t* out_ids, ConvolutionType conv_type);
-size_t cuda_img2col(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols, size_t kernel_rows, size_t kernel_cols, ConvolutionType conv_type);  // Take an image and convert it to a matrix of columns based on patches (with specified padding) the filter makes of image
-size_t cuda_flatten_array(size_t* mat_ids, size_t num_matrices, size_t mat_rows, size_t mat_cols);                                                               // Take n same_dimension matrices and flatten them into an array
-void cuda_unflatten_array(size_t array_id, size_t arr_size, size_t mat_rows, size_t mat_cols, size_t* mat_ids);                                                  // Take an array and unflatten it into n same_dimension matrices
-void cuda_unflatten_array_strided(size_t array_id, size_t arr_size, size_t mat_rows, size_t mat_cols, size_t* mat_ids);                                          // Take an array and unflatten it into n same_dimension matrices. Each array's first n elements are the first elements in memory. [arr1_elem1, arr2_elem1, arr3_elem1, arr1_elem2, arr2_elem2, arr3_elem2, ...]
-size_t cuda_center_pad(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t pad_rows, size_t pad_cols);
-size_t cuda_softmax(size_t mat_id, size_t mat_rows, size_t mat_cols);
-size_t cuda_crop(size_t mat_id, size_t mat_rows, size_t mat_cols, size_t crop_offset_rows, size_t crop_offset_cols, size_t crop_rows, size_t crop_cols);
-size_t cuda_copy(size_t mat_id, size_t mat_rows, size_t mat_cols);
-size_t cuda_sum_all_matrix_elements(size_t mat_id, size_t mat_rows, size_t mat_cols);
+// Neural Network Specific Functions
+void cuda_cnn_feed_forward(Matrix* channels, Matrix* filters, Matrix* biases, size_t channel_count_per_sample, size_t sample_count, size_t filter_count, Matrix* results);
+void cuda_cnn_back_propogate(Matrix* sample_output_errors, Matrix* prev_inputs, Matrix* filters, size_t sample_count, size_t filter_count, size_t input_depth, Matrix* delta_bias, Matrix* delta_filter, Matrix* delta_input);
+void cuda_adam_optimizer_packed(Matrix* d_v, Matrix* d_s, Matrix* curr_gradients, Matrix* results, size_t num_matrices, float d_v_beta, float d_s_beta, float learning_rate);
 }
