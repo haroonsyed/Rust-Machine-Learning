@@ -42,9 +42,10 @@ Any data is located in the data folder.
 | Gradient Boost                     | :white_check_mark: |
 | XGBoost                            | :white_check_mark: |
 | Neural Network w/t backpropogation | :white_check_mark: |
-| Convolutional Neural Networks      | :white_check_mark:                |
+| Convolutional Neural Networks      | :white_check_mark: |
 | Recurrent Neural Networks          | :x:                |
 | Generative Adversarial Networks    | :x:                |
+| Large Language Models              | :x:                |
 | CUDA Acceleration w/t Rust FFI     | :white_check_mark: |
 
 ## Setup Instructions
